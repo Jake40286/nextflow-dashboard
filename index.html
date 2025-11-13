@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GTD Dashboard</title>
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <noscript class="noscript">This dashboard needs JavaScript enabled to function.</noscript>
+  <div class="app" data-theme="light">
+    <header class="topbar" aria-label="Dashboard navigation">
+      <div class="brand" role="heading" aria-level="1">
+        <span class="brand-mark" aria-hidden="true">◎</span>
+        <span>GTD Dashboard</span>
+      </div>
+      <form id="quickAddForm" class="quick-add" aria-label="Quick capture">
+        <div class="quick-add-main">
+          <label for="quickAddInput" class="visually-hidden">Quick capture task</label>
+          <input id="quickAddInput" name="title" type="text" placeholder="Quick capture: type and press Enter" autocomplete="off" required />
+          <button id="quickAddToggle" type="button" class="btn btn-light" aria-expanded="false" aria-controls="quickAddDetails">Details</button>
+          <button type="submit" class="btn btn-primary">Add to Inbox</button>
+        </div>
+        <div id="quickAddDetails" class="quick-add-details" hidden>
+          <label for="quickAddDescription" class="visually-hidden">Task description</label>
+          <textarea id="quickAddDescription" name="description" rows="3" placeholder="Add a short description (optional)"></textarea>
+        </div>
+      </form>
+      <div class="topbar-meta" role="status" aria-live="polite">
+        <div class="meta-item">
+          <span class="meta-label">Inbox</span>
+          <span id="inboxCount" class="meta-value">0</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Due Today</span>
+          <span id="dueTodayCount" class="meta-value">0</span>
+        </div>
+        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Toggle light or dark theme">
+          <span class="theme-icon" aria-hidden="true">☀︎</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="alerts" role="status" aria-live="assertive"></div>
+
+    <main class="layout" id="dashboardLayout">
+      <aside class="sidebar" aria-label="Summary and filters">
+        <section class="card summary-card" aria-labelledby="summaryHeading">
+          <header class="card-header">
+            <h2 id="summaryHeading">Summary</h2>
+            <button id="refreshData" class="btn btn-link" type="button">Refresh</button>
+          </header>
+          <dl class="summary-grid">
+            <div>
+              <dt>Inbox</dt>
+              <dd id="summaryInbox">0</dd>
+            </div>
+            <div>
+              <dt>Next Actions</dt>
+              <dd id="summaryNext">0</dd>
+            </div>
+            <div>
+              <dt>Waiting For</dt>
+              <dd id="summaryWaiting">0</dd>
+            </div>
+            <div>
+              <dt>Someday</dt>
+              <dd id="summarySomeday">0</dd>
+            </div>
+            <div>
+              <dt>Projects</dt>
+              <dd id="summaryProjects">0</dd>
+            </div>
+            <div>
+              <dt>Overdue</dt>
+              <dd id="summaryOverdue">0</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="card filters-card" aria-labelledby="filterHeading">
+          <header class="card-header">
+            <h2 id="filterHeading">Filters</h2>
+          </header>
+          <label class="filter-control" for="contextFilter">Context</label>
+          <select id="contextFilter" aria-describedby="contextHelp">
+            <option value="all">All Contexts</option>
+          </select>
+          <small id="contextHelp" class="muted">See tasks matching specific contexts.</small>
+
+          <label class="filter-control" for="projectFilter">Project</label>
+          <select id="projectFilter" aria-describedby="projectHelp">
+            <option value="all">All Projects</option>
+          </select>
+          <small id="projectHelp" class="muted">View tasks tied to a project.</small>
+        </section>
+
+        <section class="card integrations-card" aria-labelledby="integrationsHeading">
+          <header class="card-header">
+            <h2 id="integrationsHeading">Integrations</h2>
+          </header>
+          <ul class="integration-list">
+            <li>
+              <button class="btn btn-pill" type="button" data-placeholder="email">Email capture <span class="badge">Soon</span></button>
+            </li>
+            <li>
+              <button class="btn btn-pill" type="button" data-placeholder="calendar">Calendar sync <span class="badge">Soon</span></button>
+            </li>
+            <li>
+              <button class="btn btn-pill" type="button" data-placeholder="notes">Notes linking <span class="badge">Soon</span></button>
+            </li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Workflow">
+        <header class="workspace-toolbar">
+          <label class="filter-control" for="searchTasks">Search</label>
+          <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" />
+          <div class="toolbar-actions">
+            <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
+            <button id="expandProjects" class="btn btn-light" type="button">Expand projects</button>
+          </div>
+        </header>
+
+        <section class="panel" data-panel="inbox" aria-labelledby="inboxHeading">
+          <header class="panel-header">
+            <h2 id="inboxHeading">Inbox</h2>
+            <span class="panel-count" id="inboxPanelCount">0</span>
+          </header>
+          <div class="panel-body" role="list" data-dropzone="inbox"></div>
+        </section>
+
+        <section class="panel" data-panel="next" aria-labelledby="nextHeading">
+          <header class="panel-header">
+            <h2 id="nextHeading">Next Actions</h2>
+            <span class="panel-count" id="nextPanelCount">0</span>
+          </header>
+          <div class="panel-subheading muted">Grouped by context</div>
+          <div class="panel-body contexts" data-context-board></div>
+        </section>
+
+        <section class="panel" data-panel="projects" aria-labelledby="projectsHeading">
+          <header class="panel-header">
+            <h2 id="projectsHeading">Projects</h2>
+            <span class="panel-count" id="projectsPanelCount">0</span>
+          </header>
+          <div class="panel-body" data-projects></div>
+        </section>
+
+        <section class="panel" data-panel="waiting" aria-labelledby="waitingHeading">
+          <header class="panel-header">
+            <h2 id="waitingHeading">Waiting For</h2>
+            <span class="panel-count" id="waitingPanelCount">0</span>
+          </header>
+          <div class="panel-body" role="list" data-dropzone="waiting"></div>
+        </section>
+
+        <section class="panel" data-panel="someday" aria-labelledby="somedayHeading">
+          <header class="panel-header">
+            <h2 id="somedayHeading">Someday / Maybe</h2>
+            <span class="panel-count" id="somedayPanelCount">0</span>
+          </header>
+          <div class="panel-body" role="list" data-dropzone="someday"></div>
+        </section>
+
+        <section class="panel" data-panel="calendar" aria-labelledby="calendarHeading">
+          <header class="panel-header">
+            <h2 id="calendarHeading">Calendar View</h2>
+          </header>
+          <div class="calendar-controls">
+            <label class="filter-control" for="calendarDate">Jump to date</label>
+            <input id="calendarDate" type="date" aria-describedby="calendarHelp" />
+            <small id="calendarHelp" class="muted">Select a date or browse upcoming events.</small>
+          </div>
+          <div class="panel-body calendar-body">
+            <ul id="calendarList" class="calendar-list" role="list"></ul>
+          </div>
+        </section>
+      </section>
+
+      <aside class="insights" aria-label="Review and analytics">
+        <section class="card review-card" aria-labelledby="reviewHeading">
+          <header class="card-header">
+            <h2 id="reviewHeading">Weekly Review</h2>
+            <button id="resetChecklist" class="btn btn-link" type="button">Reset checklist</button>
+          </header>
+          <ul id="reviewChecklist" class="checklist" role="list"></ul>
+        </section>
+
+        <section class="card analytics-card" aria-labelledby="analyticsHeading">
+          <header class="card-header">
+            <h2 id="analyticsHeading">Progress</h2>
+            <span class="muted small-text">Weekly completion overview</span>
+          </header>
+          <canvas id="reviewChart" width="280" height="180" role="img" aria-label="Weekly progress chart"></canvas>
+          <div class="chart-legend">
+            <span class="legend-dot dot-complete" aria-hidden="true"></span> Complete
+            <span class="legend-dot dot-incomplete" aria-hidden="true"></span> Remaining
+          </div>
+        </section>
+
+        <section class="card pomodoro-card" aria-labelledby="timerHeading">
+          <header class="card-header">
+            <h2 id="timerHeading">Pomodoro Focus</h2>
+          </header>
+          <div class="pomodoro-display" role="timer" aria-live="polite" aria-atomic="true">
+            <span id="pomodoroTimer">25:00</span>
+          </div>
+          <div class="pomodoro-controls">
+            <button id="pomodoroStart" class="btn btn-primary" type="button">Start</button>
+            <button id="pomodoroPause" class="btn btn-light" type="button">Pause</button>
+            <button id="pomodoroReset" class="btn btn-light" type="button">Reset</button>
+          </div>
+          <label class="filter-control" for="pomodoroTask">Focus task</label>
+          <select id="pomodoroTask">
+            <option value="">Select a task…</option>
+          </select>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="app-footer">
+      <small>&copy; <span id="footerYear"></span> GTD Dashboard Prototype. Built for rapid capture, clarify, organize, reflect, and engage.</small>
+    </footer>
+  </div>
+
+  <script src="lib/chart.min.js"></script>
+  <script src="lib/dragdrop.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

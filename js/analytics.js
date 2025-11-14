@@ -12,6 +12,7 @@ export class AnalyticsController {
   }
 
   updateFromState() {
+    if (!this.canvas) return;
     if (!this.chart) {
       this.render();
       return;
@@ -29,6 +30,7 @@ export class AnalyticsController {
   }
 
   render() {
+    if (!this.canvas) return;
     if (!window.Chart) {
       this.drawFallback();
       return;
@@ -108,6 +110,7 @@ export class AnalyticsController {
   }
 
   drawFallback() {
+    if (!this.canvas) return;
     const ctx = this.canvas.getContext("2d");
     const { labels, completed, remaining } = this.computeDatasets();
     const width = this.canvas.width;

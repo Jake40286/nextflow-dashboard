@@ -1,4 +1,6 @@
-import { STATUS, formatFriendlyDate } from "./data.js";
+import { STATUS, STATUS_LABELS, formatFriendlyDate } from "./data.js";
+
+const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
 
 const TRANSITIONS = {
   [STATUS.INBOX]: [
@@ -31,18 +33,46 @@ export class UIController {
     };
     this.elements = mapElements();
     this.dropzones = [];
+    this.panelButtons = [];
+    this.panels = [];
+    this.activePanel = loadStoredPanel() || "inbox";
+    this.summaryCache = null;
+    this.reportFilters = {
+      grouping: "week",
+      year: new Date().getFullYear(),
+      context: "all",
+      project: "all",
+    };
+    this.currentFlyoutTaskId = null;
+    this.isFlyoutOpen = false;
+    this.handleFlyoutKeydown = null;
+    this.projectCache = null;
+    this.projectLookup = new Map();
   }
 
   init() {
     this.bindListeners();
+    this.setupSummaryTabs();
+    this.setupFlyout();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
   }
 
   bindListeners() {
-    const { contextFilter, projectFilter, searchTasks, clearFilters, expandProjects, calendarDate, integrationsCard } =
-      this.elements;
+    const {
+      contextFilter,
+      projectFilter,
+      searchTasks,
+      clearFilters,
+      expandProjects,
+      calendarDate,
+      integrationsCard,
+      reportGrouping,
+      reportYear,
+      reportContext,
+      reportProject,
+    } = this.elements;
 
     contextFilter.addEventListener("change", () => {
       this.filters.context = contextFilter.value;
@@ -69,7 +99,7 @@ export class UIController {
     });
 
     expandProjects.addEventListener("click", () => {
-      const projects = this.taskManager.getProjects();
+      const projects = this.getProjectCache();
       const nextExpandedState = projects.some((project) => !project.isExpanded);
       projects.forEach((project) => this.taskManager.toggleProjectExpansion(project.id, nextExpandedState));
     });
@@ -77,6 +107,24 @@ export class UIController {
     calendarDate.addEventListener("change", () => {
       this.filters.date = calendarDate.value;
       this.renderCalendar();
+    });
+
+    reportGrouping?.addEventListener("change", () => {
+      this.reportFilters.grouping = reportGrouping.value;
+      this.renderReports();
+    });
+    reportYear?.addEventListener("change", () => {
+      const nextYear = parseInt(reportYear.value, 10);
+      this.reportFilters.year = Number.isNaN(nextYear) ? new Date().getFullYear() : nextYear;
+      this.renderReports();
+    });
+    reportContext?.addEventListener("change", () => {
+      this.reportFilters.context = reportContext.value;
+      this.renderReports();
+    });
+    reportProject?.addEventListener("change", () => {
+      this.reportFilters.project = reportProject.value;
+      this.renderReports();
     });
 
     integrationsCard.querySelectorAll("[data-placeholder]").forEach((button) => {
@@ -87,6 +135,14 @@ export class UIController {
 
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
+      if (this.isFlyoutOpen && this.currentFlyoutTaskId) {
+        const latest = this.taskManager.getTaskById(this.currentFlyoutTaskId);
+        if (latest) {
+          this.renderTaskFlyout(latest);
+        } else {
+          this.closeTaskFlyout();
+        }
+      }
     });
 
     this.taskManager.addEventListener("toast", (event) => {
@@ -94,7 +150,113 @@ export class UIController {
     });
   }
 
+  setupSummaryTabs() {
+    this.panelButtons = Array.from(document.querySelectorAll("[data-panel-target]"));
+    this.panels = Array.from(document.querySelectorAll(".workspace [data-panel]"));
+    if (!this.panelButtons.length || !this.panels.length) return;
+
+    this.panelButtons.forEach((button, index) => {
+      button.addEventListener("click", () => {
+        this.setActivePanel(button.dataset.panelTarget, { focus: false });
+      });
+      button.addEventListener("keydown", (event) => {
+        if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) {
+          event.preventDefault();
+          const increment = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+          const nextIndex = (index + increment + this.panelButtons.length) % this.panelButtons.length;
+          const nextButton = this.panelButtons[nextIndex];
+          nextButton.focus();
+          this.setActivePanel(nextButton.dataset.panelTarget, { focus: false });
+        }
+      });
+      if (button.dataset.statusTarget) {
+        this.attachDropzone(button, button.dataset.statusTarget);
+      }
+    });
+
+    this.setActivePanel(this.activePanel, { focus: false });
+  }
+
+  setActivePanel(panelName, { focus = false } = {}) {
+    if (!panelName) return;
+    if (!this.panelButtons?.some((btn) => btn.dataset.panelTarget === panelName)) {
+      panelName = "inbox";
+    }
+    this.activePanel = panelName;
+    storeActivePanel(panelName);
+    this.applyPanelVisibility();
+    if (focus) {
+      const activeButton = this.panelButtons?.find((btn) => btn.dataset.panelTarget === panelName);
+      activeButton?.focus();
+    }
+  }
+
+  applyPanelVisibility() {
+    if (!this.panelButtons || !this.panels) return;
+    this.panelButtons.forEach((button) => {
+      const isActive = button.dataset.panelTarget === this.activePanel;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.setAttribute("tabindex", isActive ? "0" : "-1");
+    });
+    this.panels.forEach((panel) => {
+      const isActive = panel.dataset.panel === this.activePanel;
+      panel.classList.toggle("is-active", isActive);
+      if (isActive) {
+        panel.removeAttribute("hidden");
+      } else {
+        panel.setAttribute("hidden", "");
+      }
+    });
+    this.updateActivePanelMeta();
+  }
+
+  updateActivePanelMeta() {
+    const heading = this.elements.activePanelHeading;
+    const count = this.elements.activePanelCount;
+    if (!heading || !count) return;
+    heading.textContent = this.getPanelLabel(this.activePanel);
+    count.textContent = this.getPanelCountText(this.activePanel);
+  }
+
+  getPanelLabel(panel) {
+    if (STATUS_LABELS[panel]) return STATUS_LABELS[panel];
+    if (panel === "projects") return "Projects";
+    if (panel === "calendar") return "Calendar";
+     if (panel === "reports") return "Reports";
+    return "Overview";
+  }
+
+  getPanelCountText(panel) {
+    const summary = this.summaryCache || this.taskManager.getSummary();
+    if (panel === "projects") {
+      return `${summary.projects} projects`;
+    }
+    if (panel === "calendar") {
+      const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
+      return `${entries.length} scheduled`;
+    }
+    if (panel === "reports") {
+      const completed = this.taskManager.getCompletedTasks().length;
+      return `${completed} completed`;
+    }
+    switch (panel) {
+      case STATUS.INBOX:
+        return `${summary.inbox} items`;
+      case STATUS.NEXT:
+        return `${summary.next} items`;
+      case STATUS.WAITING:
+        return `${summary.waiting} items`;
+      case STATUS.SOMEDAY:
+        return `${summary.someday} items`;
+      default:
+        return "";
+    }
+  }
+
   renderAll() {
+    this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
+    this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     this.renderSummary();
     this.renderFilters();
     this.renderInbox();
@@ -103,26 +265,40 @@ export class UIController {
     this.renderWaitingFor();
     this.renderSomeday();
     this.renderCalendar();
-    this.renderChecklist();
-    this.populatePomodoroSelect();
+    this.renderReports();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
+    this.applyPanelVisibility();
   }
 
   renderSummary() {
     const summary = this.taskManager.getSummary();
-    const { summaryInbox, summaryNext, summaryWaiting, summarySomeday, summaryProjects, summaryOverdue } = this.elements;
+    const calendarTotal = this.taskManager.getCalendarEntries().length;
+    const currentYear = new Date().getFullYear();
+    const completedThisYear = this.taskManager.getCompletedTasks({ year: currentYear }).length;
+    const {
+      summaryInbox,
+      summaryNext,
+      summaryWaiting,
+      summarySomeday,
+      summaryProjects,
+      summaryCalendar,
+      summaryCompleted,
+    } = this.elements;
     summaryInbox.textContent = summary.inbox;
     summaryNext.textContent = summary.next;
     summaryWaiting.textContent = summary.waiting;
     summarySomeday.textContent = summary.someday;
     summaryProjects.textContent = summary.projects;
-    summaryOverdue.textContent = summary.overdue;
+    summaryCalendar.textContent = calendarTotal;
+    if (summaryCompleted) {
+      summaryCompleted.textContent = completedThisYear;
+    }
   }
 
   renderFilters() {
     const contexts = this.taskManager.getContexts();
-    const projects = this.taskManager.getProjects({ includeSomeday: true });
+    const projects = this.projectCache || [];
 
     fillSelect(this.elements.contextFilter, contexts, this.filters.context);
     fillProjectSelect(this.elements.projectFilter, projects, this.filters.project);
@@ -141,12 +317,13 @@ export class UIController {
   }
 
   renderNextActions() {
-    const tasks = this.taskManager.getTasks({
+    const allNextTasks = this.taskManager.getTasks({
       status: STATUS.NEXT,
       context: this.filters.context,
       projectId: this.filters.project,
       searchTerm: this.filters.search,
     });
+    const tasks = this.filterNextTasksByProject(allNextTasks);
     const board = this.elements.contextBoard;
     board.innerHTML = "";
 
@@ -186,7 +363,7 @@ export class UIController {
   renderProjects() {
     const container = this.elements.projectList;
     container.innerHTML = "";
-    const projects = this.taskManager.getProjects({ includeSomeday: true });
+    const projects = this.projectCache || [];
 
     projects.forEach((project) => {
       const details = document.createElement("details");
@@ -209,22 +386,25 @@ export class UIController {
 
       const body = document.createElement("div");
       body.className = "project-body";
-
-      const vision = document.createElement("p");
-      vision.className = "muted small-text";
-      vision.textContent = project.vision;
-
-      const projectTasks = this.taskManager
-        .getTasks({ projectId: project.id, searchTerm: this.filters.search })
-        .filter((task) => task.status !== STATUS.SOMEDAY || !project.someday);
-
-      const list = document.createElement("div");
-      list.className = "project-task-list";
-
-      projectTasks.forEach((task) => list.append(this.createTaskCard(task)));
+      const outcome = document.createElement("div");
+      outcome.className = "project-outcome";
+      const outcomeLabel = document.createElement("span");
+      outcomeLabel.className = "muted small-text project-outcome-label";
+      outcomeLabel.textContent = "Desired outcome";
+      const outcomeText = document.createElement("p");
+      outcomeText.className = "project-outcome-text";
+      outcomeText.textContent = project.vision || "Define what “done” looks like for this project.";
+      outcome.append(outcomeLabel, outcomeText);
 
       const actions = document.createElement("div");
-      actions.className = "task-actions";
+      actions.className = "project-actions";
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "btn btn-light";
+      editButton.textContent = "Edit project";
+      editButton.addEventListener("click", () => this.openProjectEditor(details, project));
+      actions.append(editButton);
 
       if (project.someday) {
         const activate = document.createElement("button");
@@ -247,7 +427,59 @@ export class UIController {
       });
       actions.append(deleteButton);
 
-      body.append(vision, list, actions);
+      const projectTasks = this.taskManager
+        .getTasks({ projectId: project.id, searchTerm: this.filters.search })
+        .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
+
+      const grouped = {
+        [STATUS.NEXT]: [],
+        [STATUS.WAITING]: [],
+        [STATUS.SOMEDAY]: [],
+        [STATUS.INBOX]: [],
+      };
+      projectTasks.forEach((task) => {
+        if (grouped[task.status]) {
+          grouped[task.status].push(task);
+        }
+      });
+
+      const groups = [
+        { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
+        { status: STATUS.WAITING, label: "Waiting For", empty: "Nothing delegated at the moment." },
+        { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
+        { status: STATUS.INBOX, label: "Captured (Inbox)", empty: "No uncategorized work for this project." },
+      ];
+
+      const sectionsWrapper = document.createElement("div");
+      sectionsWrapper.className = "project-task-groups";
+
+      groups.forEach((group) => {
+        const section = document.createElement("section");
+        section.className = "project-task-group";
+        const heading = document.createElement("h4");
+        heading.textContent = group.label;
+        section.append(heading);
+
+        const items = grouped[group.status] || [];
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted small-text";
+          empty.textContent = group.empty;
+          section.append(empty);
+        } else {
+          items.forEach((task, index) => {
+            const card = this.createTaskCard(task);
+            if (group.status === STATUS.NEXT && index === 0) {
+              card.classList.add("task-card-primary");
+            }
+            section.append(card);
+          });
+        }
+
+        sectionsWrapper.append(section);
+      });
+
+      body.append(outcome, actions, sectionsWrapper);
       details.append(summary, body);
       container.append(details);
     });
@@ -280,6 +512,7 @@ export class UIController {
   renderCalendar() {
     const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
     const list = this.elements.calendarList;
+    if (!list) return;
     list.innerHTML = "";
 
     if (!entries.length) {
@@ -304,132 +537,297 @@ export class UIController {
       `;
       list.append(li);
     });
+    if (this.activePanel === "calendar") {
+      this.updateActivePanelMeta();
+    }
   }
 
-  renderChecklist() {
-    const checklist = this.taskManager.getChecklist();
-    const list = this.elements.reviewChecklist;
-    list.innerHTML = "";
-
-    checklist.forEach((item) => {
-      const li = document.createElement("li");
-      li.className = `checklist-item${item.done ? " is-complete" : ""}`;
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.id = `check-${item.id}`;
-      checkbox.checked = item.done;
-      checkbox.addEventListener("change", () => {
-        this.taskManager.toggleChecklistItem(item.id);
+  renderReports() {
+    const { reportList, reportEmpty, reportGrouping, reportYear, reportContext, reportProject } = this.elements;
+    if (!reportList) return;
+    const grouping = this.reportFilters.grouping;
+    if (reportGrouping) {
+      reportGrouping.value = grouping;
+    }
+    const contexts = this.taskManager.getContexts();
+    if (reportContext) {
+      fillSelect(reportContext, contexts, this.reportFilters.context);
+      this.reportFilters.context = reportContext.value;
+    }
+    const projects = this.projectCache || [];
+    if (reportProject) {
+      fillProjectSelect(reportProject, projects, this.reportFilters.project);
+      this.reportFilters.project = reportProject.value;
+    }
+    const completedTasks = this.taskManager.getCompletedTasks();
+    const years = this.getReportYears(completedTasks);
+    if (!years.includes(this.reportFilters.year)) {
+      this.reportFilters.year = years[0];
+    }
+    if (reportYear) {
+      reportYear.innerHTML = "";
+      years.forEach((year) => {
+        const option = document.createElement("option");
+        option.value = String(year);
+        option.textContent = year;
+        reportYear.append(option);
       });
-
-      const label = document.createElement("label");
-      label.setAttribute("for", `check-${item.id}`);
-      label.textContent = item.label;
-
-      li.append(checkbox, label);
-      list.append(li);
+      reportYear.value = String(this.reportFilters.year);
+      reportYear.disabled = grouping === "year";
+      if (!reportYear.disabled) {
+        const parsed = parseInt(reportYear.value, 10);
+        this.reportFilters.year = Number.isNaN(parsed) ? years[0] : parsed;
+      }
+    }
+    const summary = this.taskManager.getCompletionSummary({
+      grouping,
+      year: grouping === "year" ? undefined : this.reportFilters.year,
+      context: this.reportFilters.context,
+      projectId: this.reportFilters.project,
     });
-
-    this.elements.resetChecklist.onclick = () => this.taskManager.resetChecklist();
+    reportList.innerHTML = "";
+    const hasData = summary.length > 0;
+    if (reportEmpty) {
+      reportEmpty.hidden = hasData;
+    }
+    if (!hasData) return;
+    summary.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "report-row";
+      item.setAttribute("role", "listitem");
+      const label = document.createElement("strong");
+      label.textContent = entry.label;
+      const count = document.createElement("span");
+      count.textContent = `${entry.count} done`;
+      item.append(label, count);
+      reportList.append(item);
+    });
   }
 
-  populatePomodoroSelect() {
-    const select = this.elements.pomodoroTask;
-    const options = select.querySelectorAll("option");
-    options.forEach((option, index) => {
-      if (index !== 0) option.remove();
+  filterNextTasksByProject(tasks) {
+    const seen = new Set();
+    const prioritized = [];
+    const overflow = [];
+
+    tasks.forEach((task) => {
+      if (!task.projectId) {
+        prioritized.push(task);
+        return;
+      }
+      if (seen.has(task.projectId)) {
+        overflow.push(task);
+        return;
+      }
+      seen.add(task.projectId);
+      prioritized.push(task);
     });
 
-    const tasks = this.taskManager.getTasks({ status: STATUS.NEXT });
-    tasks.slice(0, 20).forEach((task) => {
-      const option = document.createElement("option");
-      option.value = task.id;
-      option.textContent = `${task.title} (${task.context || "No context"})`;
-      select.append(option);
+    return prioritized;
+  }
+
+  getReportYears(tasks) {
+    const years = new Set();
+    tasks.forEach((task) => {
+      if (!task.completedAt) return;
+      const date = new Date(task.completedAt);
+      const year = date.getFullYear();
+      if (Number.isFinite(year)) years.add(year);
     });
+    if (!years.size) {
+      years.add(new Date().getFullYear());
+    }
+    return Array.from(years).sort((a, b) => b - a);
   }
 
   updateCounts() {
     const summary = this.taskManager.getSummary();
+    this.summaryCache = summary;
     this.elements.inboxCount.textContent = summary.inbox;
     this.elements.dueTodayCount.textContent = summary.dueToday;
-
-    this.elements.inboxPanelCount.textContent = summary.inbox;
-    this.elements.nextPanelCount.textContent = summary.next;
-    this.elements.projectsPanelCount.textContent = summary.projects;
-    this.elements.waitingPanelCount.textContent = summary.waiting;
-    this.elements.somedayPanelCount.textContent = summary.someday;
+    if (this.elements.overdueCount) {
+      this.elements.overdueCount.textContent = summary.overdue;
+    }
+    this.updateActivePanelMeta();
   }
 
   createTaskCard(task) {
-    const card = document.createElement("article");
-    card.className = "task-card";
-    card.tabIndex = 0;
-    card.draggable = true;
-    card.dataset.taskId = task.id;
-    card.dataset.status = task.status;
+    const row = document.createElement("div");
+    row.className = "task-row";
+    row.tabIndex = 0;
+    row.setAttribute("role", "listitem");
+    row.draggable = true;
+    row.dataset.taskId = task.id;
+    row.dataset.status = task.status;
 
-    const content = document.createElement("div");
-    content.className = "task-content";
+    const main = document.createElement("div");
+    main.className = "task-row-main";
 
-    const title = document.createElement("h3");
-    title.textContent = task.title;
-
-    const description = document.createElement("p");
-    description.className = "task-desc";
-    description.textContent = task.description || "No description yet.";
+    const title = document.createElement("span");
+    title.className = "task-row-title";
+    title.textContent = task.title || "Untitled task";
 
     const meta = document.createElement("div");
-    meta.className = "task-meta";
-    if (task.context) meta.append(tagPill(task.context));
-    if (task.assignee) meta.append(tagPill(`With ${task.assignee}`));
-    if (task.waitingFor) meta.append(tagPill(`Waiting: ${task.waitingFor}`));
-    if (task.dueDate) meta.append(tagPill(`Due ${formatFriendlyDate(task.dueDate)}`));
-    if (task.projectId) {
-      const project = this.taskManager.getProjects({ includeSomeday: true }).find((p) => p.id === task.projectId);
-      if (project) meta.append(tagPill(`Project: ${project.name}`));
+    meta.className = "task-row-meta";
+    const metaItems = [];
+    metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
+    if (task.context) metaItems.push(this.createMetaSpan(task.context));
+    const projectName = this.getProjectName(task.projectId);
+    if (projectName) metaItems.push(this.createMetaSpan(projectName));
+    if (task.assignee) metaItems.push(this.createMetaSpan(`With ${task.assignee}`));
+    if (task.waitingFor) metaItems.push(this.createMetaSpan(`Waiting: ${task.waitingFor}`));
+    if (task.dueDate) {
+      metaItems.push(this.createMetaSpan(`Due ${formatFriendlyDate(task.dueDate)}`));
+    } else if (task.calendarDate) {
+      metaItems.push(this.createMetaSpan(`📅 ${formatFriendlyDate(task.calendarDate)}`));
     }
 
-    const actions = document.createElement("div");
-    actions.className = "task-actions";
-
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "btn btn-light";
-    editButton.textContent = "Edit details";
-    editButton.addEventListener("click", () => this.openTaskEditor(card, task));
-    actions.append(editButton);
-
-    const transitions = TRANSITIONS[task.status] || [];
-    transitions.forEach((transition) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn btn-light";
-      button.textContent = transition.label;
-      button.dataset.moveTarget = transition.target;
-      button.addEventListener("click", () => this.taskManager.moveTask(task.id, transition.target));
-      actions.append(button);
+    metaItems.forEach((item, index) => {
+      if (index > 0) {
+        meta.append(this.createMetaBullet());
+      }
+      meta.append(item);
     });
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "btn btn-link";
-    deleteButton.textContent = "Remove";
-    deleteButton.addEventListener("click", () => this.taskManager.deleteTask(task.id));
-    actions.append(deleteButton);
+    if (!metaItems.length) {
+      meta.append(this.createMetaSpan("No extra details"));
+    }
 
-    content.append(title, description, meta, actions);
-    card.append(content);
-    enableDrag(card, task.id);
-    return card;
+    main.append(title, meta);
+
+    const caret = document.createElement("span");
+    caret.className = "task-row-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.textContent = "›";
+
+    row.append(main, caret);
+
+    const openDetails = () => {
+      if (row.classList.contains("is-dragging")) return;
+      this.openTaskFlyout(task.id);
+    };
+    row.addEventListener("click", () => openDetails());
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openDetails();
+      }
+    });
+
+    enableDrag(row, task.id);
+    return row;
   }
 
-  openTaskEditor(card, task) {
-    card.classList.add("is-editing");
-    card.draggable = false;
-    card.innerHTML = "";
+  setupFlyout() {
+    const flyout = this.elements.taskFlyout;
+    if (!flyout) return;
+    const closeButton = this.elements.closeTaskFlyout;
+    const backdrop = this.elements.taskFlyoutBackdrop;
+    closeButton?.addEventListener("click", () => this.closeTaskFlyout());
+    backdrop?.addEventListener("click", () => this.closeTaskFlyout());
+    this.handleFlyoutKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeTaskFlyout();
+      }
+    };
+  }
 
+  openTaskFlyout(taskId) {
+    const flyout = this.elements.taskFlyout;
+    if (!flyout) return;
+    const task = typeof taskId === "string" ? this.taskManager.getTaskById(taskId) : taskId;
+    if (!task) return;
+    const wasOpen = this.isFlyoutOpen;
+    this.currentFlyoutTaskId = task.id;
+    this.renderTaskFlyout(task);
+    flyout.classList.add("is-open");
+    flyout.setAttribute("aria-hidden", "false");
+    this.isFlyoutOpen = true;
+    if (!wasOpen && this.handleFlyoutKeydown) {
+      document.addEventListener("keydown", this.handleFlyoutKeydown);
+    }
+    if (!wasOpen) {
+      this.elements.closeTaskFlyout?.focus();
+    }
+  }
+
+  closeTaskFlyout() {
+    const flyout = this.elements.taskFlyout;
+    if (!flyout) return;
+    flyout.classList.remove("is-open");
+    flyout.setAttribute("aria-hidden", "true");
+    this.isFlyoutOpen = false;
+    this.currentFlyoutTaskId = null;
+    if (this.handleFlyoutKeydown) {
+      document.removeEventListener("keydown", this.handleFlyoutKeydown);
+    }
+  }
+
+  renderTaskFlyout(task) {
+    const content = this.elements.taskFlyoutContent;
+    if (!content) return;
+    const titleEl = this.elements.taskFlyoutTitle;
+    const statusEl = this.elements.taskFlyoutStatus;
+    if (titleEl) titleEl.textContent = task.title || "Untitled task";
+    if (statusEl) statusEl.textContent = STATUS_LABELS[task.status] || task.status;
+    content.innerHTML = "";
+
+    const description = document.createElement("p");
+    description.textContent = task.description || "No description yet.";
+    description.className = "muted";
+
+    const meta = document.createElement("div");
+    meta.className = "task-flyout-meta";
+    meta.append(this.buildMetaRow("Context", task.context || "—"));
+    meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
+    meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
+    meta.append(this.buildMetaRow("Calendar", task.calendarDate ? formatFriendlyDate(task.calendarDate) : "—"));
+    meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
+    meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
+    meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
+
+    const actionToolbar = document.createElement("div");
+    actionToolbar.className = "task-flyout-actions";
+    actionToolbar.setAttribute("role", "group");
+    actionToolbar.setAttribute("aria-label", "Task actions");
+    const isCompleted = Boolean(task.completedAt);
+    const transitions = TRANSITIONS[task.status] || [];
+
+    if (!isCompleted) {
+      transitions.forEach((transition) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-light";
+        button.textContent = transition.label;
+        button.addEventListener("click", () => {
+          this.taskManager.moveTask(task.id, transition.target);
+        });
+        actionToolbar.append(button);
+      });
+      const completeButton = document.createElement("button");
+      completeButton.type = "button";
+      completeButton.className = "btn btn-primary";
+      completeButton.textContent = "Complete";
+      completeButton.addEventListener("click", () => {
+        this.taskManager.completeTask(task.id, { archive: "reference" });
+        this.closeTaskFlyout();
+      });
+      const completeDeleteButton = document.createElement("button");
+      completeDeleteButton.type = "button";
+      completeDeleteButton.className = "btn btn-danger";
+      completeDeleteButton.textContent = "Complete & Delete";
+      completeDeleteButton.addEventListener("click", () => {
+        this.taskManager.completeTask(task.id, { archive: "log" });
+        this.closeTaskFlyout();
+      });
+      actionToolbar.append(completeButton, completeDeleteButton);
+    }
+
+    content.append(description, meta, actionToolbar);
+    content.append(this.createTaskForm(task));
+  }
+
+  createTaskForm(task) {
     const form = document.createElement("form");
     form.className = "task-edit";
     form.setAttribute("aria-label", "Edit task");
@@ -468,15 +866,219 @@ export class UIController {
     contextSelect.value = task.context || "";
     contextGroup.append(contextSelect);
 
+    const statusGroup = document.createElement("label");
+    statusGroup.className = "task-edit-field";
+    statusGroup.textContent = "Status";
+    const statusSelect = document.createElement("select");
+    Object.values(STATUS).forEach((statusValue) => {
+      const option = document.createElement("option");
+      option.value = statusValue;
+      option.textContent = STATUS_LABELS[statusValue] || statusValue;
+      statusSelect.append(option);
+    });
+    statusSelect.value = task.status;
+    statusGroup.append(statusSelect);
+
+    const projectGroup = document.createElement("label");
+    projectGroup.className = "task-edit-field";
+    projectGroup.textContent = "Project";
+    const projectSelect = document.createElement("select");
+    const noProjectOption = document.createElement("option");
+    noProjectOption.value = "";
+    noProjectOption.textContent = "No project";
+    projectSelect.append(noProjectOption);
+    this.getProjectCache().forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.id;
+      option.textContent = project.name + (project.someday ? " (Someday)" : "");
+      projectSelect.append(option);
+    });
+    projectSelect.value = task.projectId || "";
+    projectGroup.append(projectSelect);
+
+    const dueGroup = document.createElement("label");
+    dueGroup.className = "task-edit-field";
+    dueGroup.textContent = "Due date";
+    const dueInput = document.createElement("input");
+    dueInput.type = "date";
+    dueInput.value = task.dueDate || "";
+    dueGroup.append(dueInput);
+
+    const calendarGroup = document.createElement("label");
+    calendarGroup.className = "task-edit-field";
+    calendarGroup.textContent = "Calendar date";
+    const calendarInput = document.createElement("input");
+    calendarInput.type = "date";
+    calendarInput.value = task.calendarDate || "";
+    calendarGroup.append(calendarInput);
+
+    const waitingGroup = document.createElement("label");
+    waitingGroup.className = "task-edit-field";
+    waitingGroup.textContent = "Waiting on";
+    const waitingInput = document.createElement("input");
+    waitingInput.type = "text";
+    waitingInput.placeholder = "Person or dependency";
+    waitingInput.value = task.waitingFor || "";
+    waitingGroup.append(waitingInput);
+
+    const assigneeGroup = document.createElement("label");
+    assigneeGroup.className = "task-edit-field";
+    assigneeGroup.textContent = "Assignee";
+    const assigneeInput = document.createElement("input");
+    assigneeInput.type = "text";
+    assigneeInput.placeholder = "Task owner";
+    assigneeInput.value = task.assignee || "";
+    assigneeGroup.append(assigneeInput);
+
     const actions = document.createElement("div");
     actions.className = "task-edit-actions";
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "btn btn-danger";
+    deleteButton.textContent = "Delete task";
+    deleteButton.addEventListener("click", () => {
+      const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+      if (confirmed) {
+        this.taskManager.deleteTask(task.id);
+        this.closeTaskFlyout();
+      }
+    });
+
+    const actionButtons = document.createElement("div");
+    actionButtons.className = "task-edit-actions-group";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "btn btn-light";
+    cancelButton.textContent = "Close";
+    cancelButton.addEventListener("click", () => this.closeTaskFlyout());
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "submit";
+    saveButton.className = "btn btn-primary";
+    saveButton.textContent = "Save changes";
+
+    actionButtons.append(cancelButton, saveButton);
+    actions.append(deleteButton, actionButtons);
+
+    form.append(
+      titleGroup,
+      descriptionGroup,
+      contextGroup,
+      statusGroup,
+      projectGroup,
+      dueGroup,
+      calendarGroup,
+      waitingGroup,
+      assigneeGroup,
+      actions
+    );
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const trimmedTitle = titleInput.value.trim();
+      if (!trimmedTitle) {
+        this.taskManager.notify("warn", "Task title cannot be empty.");
+        return;
+      }
+      const updates = {
+        title: trimmedTitle,
+        description: descriptionInput.value.trim(),
+        context: contextSelect.value || null,
+        status: statusSelect.value,
+        projectId: projectSelect.value || null,
+        dueDate: dueInput.value || null,
+        calendarDate: calendarInput.value || null,
+        waitingFor: waitingInput.value.trim() || null,
+        assignee: assigneeInput.value.trim() || null,
+      };
+
+      if (updates.status === STATUS.WAITING && !updates.waitingFor) {
+        updates.waitingFor = "Pending assignee";
+      }
+      if (updates.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
+        updates.waitingFor = null;
+      }
+
+      this.taskManager.updateTask(task.id, updates);
+    });
+
+    return form;
+  }
+
+  buildMetaRow(label, value) {
+    const row = document.createElement("span");
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    row.append(labelEl, valueEl);
+    return row;
+  }
+
+  createMetaSpan(text) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    return span;
+  }
+
+  createMetaBullet() {
+    const bullet = document.createElement("span");
+    bullet.className = "bullet";
+    return bullet;
+  }
+
+  getProjectName(projectId) {
+    if (!projectId) return null;
+    return this.projectLookup?.get(projectId)?.name || null;
+  }
+
+  getProjectCache() {
+    if (!this.projectCache) {
+      this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
+      this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
+    }
+    return this.projectCache;
+  }
+
+  openProjectEditor(details, project) {
+    const body = details.querySelector(".project-body");
+    if (!body) return;
+    body.innerHTML = "";
+
+    details.open = true;
+
+    const form = document.createElement("form");
+    form.className = "project-edit";
+    form.setAttribute("aria-label", "Edit project");
+
+    const nameField = document.createElement("label");
+    nameField.className = "project-edit-field";
+    nameField.textContent = "Project name";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = project.name;
+    nameInput.required = true;
+    nameField.append(nameInput);
+
+    const visionField = document.createElement("label");
+    visionField.className = "project-edit-field";
+    visionField.textContent = "Desired outcome";
+    const visionInput = document.createElement("textarea");
+    visionInput.rows = 3;
+    visionInput.value = project.vision || "";
+    visionField.append(visionInput);
+
+    const actions = document.createElement("div");
+    actions.className = "project-edit-actions";
 
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
     cancelButton.className = "btn btn-light";
     cancelButton.textContent = "Cancel";
     cancelButton.addEventListener("click", () => {
-      this.renderAll();
+      this.renderProjects();
     });
 
     const saveButton = document.createElement("button");
@@ -485,24 +1087,24 @@ export class UIController {
     saveButton.textContent = "Save";
 
     actions.append(cancelButton, saveButton);
+    form.append(nameField, visionField, actions);
 
-    form.append(titleGroup, descriptionGroup, contextGroup, actions);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const trimmedTitle = titleInput.value.trim();
-      if (!trimmedTitle) {
-        this.taskManager.notify("warn", "Task title cannot be empty.");
+      const trimmedName = nameInput.value.trim();
+      if (!trimmedName) {
+        this.taskManager.notify("warn", "Project name cannot be empty.");
         return;
       }
-      this.taskManager.updateTask(task.id, {
-        title: trimmedTitle,
-        description: descriptionInput.value.trim(),
-        context: contextSelect.value || null,
+      this.taskManager.updateProject(project.id, {
+        name: trimmedName,
+        vision: visionInput.value.trim(),
       });
+      this.updateCounts();
     });
 
-    card.append(form);
-    titleInput.focus();
+    body.append(form);
+    nameInput.focus();
   }
 
   attachDropzone(element, status, context) {
@@ -541,8 +1143,11 @@ export class UIController {
       return;
     }
     if (status === STATUS.NEXT) {
-      const nextContext = context === "No context" ? null : context;
-      this.taskManager.updateTask(taskId, { status, context: nextContext });
+      const updates = { status };
+      if (context !== undefined) {
+        updates.context = context === "No context" ? null : context;
+      }
+      this.taskManager.updateTask(taskId, updates);
     } else {
       this.taskManager.moveTask(taskId, status);
     }
@@ -587,27 +1192,38 @@ function mapElements() {
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),
     calendarList: byId("calendarList"),
-    inboxList: document.querySelector('[data-dropzone="inbox"]'),
+    reportGrouping: byId("reportGrouping"),
+    reportYear: byId("reportYear"),
+    reportContext: byId("reportContext"),
+    reportProject: byId("reportProject"),
+    reportList: byId("reportList"),
+    reportEmpty: byId("reportEmpty"),
+    taskFlyout: document.getElementById("taskFlyout"),
+    taskFlyoutContent: byId("taskFlyoutContent"),
+    taskFlyoutTitle: byId("taskFlyoutTitle"),
+    taskFlyoutStatus: byId("taskFlyoutStatus"),
+    closeTaskFlyout: byId("closeTaskFlyout"),
+    taskFlyoutBackdrop: document.querySelector(".task-flyout-backdrop"),
+    activePanelHeading: byId("activePanelHeading"),
+    activePanelCount: byId("activePanelCount"),
+    inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
     contextBoard: document.querySelector("[data-context-board]"),
     projectList: document.querySelector("[data-projects]"),
-    waitingList: document.querySelector('[data-dropzone="waiting"]'),
-    somedayList: document.querySelector('[data-dropzone="someday"]'),
-    reviewChecklist: byId("reviewChecklist"),
-    resetChecklist: byId("resetChecklist"),
-    pomodoroTask: byId("pomodoroTask"),
+    waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
+    somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),
+    exportMarkdown: byId("exportMarkdown"),
+    importMarkdown: byId("importMarkdown"),
+    markdownFileInput: byId("markdownFileInput"),
     inboxCount: byId("inboxCount"),
     dueTodayCount: byId("dueTodayCount"),
-    inboxPanelCount: byId("inboxPanelCount"),
-    nextPanelCount: byId("nextPanelCount"),
-    projectsPanelCount: byId("projectsPanelCount"),
-    waitingPanelCount: byId("waitingPanelCount"),
-    somedayPanelCount: byId("somedayPanelCount"),
+    overdueCount: byId("overdueCount"),
     summaryInbox: byId("summaryInbox"),
     summaryNext: byId("summaryNext"),
     summaryWaiting: byId("summaryWaiting"),
     summarySomeday: byId("summarySomeday"),
     summaryProjects: byId("summaryProjects"),
-    summaryOverdue: byId("summaryOverdue"),
+    summaryCalendar: byId("summaryCalendar"),
+    summaryCompleted: byId("summaryCompleted"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     integrationsCard: document.querySelector(".integrations-card"),
@@ -661,10 +1277,20 @@ function fillProjectSelect(select, projects, current) {
   }
 }
 
-function tagPill(text) {
-  const pill = document.createElement("span");
-  pill.textContent = text;
-  return pill;
+function loadStoredPanel() {
+  try {
+    return localStorage.getItem(TAB_STORAGE_KEY) || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function storeActivePanel(panel) {
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, panel);
+  } catch (error) {
+    /* noop */
+  }
 }
 
 function enableDrag(element, taskId) {

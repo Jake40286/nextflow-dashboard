@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setupThemeToggle();
   setupRefresh();
   setupPomodoro();
+  setupProjects();
+  setupMarkdownSync();
+  setupHelpModal();
 });
 
 function setupQuickAdd() {
@@ -110,6 +113,108 @@ function setupPomodoro() {
   startButton.addEventListener("click", () => timer.start());
   pauseButton.addEventListener("click", () => timer.pause());
   resetButton.addEventListener("click", () => timer.reset());
+}
+
+function setupProjects() {
+  const form = document.getElementById("newProjectForm");
+  if (!form) return;
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const name = data.get("projectName");
+    const vision = data.get("projectVision");
+    if (!name || !name.toString().trim()) {
+      taskManager.notify("warn", "Project name cannot be empty.");
+      return;
+    }
+    const project = taskManager.addProject(name.toString(), vision?.toString() ?? "");
+    if (project) {
+      ui.renderProjects();
+      ui.updateCounts();
+      form.reset();
+    }
+  });
+}
+
+function setupMarkdownSync() {
+  const exportButton = document.getElementById("exportMarkdown");
+  const importButton = document.getElementById("importMarkdown");
+  const fileInput = document.getElementById("markdownFileInput");
+
+  if (!exportButton || !importButton || !fileInput) return;
+
+  exportButton.addEventListener("click", () => {
+    const markdown = taskManager.exportToMarkdown();
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    link.download = `gtd-dashboard-${dateStamp}.md`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    taskManager.notify("info", "Exported tasks to Markdown file.");
+  });
+
+  importButton.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const success = taskManager.importFromMarkdown(text);
+      if (success) {
+        analytics.updateFromState();
+      }
+    } catch (error) {
+      console.error("Failed to import markdown", error);
+      taskManager.notify("error", "Could not read the selected Markdown file.");
+    } finally {
+      fileInput.value = "";
+    }
+  });
+}
+
+function setupHelpModal() {
+  const openButton = document.getElementById("openHelp");
+  const modal = document.getElementById("helpModal");
+  const closeButton = document.getElementById("closeHelp");
+  if (!openButton || !modal || !closeButton) return;
+
+  const backdrop = modal.querySelector(".modal-backdrop");
+  let lastFocus = null;
+
+  const setOpen = (open) => {
+    if (open) {
+      lastFocus = document.activeElement;
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      closeButton.focus();
+      document.addEventListener("keydown", onKeydown);
+    } else {
+      modal.classList.remove("is-open");
+      modal.setAttribute("hidden", "");
+      document.removeEventListener("keydown", onKeydown);
+      if (lastFocus && typeof lastFocus.focus === "function") {
+        lastFocus.focus();
+      }
+    }
+  };
+
+  const onKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  openButton.addEventListener("click", () => setOpen(true));
+  closeButton.addEventListener("click", () => setOpen(false));
+  backdrop?.addEventListener("click", () => setOpen(false));
 }
 
 class PomodoroTimer {

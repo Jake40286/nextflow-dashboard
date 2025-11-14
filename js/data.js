@@ -10,6 +10,28 @@ export const STATUS = Object.freeze({
 export const DEFAULT_CONTEXTS = ["@Work", "@Home", "@Errands", "@Desk", "@Team"];
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const STATUS_LABELS = {
+  [STATUS.INBOX]: "Inbox",
+  [STATUS.NEXT]: "Next Actions",
+  [STATUS.WAITING]: "Waiting For",
+  [STATUS.SOMEDAY]: "Someday / Maybe",
+};
+const STATUS_ORDER = [STATUS.INBOX, STATUS.NEXT, STATUS.WAITING, STATUS.SOMEDAY];
+const SECTION_STATUS_MAP = new Map([
+  ["inbox", STATUS.INBOX],
+  ["capture", STATUS.INBOX],
+  ["next actions", STATUS.NEXT],
+  ["next-actions", STATUS.NEXT],
+  ["next", STATUS.NEXT],
+  ["waiting for", STATUS.WAITING],
+  ["waiting-for", STATUS.WAITING],
+  ["waiting", STATUS.WAITING],
+  ["someday maybe", STATUS.SOMEDAY],
+  ["someday / maybe", STATUS.SOMEDAY],
+  ["someday-maybe", STATUS.SOMEDAY],
+  ["someday", STATUS.SOMEDAY],
+  ["maybe", STATUS.SOMEDAY],
+]);
 
 const defaultState = () => ({
   tasks: [
@@ -25,6 +47,7 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: null,
       calendarDate: null,
+      completedAt: null,
     },
     {
       id: "t-102",
@@ -38,6 +61,7 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: null,
       calendarDate: addDaysIso(3),
+      completedAt: null,
     },
     {
       id: "t-103",
@@ -51,6 +75,7 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: "Avery",
       calendarDate: addDaysIso(2),
+      completedAt: null,
     },
     {
       id: "t-104",
@@ -64,6 +89,7 @@ const defaultState = () => ({
       waitingFor: "Jordan @ Apex Supplies",
       assignee: null,
       calendarDate: null,
+      completedAt: null,
     },
     {
       id: "t-105",
@@ -77,6 +103,7 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: null,
       calendarDate: null,
+      completedAt: null,
     },
     {
       id: "t-106",
@@ -90,6 +117,7 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: "Jamie",
       calendarDate: addDaysIso(1),
+      completedAt: null,
     },
     {
       id: "t-107",
@@ -103,6 +131,7 @@ const defaultState = () => ({
       waitingFor: "Casey",
       assignee: null,
       calendarDate: null,
+      completedAt: null,
     },
     {
       id: "t-108",
@@ -116,8 +145,11 @@ const defaultState = () => ({
       waitingFor: null,
       assignee: "Taylor",
       calendarDate: null,
+      completedAt: null,
     },
   ],
+  reference: [],
+  completionLog: [],
   projects: [
     {
       id: "p-301",
@@ -217,10 +249,14 @@ export class TaskManager extends EventTarget {
       const raw = this.storage.getItem(this.storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        this.state = {
+        const nextState = {
           ...defaultState(),
           ...parsed,
         };
+        nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
+        nextState.reference = (nextState.reference || []).map((task) => normalizeTask(task));
+        nextState.completionLog = (nextState.completionLog || []).map((entry) => normalizeCompletionEntry(entry));
+        this.state = nextState;
       }
     } catch (error) {
       console.error("Failed to load state", error);
@@ -248,8 +284,9 @@ export class TaskManager extends EventTarget {
     this.save();
   }
 
-  getTasks({ status, context, projectId, searchTerm } = {}) {
+  getTasks({ status, context, projectId, searchTerm, includeCompleted = false } = {}) {
     return this.state.tasks.filter((task) => {
+      if (!includeCompleted && task.completedAt) return false;
       if (status && task.status !== status) return false;
       if (context && context !== "all" && task.context !== context) return false;
       if (projectId && projectId !== "all" && task.projectId !== projectId) return false;
@@ -278,6 +315,7 @@ export class TaskManager extends EventTarget {
       waitingFor: payload.waitingFor || null,
       assignee: payload.assignee || null,
       calendarDate: payload.calendarDate || null,
+      completedAt: payload.completedAt || null,
     };
 
     if (!task.title) {
@@ -310,6 +348,7 @@ export class TaskManager extends EventTarget {
     }
 
     task.status = nextStatus;
+    task.completedAt = null;
     if (nextStatus === STATUS.WAITING && !task.waitingFor) {
       task.waitingFor = "Pending assignee";
     }
@@ -317,6 +356,29 @@ export class TaskManager extends EventTarget {
       task.waitingFor = task.waitingFor && task.waitingFor.startsWith("Pending") ? null : task.waitingFor;
     }
     this.emitChange();
+  }
+
+  completeTask(id, { archive = "reference" } = {}) {
+    const taskIndex = this.state.tasks.findIndex((task) => task.id === id);
+    if (taskIndex === -1) {
+      this.notify("error", "Cannot complete missing task.");
+      return null;
+    }
+    const [task] = this.state.tasks.splice(taskIndex, 1);
+    const completedAt = new Date().toISOString();
+    const archiveType = archive === "reference" ? "reference" : "deleted";
+    const snapshot = createCompletionSnapshot(task, completedAt, archiveType);
+    if (archive === "reference") {
+      this.state.reference.unshift(snapshot);
+    } else {
+      this.state.completionLog.unshift(snapshot);
+    }
+    this.state.projects.forEach((project) => {
+      project.tasks = project.tasks.filter((taskId) => taskId !== id);
+    });
+    this.emitChange();
+    this.notify("info", archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`);
+    return snapshot;
   }
 
   refreshFromStorage() {
@@ -370,7 +432,7 @@ export class TaskManager extends EventTarget {
     this.notify("info", `Activated project "${project.name}".`);
   }
 
-  addProject(name) {
+  addProject(name, vision = "") {
     const trimmed = name.trim();
     if (!trimmed) {
       this.notify("warn", "Project name cannot be empty.");
@@ -379,7 +441,7 @@ export class TaskManager extends EventTarget {
     const project = {
       id: generateId("project"),
       name: trimmed,
-      vision: "",
+      vision: vision ? vision.trim() : "",
       status: "active",
       owner: "",
       tags: [],
@@ -390,6 +452,29 @@ export class TaskManager extends EventTarget {
     this.state.projects.push(project);
     this.emitChange();
     this.notify("info", `Created project "${project.name}".`);
+    return project;
+  }
+
+  updateProject(projectId, updates) {
+    const project = this.state.projects.find((p) => p.id === projectId);
+    if (!project) {
+      this.notify("error", "Project not found.");
+      return null;
+    }
+    if (updates.name !== undefined) {
+      const trimmed = updates.name.trim();
+      if (!trimmed) {
+        this.notify("warn", "Project name cannot be empty.");
+        return null;
+      }
+      project.name = trimmed;
+    }
+    if (updates.vision !== undefined) {
+      project.vision = updates.vision.trim();
+    }
+    const { name, vision, ...rest } = updates;
+    Object.assign(project, rest);
+    this.emitChange();
     return project;
   }
 
@@ -432,6 +517,7 @@ export class TaskManager extends EventTarget {
     };
 
     this.state.tasks.forEach((task) => {
+      if (task.completedAt) return;
       if (task.status === STATUS.INBOX) summary.inbox += 1;
       if (task.status === STATUS.NEXT) summary.next += 1;
       if (task.status === STATUS.WAITING) summary.waiting += 1;
@@ -446,7 +532,9 @@ export class TaskManager extends EventTarget {
   }
 
   getCalendarEntries({ exactDate } = {}) {
-    const tasks = this.state.tasks.filter((task) => Boolean(task.calendarDate || task.dueDate));
+    const tasks = this.state.tasks.filter(
+      (task) => !task.completedAt && Boolean(task.calendarDate || task.dueDate)
+    );
     const entries = tasks.map((task) => {
       const date = task.calendarDate || task.dueDate;
       return {
@@ -464,6 +552,43 @@ export class TaskManager extends EventTarget {
       return entries.filter((entry) => entry.date === exactDate);
     }
     return entries;
+  }
+
+  getCompletionEntries() {
+    const reference = Array.isArray(this.state.reference) ? this.state.reference : [];
+    const logged = Array.isArray(this.state.completionLog) ? this.state.completionLog : [];
+    return [...reference, ...logged].map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
+  }
+
+  getCompletedTasks({ year, context, projectId } = {}) {
+    const entries = this.getCompletionEntries();
+    return entries.filter((entry) => {
+      if (!entry.completedAt) return false;
+      if (Number.isFinite(year)) {
+        const completedYear = new Date(entry.completedAt).getFullYear();
+        if (completedYear !== year) return false;
+      }
+      if (context && context !== "all" && entry.context !== context) return false;
+      if (projectId && projectId !== "all" && entry.projectId !== projectId) return false;
+      return true;
+    });
+  }
+
+  getCompletionSummary({ grouping = "week", year, context, projectId } = {}) {
+    const formatter = getCompletionFormatter(grouping);
+    if (!formatter) return [];
+    const tasks = this.getCompletedTasks({ context, projectId, year: grouping === "year" ? undefined : year });
+    if (!tasks.length) return [];
+    const buckets = new Map();
+    tasks.forEach((task) => {
+      const date = new Date(task.completedAt);
+      if (!Number.isFinite(date.getTime())) return;
+      const key = formatter.key(date);
+      const bucket = buckets.get(key) || { label: formatter.label(date), count: 0, sortValue: formatter.sortValue(date) };
+      bucket.count += 1;
+      buckets.set(key, bucket);
+    });
+    return Array.from(buckets.values()).sort((a, b) => a.sortValue - b.sortValue);
   }
 
   getChecklist() {
@@ -484,6 +609,80 @@ export class TaskManager extends EventTarget {
     this.emitChange();
   }
 
+  exportToMarkdown() {
+    const headerLines = [
+      "# GTD Dashboard Tasks",
+      "",
+      `> Exported ${new Date().toISOString()}`,
+      "",
+    ];
+
+    const projectsById = new Map(this.state.projects.map((project) => [project.id, project]));
+    const sections = STATUS_ORDER.map((status) => {
+      const label = STATUS_LABELS[status] || status;
+      const tasks = this.getTasks({ status });
+      if (!tasks.length) {
+        return `## ${label}\n\n_No tasks_\n`;
+      }
+      const lines = [`## ${label}`, ""];
+      tasks.forEach((task) => {
+        const parts = [`- [ ] ${task.title}`];
+
+        if (task.dueDate) parts.push(`📅 ${task.dueDate}`);
+        if (task.calendarDate) parts.push(`📆 ${task.calendarDate}`);
+
+        if (task.context) parts.push(formatContextToken(task.context));
+
+        if (task.projectId) {
+          const project = projectsById.get(task.projectId);
+          if (project) {
+            parts.push(`#${slugify(project.name)}`);
+          }
+        }
+
+        if (task.waitingFor) parts.push(`waiting::${quoteIfNeeded(task.waitingFor)}`);
+        if (task.assignee) parts.push(`owner::${quoteIfNeeded(task.assignee)}`);
+
+        const metadata = [];
+        if (task.description) {
+          metadata.push(`  > ${task.description.replace(/\r?\n/g, "\n  > ")}`);
+        }
+
+        lines.push(parts.join(" "));
+        if (metadata.length) {
+          lines.push(...metadata);
+        }
+        lines.push("");
+      });
+      return lines.join("\n");
+    });
+
+    return [...headerLines, ...sections].join("\n").trimEnd() + "\n";
+  }
+
+  importFromMarkdown(markdown) {
+    try {
+      const parsed = parseMarkdownDocument(markdown, this.state.projects);
+      if (!parsed.tasks.length) {
+        this.notify("warn", "No tasks found in the Markdown file.");
+        return false;
+      }
+
+      this.state.tasks = parsed.tasks.map((task) => normalizeTask(task));
+      this.state.projects = parsed.projects;
+      this.state.reference = [];
+      this.state.completionLog = [];
+
+      this.emitChange();
+      this.notify("info", `Imported ${parsed.tasks.length} tasks from Markdown.`);
+      return true;
+    } catch (error) {
+      console.error("Failed to import Markdown", error);
+      this.notify("error", "Unable to import Markdown. Please check the file format.");
+      return false;
+    }
+  }
+
   getAnalyticsHistory() {
     return this.state.analytics.history;
   }
@@ -496,6 +695,86 @@ export class TaskManager extends EventTarget {
   getTheme() {
     return this.state.settings.theme;
   }
+}
+
+function createCompletionSnapshot(task, completedAt, archiveType = "reference") {
+  return {
+    id: task.id,
+    sourceId: task.id,
+    title: task.title,
+    description: task.description,
+    context: task.context,
+    projectId: task.projectId,
+    assignee: task.assignee,
+    waitingFor: task.waitingFor,
+    dueDate: task.dueDate,
+    calendarDate: task.calendarDate,
+    createdAt: task.createdAt,
+    completedAt,
+    archivedAt: new Date().toISOString(),
+    archiveType,
+  };
+}
+
+function normalizeTask(task) {
+  return {
+    ...task,
+    completedAt: task.completedAt || null,
+    archiveType: task.archiveType || null,
+  };
+}
+
+function normalizeCompletionEntry(entry) {
+  if (!entry) return null;
+  return {
+    id: entry.id || entry.sourceId || generateId("completed"),
+    title: entry.title || "Completed task",
+    description: entry.description || "",
+    context: entry.context || null,
+    projectId: entry.projectId || null,
+    assignee: entry.assignee || null,
+    waitingFor: entry.waitingFor || null,
+    dueDate: entry.dueDate || null,
+    calendarDate: entry.calendarDate || null,
+    createdAt: entry.createdAt || null,
+    completedAt: entry.completedAt || entry.archivedAt || null,
+    archivedAt: entry.archivedAt || entry.completedAt || null,
+    archiveType: entry.archiveType || "reference",
+  };
+}
+
+function getCompletionFormatter(grouping) {
+  if (grouping === "week") {
+    return {
+      key: (date) => `${date.getFullYear()}-W${String(getIsoWeek(date)).padStart(2, "0")}`,
+      label: (date) => `Week ${getIsoWeek(date)}, ${date.getFullYear()}`,
+      sortValue: (date) => date.getFullYear() * 100 + getIsoWeek(date),
+    };
+  }
+  if (grouping === "month") {
+    return {
+      key: (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      label: (date) =>
+        `${date.toLocaleString(undefined, { month: "short" })} ${date.getFullYear()}`,
+      sortValue: (date) => date.getFullYear() * 100 + date.getMonth(),
+    };
+  }
+  if (grouping === "year") {
+    return {
+      key: (date) => `${date.getFullYear()}`,
+      label: (date) => `${date.getFullYear()}`,
+      sortValue: (date) => date.getFullYear(),
+    };
+  }
+  return null;
+}
+
+function getIsoWeek(date) {
+  const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  return Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
 }
 
 function matchesSearch(task, rawTerm) {
@@ -519,4 +798,210 @@ export function formatFriendlyDate(isoDate) {
     month: "short",
     day: "numeric",
   })}`;
+}
+
+function formatContextToken(context) {
+  const normalized = context.trim().replace(/\s+/g, "_");
+  return normalized.startsWith("@") ? normalized : `@${normalized}`;
+}
+
+function normalizeContext(value) {
+  if (!value) return null;
+  const cleaned = value.trim().replace(/^@/, "").replace(/_/g, " ").replace(/\s+/g, " ");
+  if (!cleaned) return null;
+  return `@${cleaned.trim()}`;
+}
+
+function quoteIfNeeded(value) {
+  return /\s/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+function unquote(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return trimmed;
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function unslugify(value) {
+  return value
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ");
+}
+
+function normalizeStatusToken(token) {
+  if (!token) return null;
+  const normalized = token.toLowerCase().trim();
+  if (SECTION_STATUS_MAP.has(normalized)) return SECTION_STATUS_MAP.get(normalized);
+  if (SECTION_STATUS_MAP.has(normalized.replace(/\s+/g, ""))) {
+    return SECTION_STATUS_MAP.get(normalized.replace(/\s+/g, ""));
+  }
+  return null;
+}
+
+function parseMarkdownDocument(markdown, existingProjects) {
+  const lines = markdown.split(/\r?\n/);
+  let currentStatus = null;
+  const tasks = [];
+
+  const projectsBySlug = new Map();
+  (existingProjects || []).forEach((project) => {
+    const clone = {
+      ...project,
+      tasks: [],
+    };
+    projectsBySlug.set(slugify(project.name), clone);
+  });
+
+  const ensureProject = (slugToken) => {
+    if (!slugToken) return null;
+    const slug = slugify(slugToken);
+    if (!slug) return null;
+    if (!projectsBySlug.has(slug)) {
+      projectsBySlug.set(slug, {
+        id: generateId("project"),
+        name: unslugify(slug),
+        vision: "",
+        status: "active",
+        owner: "",
+        tags: [],
+        tasks: [],
+        isExpanded: true,
+        someday: false,
+      });
+    }
+    return projectsBySlug.get(slug);
+  };
+
+  const metadataRegex = /([A-Za-z0-9_-]+)::("[^"]+"|\S+)/g;
+  const contextRegex = /@\S+/g;
+  const projectRegex = /#\S+/g;
+
+  let index = 0;
+  while (index < lines.length) {
+    const rawLine = lines[index];
+    const line = rawLine.trim();
+
+    if (line.startsWith("## ")) {
+      const heading = line.slice(3).trim();
+      currentStatus = normalizeStatusToken(heading) || currentStatus;
+      index += 1;
+      continue;
+    }
+
+    const taskMatch = line.match(/^-\s*\[( |x)\]\s*(.*)$/);
+    if (taskMatch) {
+      const metadata = {};
+      let content = taskMatch[2];
+
+      // Key-value metadata
+      content = content.replace(metadataRegex, (match, key, value) => {
+        const normalizedKey = key.toLowerCase().replace(/[-_]/g, "");
+        metadata[normalizedKey] = unquote(value);
+        return "";
+      });
+
+      // Due dates
+      content = content.replace(/📅\s*(\d{4}-\d{2}-\d{2})/g, (match, date) => {
+        metadata.due = date;
+        return "";
+      });
+
+      // Calendar date
+      content = content.replace(/📆\s*(\d{4}-\d{2}-\d{2})/g, (match, date) => {
+        metadata.calendar = date;
+        return "";
+      });
+
+      // Context tokens
+      const contexts = [];
+      content = content.replace(contextRegex, (match) => {
+        const value = match.slice(1).replace(/_/g, " ");
+        if (value) contexts.push(value);
+        return "";
+      });
+
+      // Project tokens
+      const projectTokens = [];
+      content = content.replace(projectRegex, (match) => {
+        const value = match.slice(1);
+        if (value) projectTokens.push(value);
+        return "";
+      });
+
+      const resolvedStatus =
+        normalizeStatusToken(metadata.status) ||
+        currentStatus ||
+        STATUS.INBOX;
+
+      const title = content.trim();
+      if (!title) {
+        index += 1;
+        continue;
+      }
+
+      // Description lines
+      let descriptionLines = [];
+      let lookahead = index + 1;
+      while (lookahead < lines.length) {
+        const nextLine = lines[lookahead];
+        if (nextLine.startsWith("  >")) {
+          descriptionLines.push(nextLine.replace(/^  >\s?/, ""));
+          lookahead += 1;
+        } else if (nextLine.trim() === "") {
+          lookahead += 1;
+        } else {
+          break;
+        }
+      }
+
+      index = lookahead;
+
+      const projectToken = projectTokens[0];
+      const projectInstance = ensureProject(projectToken);
+
+      const contextToken = metadata.context ? metadata.context : contexts[0] || null;
+      const task = {
+        id: generateId("task"),
+        title,
+        description: descriptionLines.join("\n").trim() || "",
+        status: resolvedStatus,
+        context: normalizeContext(contextToken),
+        dueDate: metadata.due || null,
+        projectId: projectInstance ? projectInstance.id : null,
+        createdAt: new Date().toISOString(),
+        waitingFor: metadata.waiting || metadata["waitingfor"] || null,
+        assignee: metadata.owner || metadata.assignee || null,
+        calendarDate: metadata.calendar || null,
+      };
+
+      tasks.push(task);
+
+      if (projectInstance) {
+        projectInstance.tasks.push(task.id);
+      }
+
+      continue;
+    }
+
+    index += 1;
+  }
+
+  const projects = Array.from(projectsBySlug.values()).map((project) => ({
+    ...project,
+    tasks: tasks.filter((task) => task.projectId === project.id).map((task) => task.id),
+  }));
+
+  return { tasks, projects };
 }

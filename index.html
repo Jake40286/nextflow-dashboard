@@ -36,9 +36,14 @@
           <span class="meta-label">Due Today</span>
           <span id="dueTodayCount" class="meta-value">0</span>
         </div>
+        <div class="meta-item">
+          <span class="meta-label">Overdue</span>
+          <span id="overdueCount" class="meta-value">0</span>
+        </div>
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Toggle light or dark theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
         </button>
+        <button id="openHelp" class="btn btn-light" type="button" aria-haspopup="dialog" aria-controls="helpModal">How it works</button>
       </div>
     </header>
 
@@ -51,32 +56,36 @@
             <h2 id="summaryHeading">Summary</h2>
             <button id="refreshData" class="btn btn-link" type="button">Refresh</button>
           </header>
-          <dl class="summary-grid">
-            <div>
-              <dt>Inbox</dt>
-              <dd id="summaryInbox">0</dd>
-            </div>
-            <div>
-              <dt>Next Actions</dt>
-              <dd id="summaryNext">0</dd>
-            </div>
-            <div>
-              <dt>Waiting For</dt>
-              <dd id="summaryWaiting">0</dd>
-            </div>
-            <div>
-              <dt>Someday</dt>
-              <dd id="summarySomeday">0</dd>
-            </div>
-            <div>
-              <dt>Projects</dt>
-              <dd id="summaryProjects">0</dd>
-            </div>
-            <div>
-              <dt>Overdue</dt>
-              <dd id="summaryOverdue">0</dd>
-            </div>
-          </dl>
+          <div class="summary-grid" role="tablist" aria-label="Dashboard sections">
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-inbox" data-panel-target="inbox" data-status-target="inbox" aria-controls="panel-inbox" aria-selected="false">
+              <span class="summary-label">Inbox</span>
+              <span class="summary-value" id="summaryInbox">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-next" data-panel-target="next" data-status-target="next" aria-controls="panel-next" aria-selected="false">
+              <span class="summary-label">Next Actions</span>
+              <span class="summary-value" id="summaryNext">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-waiting" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false">
+              <span class="summary-label">Waiting For</span>
+              <span class="summary-value" id="summaryWaiting">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-someday" data-panel-target="someday" data-status-target="someday" aria-controls="panel-someday" aria-selected="false">
+              <span class="summary-label">Someday</span>
+              <span class="summary-value" id="summarySomeday">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-projects" data-panel-target="projects" aria-controls="panel-projects" aria-selected="false">
+              <span class="summary-label">Projects</span>
+              <span class="summary-value" id="summaryProjects">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-calendar" data-panel-target="calendar" aria-controls="panel-calendar" aria-selected="false">
+              <span class="summary-label">Calendar</span>
+              <span class="summary-value" id="summaryCalendar">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-reports" data-panel-target="reports" aria-controls="panel-reports" aria-selected="false">
+              <span class="summary-label">Reports</span>
+              <span class="summary-value" id="summaryCompleted">0</span>
+            </button>
+          </div>
         </section>
 
         <section class="card filters-card" aria-labelledby="filterHeading">
@@ -112,63 +121,78 @@
             </li>
           </ul>
         </section>
+
+        <section class="card markdown-card" aria-labelledby="markdownHeading">
+          <header class="card-header">
+            <h2 id="markdownHeading">Markdown Sync</h2>
+          </header>
+          <p class="muted small-text">Export or import tasks in an Obsidian-friendly Markdown format.</p>
+          <div class="markdown-actions">
+            <button id="exportMarkdown" class="btn btn-light" type="button">Export .md</button>
+            <button id="importMarkdown" class="btn btn-light" type="button">Import .md</button>
+          </div>
+          <input id="markdownFileInput" type="file" accept=".md,.markdown,.txt" hidden />
+        </section>
       </aside>
 
-      <section class="workspace" aria-label="Workflow">
-        <header class="workspace-toolbar">
-          <label class="filter-control" for="searchTasks">Search</label>
-          <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" />
-          <div class="toolbar-actions">
-            <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
-            <button id="expandProjects" class="btn btn-light" type="button">Expand projects</button>
+    <section class="workspace" aria-label="Workflow">
+      <header class="workspace-toolbar">
+        <div class="workspace-toolbar-main">
+          <div class="workspace-current" aria-live="polite">
+            <h2 id="activePanelHeading">Inbox</h2>
+            <span id="activePanelCount" class="muted small-text">0 items</span>
           </div>
-        </header>
+          <div class="workspace-search">
+            <label class="filter-control" for="searchTasks">Search</label>
+            <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" />
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
+          <button id="expandProjects" class="btn btn-light" type="button">Expand projects</button>
+        </div>
+      </header>
 
-        <section class="panel" data-panel="inbox" aria-labelledby="inboxHeading">
-          <header class="panel-header">
-            <h2 id="inboxHeading">Inbox</h2>
-            <span class="panel-count" id="inboxPanelCount">0</span>
-          </header>
+      <section class="workspace-view is-active" data-panel="inbox" role="tabpanel" aria-labelledby="summary-tab-inbox" id="panel-inbox">
+        <div class="panel-content">
           <div class="panel-body" role="list" data-dropzone="inbox"></div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel" data-panel="next" aria-labelledby="nextHeading">
-          <header class="panel-header">
-            <h2 id="nextHeading">Next Actions</h2>
-            <span class="panel-count" id="nextPanelCount">0</span>
-          </header>
+      <section class="workspace-view" data-panel="next" role="tabpanel" aria-labelledby="summary-tab-next" id="panel-next" hidden>
+        <div class="panel-content">
           <div class="panel-subheading muted">Grouped by context</div>
           <div class="panel-body contexts" data-context-board></div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel" data-panel="projects" aria-labelledby="projectsHeading">
-          <header class="panel-header">
-            <h2 id="projectsHeading">Projects</h2>
-            <span class="panel-count" id="projectsPanelCount">0</span>
-          </header>
+      <section class="workspace-view" data-panel="projects" role="tabpanel" aria-labelledby="summary-tab-projects" id="panel-projects" hidden>
+        <div class="panel-content">
+          <form id="newProjectForm" class="project-create" aria-label="Create project">
+            <label class="visually-hidden" for="projectName">Project name</label>
+            <input id="projectName" name="projectName" type="text" placeholder="Project name" autocomplete="off" required />
+            <label class="visually-hidden" for="projectVision">Project outcome</label>
+            <input id="projectVision" name="projectVision" type="text" placeholder="Desired outcome (optional)" autocomplete="off" />
+            <button type="submit" class="btn btn-primary">Add project</button>
+          </form>
           <div class="panel-body" data-projects></div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel" data-panel="waiting" aria-labelledby="waitingHeading">
-          <header class="panel-header">
-            <h2 id="waitingHeading">Waiting For</h2>
-            <span class="panel-count" id="waitingPanelCount">0</span>
-          </header>
+      <section class="workspace-view" data-panel="waiting" role="tabpanel" aria-labelledby="summary-tab-waiting" id="panel-waiting" hidden>
+        <div class="panel-content">
           <div class="panel-body" role="list" data-dropzone="waiting"></div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel" data-panel="someday" aria-labelledby="somedayHeading">
-          <header class="panel-header">
-            <h2 id="somedayHeading">Someday / Maybe</h2>
-            <span class="panel-count" id="somedayPanelCount">0</span>
-          </header>
+      <section class="workspace-view" data-panel="someday" role="tabpanel" aria-labelledby="summary-tab-someday" id="panel-someday" hidden>
+        <div class="panel-content">
           <div class="panel-body" role="list" data-dropzone="someday"></div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel" data-panel="calendar" aria-labelledby="calendarHeading">
-          <header class="panel-header">
-            <h2 id="calendarHeading">Calendar View</h2>
-          </header>
+      <section class="workspace-view" data-panel="calendar" role="tabpanel" aria-labelledby="summary-tab-calendar" id="panel-calendar" hidden>
+        <div class="panel-content">
           <div class="calendar-controls">
             <label class="filter-control" for="calendarDate">Jump to date</label>
             <input id="calendarDate" type="date" aria-describedby="calendarHelp" />
@@ -177,49 +201,51 @@
           <div class="panel-body calendar-body">
             <ul id="calendarList" class="calendar-list" role="list"></ul>
           </div>
-        </section>
+        </div>
       </section>
 
-      <aside class="insights" aria-label="Review and analytics">
-        <section class="card review-card" aria-labelledby="reviewHeading">
-          <header class="card-header">
-            <h2 id="reviewHeading">Weekly Review</h2>
-            <button id="resetChecklist" class="btn btn-link" type="button">Reset checklist</button>
-          </header>
-          <ul id="reviewChecklist" class="checklist" role="list"></ul>
-        </section>
+      <section class="workspace-view" data-panel="reports" role="tabpanel" aria-labelledby="summary-tab-reports" id="panel-reports" hidden>
+        <div class="panel-content">
+          <div class="report-controls">
+            <label class="filter-control" for="reportGrouping">View by</label>
+            <select id="reportGrouping">
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+              <option value="year">Yearly</option>
+            </select>
+            <label class="filter-control" for="reportYear">Year</label>
+            <select id="reportYear"></select>
+            <label class="filter-control" for="reportContext">Context</label>
+            <select id="reportContext">
+              <option value="all">All contexts</option>
+            </select>
+            <label class="filter-control" for="reportProject">Project</label>
+            <select id="reportProject">
+              <option value="all">All projects</option>
+            </select>
+          </div>
+          <div class="panel-body report-body">
+            <div id="reportEmpty" class="muted small-text" hidden>No matching completions. Adjust the filters or mark tasks complete to start building this report.</div>
+            <ul id="reportList" class="report-list" role="list"></ul>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
 
-        <section class="card analytics-card" aria-labelledby="analyticsHeading">
-          <header class="card-header">
-            <h2 id="analyticsHeading">Progress</h2>
-            <span class="muted small-text">Weekly completion overview</span>
-          </header>
-          <canvas id="reviewChart" width="280" height="180" role="img" aria-label="Weekly progress chart"></canvas>
-          <div class="chart-legend">
-            <span class="legend-dot dot-complete" aria-hidden="true"></span> Complete
-            <span class="legend-dot dot-incomplete" aria-hidden="true"></span> Remaining
-          </div>
-        </section>
-
-        <section class="card pomodoro-card" aria-labelledby="timerHeading">
-          <header class="card-header">
-            <h2 id="timerHeading">Pomodoro Focus</h2>
-          </header>
-          <div class="pomodoro-display" role="timer" aria-live="polite" aria-atomic="true">
-            <span id="pomodoroTimer">25:00</span>
-          </div>
-          <div class="pomodoro-controls">
-            <button id="pomodoroStart" class="btn btn-primary" type="button">Start</button>
-            <button id="pomodoroPause" class="btn btn-light" type="button">Pause</button>
-            <button id="pomodoroReset" class="btn btn-light" type="button">Reset</button>
-          </div>
-          <label class="filter-control" for="pomodoroTask">Focus task</label>
-          <select id="pomodoroTask">
-            <option value="">Select a task…</option>
-          </select>
-        </section>
-      </aside>
-    </main>
+  <div id="taskFlyout" class="task-flyout" aria-hidden="true">
+    <div class="task-flyout-backdrop" data-close="flyout"></div>
+    <aside class="task-flyout-panel" role="dialog" aria-modal="true" aria-labelledby="taskFlyoutTitle">
+      <header class="task-flyout-header">
+        <div>
+          <p class="task-flyout-status muted small-text" id="taskFlyoutStatus"></p>
+          <h2 id="taskFlyoutTitle">Task details</h2>
+        </div>
+        <button id="closeTaskFlyout" class="btn btn-light" type="button" aria-label="Close task details">Close</button>
+      </header>
+      <div id="taskFlyoutContent" class="task-flyout-content"></div>
+    </aside>
+  </div>
 
     <footer class="app-footer">
       <small>&copy; <span id="footerYear"></span> GTD Dashboard Prototype. Built for rapid capture, clarify, organize, reflect, and engage.</small>
@@ -229,5 +255,25 @@
   <script src="lib/chart.min.js"></script>
   <script src="lib/dragdrop.js"></script>
   <script type="module" src="js/app.js"></script>
+
+  <div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+    <div class="modal-backdrop" data-close="modal"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="helpTitle">GTD flow in this dashboard</h2>
+        <button id="closeHelp" class="btn btn-light" type="button" aria-label="Close help dialog">Close</button>
+      </header>
+      <div class="modal-body">
+        <ol>
+          <li><strong>Capture</strong> new ideas in the Inbox using the quick add bar.</li>
+          <li><strong>Clarify</strong> each item by editing it—set the desired status, context, due dates, and project.</li>
+          <li><strong>Organize</strong> tasks into Next Actions, Waiting For, or Someday by dragging or editing.</li>
+          <li><strong>Review</strong> projects regularly: ensure every active project has a clear outcome and at least one next action.</li>
+          <li><strong>Engage</strong> with the active tab that matters now—filter by context, run the Pomodoro timer, and check off progress.</li>
+        </ol>
+        <p class="muted small-text">Need more detail? Export to Markdown to review in Obsidian or keep a recurring weekly review note in your own system.</p>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

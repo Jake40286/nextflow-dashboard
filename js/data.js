@@ -7,7 +7,13 @@ export const STATUS = Object.freeze({
   SOMEDAY: "someday",
 });
 
-export const DEFAULT_CONTEXTS = ["@Work", "@Home", "@Errands", "@Desk", "@Team"];
+export const PHYSICAL_CONTEXTS = ["@Computer", "@Phone", "@Office", "@Home", "@Errands", "@Lab", "@Work", "@Team", "@Desk"];
+export const PEOPLE_TAG_PATTERN = /^@[A-Za-z0-9][A-Za-z0-9_-]*$/;
+export const ENERGY_LEVELS = ["low", "medium", "high", "deep_work"];
+export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", ">1hr"];
+export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
+export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
+export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
@@ -161,6 +167,10 @@ const defaultState = () => ({
       tasks: ["t-103", "t-107"],
       isExpanded: true,
       someday: false,
+      areaOfFocus: "Work",
+      themeTag: "Networking",
+      statusTag: "Active",
+      deadline: addDaysIso(30),
     },
     {
       id: "p-302",
@@ -172,6 +182,10 @@ const defaultState = () => ({
       tasks: ["t-106"],
       isExpanded: false,
       someday: false,
+      areaOfFocus: "Work",
+      themeTag: "Automations",
+      statusTag: "Active",
+      deadline: null,
     },
     {
       id: "p-303",
@@ -183,6 +197,10 @@ const defaultState = () => ({
       tasks: ["t-108"],
       isExpanded: false,
       someday: true,
+      areaOfFocus: "Personal",
+      themeTag: "Research",
+      statusTag: "OnHold",
+      deadline: null,
     },
   ],
   checklist: [
@@ -237,6 +255,12 @@ export class TaskManager extends EventTarget {
     this.storage = safeLocalStorage();
     this.state = defaultState();
     this.load();
+    this.state.tasks = (this.state.tasks || []).map((task) => normalizeTask(task));
+    this.state.reference = (this.state.reference || []).map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
+    this.state.completionLog = (this.state.completionLog || [])
+      .map((entry) => normalizeCompletionEntry(entry))
+      .filter(Boolean);
+    this.state.projects = (this.state.projects || []).map((project) => normalizeProjectTags(project));
   }
 
   load() {
@@ -254,8 +278,13 @@ export class TaskManager extends EventTarget {
           ...parsed,
         };
         nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
-        nextState.reference = (nextState.reference || []).map((task) => normalizeTask(task));
-        nextState.completionLog = (nextState.completionLog || []).map((entry) => normalizeCompletionEntry(entry));
+        nextState.reference = (nextState.reference || [])
+          .map((entry) => normalizeCompletionEntry(entry))
+          .filter(Boolean);
+        nextState.completionLog = (nextState.completionLog || [])
+          .map((entry) => normalizeCompletionEntry(entry))
+          .filter(Boolean);
+        nextState.projects = (nextState.projects || []).map((project) => normalizeProjectTags(project));
         this.state = nextState;
       }
     } catch (error) {
@@ -317,6 +346,12 @@ export class TaskManager extends EventTarget {
       calendarDate: payload.calendarDate || null,
       completedAt: payload.completedAt || null,
     };
+    normalizeTaskTags(task);
+    const tagError = validateTaskTags(task);
+    if (tagError) {
+      this.notify("error", tagError);
+      return null;
+    }
 
     if (!task.title) {
       this.notify("warn", "Task needs a title before it can be saved.");
@@ -335,7 +370,13 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Task not found.");
       return null;
     }
-    Object.assign(task, updates);
+    const draft = normalizeTask({ ...task, ...updates });
+    const tagError = validateTaskTags(draft);
+    if (tagError) {
+      this.notify("error", tagError);
+      return null;
+    }
+    Object.assign(task, draft);
     this.emitChange();
     return task;
   }
@@ -365,6 +406,7 @@ export class TaskManager extends EventTarget {
       return null;
     }
     const [task] = this.state.tasks.splice(taskIndex, 1);
+    normalizeTaskTags(task);
     const completedAt = new Date().toISOString();
     const archiveType = archive === "reference" ? "reference" : "deleted";
     const snapshot = createCompletionSnapshot(task, completedAt, archiveType);
@@ -397,6 +439,10 @@ export class TaskManager extends EventTarget {
     const theme = this.getTheme();
     this.state = defaultState();
     this.state.settings.theme = theme;
+    this.state.tasks = this.state.tasks.map((task) => normalizeTask(task));
+    this.state.projects = this.state.projects.map((project) => normalizeProjectTags(project));
+    this.state.reference = [];
+    this.state.completionLog = [];
     this.emitChange();
     this.notify("info", "Restored starter GTD sample data.");
   }
@@ -432,7 +478,7 @@ export class TaskManager extends EventTarget {
     this.notify("info", `Activated project "${project.name}".`);
   }
 
-  addProject(name, vision = "") {
+  addProject(name, vision = "", metadata = {}) {
     const trimmed = name.trim();
     if (!trimmed) {
       this.notify("warn", "Project name cannot be empty.");
@@ -448,7 +494,17 @@ export class TaskManager extends EventTarget {
       tasks: [],
       isExpanded: true,
       someday: false,
+      areaOfFocus: metadata.areaOfFocus || PROJECT_AREAS[0],
+      themeTag: metadata.themeTag || null,
+      statusTag: metadata.statusTag || PROJECT_STATUSES[0],
+      deadline: metadata.deadline || null,
     };
+    normalizeProjectTags(project);
+    const projectError = validateProjectTags(project);
+    if (projectError) {
+      this.notify("error", projectError);
+      return null;
+    }
     this.state.projects.push(project);
     this.emitChange();
     this.notify("info", `Created project "${project.name}".`);
@@ -473,7 +529,13 @@ export class TaskManager extends EventTarget {
       project.vision = updates.vision.trim();
     }
     const { name, vision, ...rest } = updates;
-    Object.assign(project, rest);
+    const draft = normalizeProjectTags({ ...project, ...rest });
+    const projectError = validateProjectTags(draft);
+    if (projectError) {
+      this.notify("error", projectError);
+      return null;
+    }
+    Object.assign(project, draft);
     this.emitChange();
     return project;
   }
@@ -497,10 +559,13 @@ export class TaskManager extends EventTarget {
   }
 
   getContexts() {
-    const contexts = new Set([...DEFAULT_CONTEXTS]);
-    this.state.tasks.forEach((task) => {
-      if (task.context) contexts.add(task.context);
-    });
+    const contexts = new Set([...PHYSICAL_CONTEXTS]);
+    const addContext = (value) => {
+      if (value) contexts.add(value);
+    };
+    this.state.tasks.forEach((task) => addContext(task.context));
+    (this.state.reference || []).forEach((entry) => addContext(entry.context));
+    (this.state.completionLog || []).forEach((entry) => addContext(entry.context));
     return Array.from(contexts);
   }
 
@@ -584,8 +649,17 @@ export class TaskManager extends EventTarget {
       const date = new Date(task.completedAt);
       if (!Number.isFinite(date.getTime())) return;
       const key = formatter.key(date);
-      const bucket = buckets.get(key) || { label: formatter.label(date), count: 0, sortValue: formatter.sortValue(date) };
+      const bucket =
+        buckets.get(key) ||
+        {
+          key,
+          label: formatter.label(date),
+          count: 0,
+          sortValue: formatter.sortValue(date),
+          tasks: [],
+        };
       bucket.count += 1;
+      bucket.tasks.push(task);
       buckets.set(key, bucket);
     });
     return Array.from(buckets.values()).sort((a, b) => a.sortValue - b.sortValue);
@@ -704,6 +778,9 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     title: task.title,
     description: task.description,
     context: task.context,
+    peopleTag: task.peopleTag,
+    energyLevel: task.energyLevel,
+    timeRequired: task.timeRequired,
     projectId: task.projectId,
     assignee: task.assignee,
     waitingFor: task.waitingFor,
@@ -717,11 +794,16 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
 }
 
 function normalizeTask(task) {
-  return {
+  const normalized = {
     ...task,
     completedAt: task.completedAt || null,
     archiveType: task.archiveType || null,
+    context: task.context ?? task.physicalContext ?? null,
+    peopleTag: task.peopleTag ?? task.peopleContext ?? null,
+    energyLevel: task.energyLevel ?? null,
+    timeRequired: task.timeRequired ?? null,
   };
+  return normalizeTaskTags(normalized);
 }
 
 function normalizeCompletionEntry(entry) {
@@ -731,6 +813,9 @@ function normalizeCompletionEntry(entry) {
     title: entry.title || "Completed task",
     description: entry.description || "",
     context: entry.context || null,
+    peopleTag: entry.peopleTag || null,
+    energyLevel: entry.energyLevel || null,
+    timeRequired: entry.timeRequired || null,
     projectId: entry.projectId || null,
     assignee: entry.assignee || null,
     waitingFor: entry.waitingFor || null,
@@ -741,6 +826,83 @@ function normalizeCompletionEntry(entry) {
     archivedAt: entry.archivedAt || entry.completedAt || null,
     archiveType: entry.archiveType || "reference",
   };
+}
+
+function normalizeTaskTags(task) {
+  task.context = sanitizePhysicalContext(task.context) || PHYSICAL_CONTEXTS[0];
+  task.peopleTag = sanitizePeopleTag(task.peopleTag);
+  task.energyLevel = sanitizeChoice(task.energyLevel, ENERGY_LEVELS, { allowCustom: true });
+  task.timeRequired = sanitizeChoice(task.timeRequired, TIME_REQUIREMENTS, { allowCustom: true });
+  return task;
+}
+
+function validateTaskTags(task) {
+  if (!task.context) {
+    return `Task requires a physical context such as ${PHYSICAL_CONTEXTS.join(", ")}.`;
+  }
+  if (task.peopleTag && !PEOPLE_TAG_PATTERN.test(task.peopleTag)) {
+    return "People context must start with @ and contain only letters, numbers, underscores, or dashes.";
+  }
+  return null;
+}
+
+function normalizeProjectTags(project) {
+  project.areaOfFocus = sanitizeChoice(project.areaOfFocus, PROJECT_AREAS, { allowCustom: true, allowEmpty: false }) || PROJECT_AREAS[0];
+  project.themeTag = sanitizeChoice(project.themeTag, PROJECT_THEMES, { allowCustom: true }) || null;
+  project.statusTag = sanitizeChoice(project.statusTag, PROJECT_STATUSES, { allowCustom: true, allowEmpty: false }) || PROJECT_STATUSES[0];
+  project.deadline = sanitizeIsoDate(project.deadline);
+  project.tags = buildProjectTagList(project);
+  return project;
+}
+
+function validateProjectTags(project) {
+  if (!project.areaOfFocus) {
+    return "Project needs an Area of Focus classification.";
+  }
+  if (!project.statusTag) {
+    return "Project needs a Status classification.";
+  }
+  return null;
+}
+
+function buildProjectTagList(project) {
+  return [project.areaOfFocus, project.themeTag, project.statusTag].filter(Boolean);
+}
+
+function sanitizeChoice(value, allowed, { allowCustom = false, allowEmpty = true } = {}) {
+  if (value === null || value === undefined) {
+    return allowEmpty ? null : allowed?.[0] ?? null;
+  }
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return allowEmpty ? null : allowed?.[0] ?? null;
+  }
+  const match = allowed?.find((item) => item.toLowerCase() === normalized.toLowerCase());
+  if (match) return match;
+  if (allowCustom) return normalized;
+  return allowEmpty ? null : allowed?.[0] ?? null;
+}
+
+function sanitizePhysicalContext(value) {
+  return sanitizeChoice(value, PHYSICAL_CONTEXTS, { allowCustom: true, allowEmpty: false });
+}
+
+function sanitizePeopleTag(value) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!PEOPLE_TAG_PATTERN.test(trimmed)) return null;
+  if (PHYSICAL_CONTEXTS.some((context) => context.toLowerCase() === trimmed.toLowerCase())) {
+    return null;
+  }
+  return trimmed;
+}
+
+function sanitizeIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
 }
 
 function getCompletionFormatter(grouping) {
@@ -784,6 +946,9 @@ function matchesSearch(task, rawTerm) {
     task.title.toLowerCase().includes(term) ||
     task.description?.toLowerCase().includes(term) ||
     task.context?.toLowerCase().includes(term) ||
+    task.peopleTag?.toLowerCase().includes(term) ||
+    task.energyLevel?.toLowerCase().includes(term) ||
+    task.timeRequired?.toLowerCase().includes(term) ||
     task.assignee?.toLowerCase().includes(term) ||
     task.waitingFor?.toLowerCase().includes(term)
   );

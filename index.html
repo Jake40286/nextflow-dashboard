@@ -146,6 +146,13 @@
             <label class="filter-control" for="searchTasks">Search</label>
             <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" />
           </div>
+          <div class="random-picker" aria-label="Random task helper">
+            <label class="filter-control" for="randomContext">Focus context</label>
+            <select id="randomContext">
+              <option value="all">Any context</option>
+            </select>
+            <button id="pickRandomTask" class="btn btn-light" type="button">Pick a task</button>
+          </div>
         </div>
         <div class="toolbar-actions">
           <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
@@ -168,16 +175,24 @@
 
       <section class="workspace-view" data-panel="projects" role="tabpanel" aria-labelledby="summary-tab-projects" id="panel-projects" hidden>
         <div class="panel-content">
-          <form id="newProjectForm" class="project-create" aria-label="Create project">
-            <label class="visually-hidden" for="projectName">Project name</label>
-            <input id="projectName" name="projectName" type="text" placeholder="Project name" autocomplete="off" required />
-            <label class="visually-hidden" for="projectVision">Project outcome</label>
-            <input id="projectVision" name="projectVision" type="text" placeholder="Desired outcome (optional)" autocomplete="off" />
-            <button type="submit" class="btn btn-primary">Add project</button>
-          </form>
-          <div class="panel-body" data-projects></div>
-        </div>
-      </section>
+        <form id="newProjectForm" class="project-create" aria-label="Create project">
+          <label class="visually-hidden" for="projectName">Project name</label>
+          <input id="projectName" name="projectName" type="text" placeholder="Project name" autocomplete="off" required />
+          <label class="visually-hidden" for="projectVision">Project outcome</label>
+          <input id="projectVision" name="projectVision" type="text" placeholder="Desired outcome (optional)" autocomplete="off" />
+          <label class="visually-hidden" for="projectArea">Area of focus</label>
+          <input id="projectArea" name="projectArea" type="text" placeholder="Area of focus" list="projectAreaSuggestions" value="Work" required />
+          <label class="visually-hidden" for="projectTheme">Theme</label>
+          <input id="projectTheme" name="projectTheme" type="text" placeholder="Theme (optional)" list="projectThemeSuggestions" />
+          <label class="visually-hidden" for="projectStatus">Status</label>
+          <input id="projectStatus" name="projectStatus" type="text" placeholder="Status" list="projectStatusSuggestions" value="Active" required />
+          <label class="visually-hidden" for="projectDeadline">Deadline</label>
+          <input id="projectDeadline" name="projectDeadline" type="date" aria-label="Project deadline" />
+          <button type="submit" class="btn btn-primary">Add project</button>
+        </form>
+        <div class="panel-body" data-projects></div>
+      </div>
+    </section>
 
       <section class="workspace-view" data-panel="waiting" role="tabpanel" aria-labelledby="summary-tab-waiting" id="panel-waiting" hidden>
         <div class="panel-content">
@@ -227,6 +242,14 @@
           <div class="panel-body report-body">
             <div id="reportEmpty" class="muted small-text" hidden>No matching completions. Adjust the filters or mark tasks complete to start building this report.</div>
             <ul id="reportList" class="report-list" role="list"></ul>
+            <div id="reportDetailsPlaceholder" class="muted small-text">Select a period to see which tasks were completed.</div>
+            <div id="reportDetails" class="report-details" hidden>
+              <div class="report-details-header">
+                <h3 id="reportDetailsTitle" class="report-details-title"></h3>
+                <span id="reportDetailsMeta" class="report-details-meta small-text"></span>
+              </div>
+              <ul id="reportDetailsList" class="report-details-list" role="list"></ul>
+            </div>
           </div>
         </div>
       </section>
@@ -255,6 +278,14 @@
   <script src="lib/chart.min.js"></script>
   <script src="lib/dragdrop.js"></script>
   <script type="module" src="js/app.js"></script>
+
+  <datalist id="contextSuggestions"></datalist>
+  <datalist id="peopleSuggestions"></datalist>
+  <datalist id="energySuggestions"></datalist>
+  <datalist id="timeSuggestions"></datalist>
+  <datalist id="projectAreaSuggestions"></datalist>
+  <datalist id="projectThemeSuggestions"></datalist>
+  <datalist id="projectStatusSuggestions"></datalist>
 
   <div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
     <div class="modal-backdrop" data-close="modal"></div>

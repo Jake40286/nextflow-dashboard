@@ -128,7 +128,17 @@ function setupProjects() {
       taskManager.notify("warn", "Project name cannot be empty.");
       return;
     }
-    const project = taskManager.addProject(name.toString(), vision?.toString() ?? "");
+    const area = data.get("projectArea")?.toString().trim();
+    const theme = data.get("projectTheme")?.toString().trim();
+    const status = data.get("projectStatus")?.toString().trim();
+    const deadline = data.get("projectDeadline")?.toString().trim();
+    const metadata = {
+      areaOfFocus: area || undefined,
+      themeTag: theme || undefined,
+      statusTag: status || undefined,
+      deadline: deadline || undefined,
+    };
+    const project = taskManager.addProject(name.toString(), vision?.toString() ?? "", metadata);
     if (project) {
       ui.renderProjects();
       ui.updateCounts();

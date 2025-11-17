@@ -1,4 +1,14 @@
-import { STATUS, STATUS_LABELS, formatFriendlyDate } from "./data.js";
+import {
+  STATUS,
+  STATUS_LABELS,
+  formatFriendlyDate,
+  PHYSICAL_CONTEXTS,
+  ENERGY_LEVELS,
+  TIME_REQUIREMENTS,
+  PROJECT_AREAS,
+  PROJECT_THEMES,
+  PROJECT_STATUSES,
+} from "./data.js";
 
 const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
 
@@ -43,6 +53,7 @@ export class UIController {
       context: "all",
       project: "all",
     };
+    this.activeReportKey = null;
     this.currentFlyoutTaskId = null;
     this.isFlyoutOpen = false;
     this.handleFlyoutKeydown = null;
@@ -72,6 +83,8 @@ export class UIController {
       reportYear,
       reportContext,
       reportProject,
+      randomContext,
+      pickRandomTask,
     } = this.elements;
 
     contextFilter.addEventListener("change", () => {
@@ -125,6 +138,13 @@ export class UIController {
     reportProject?.addEventListener("change", () => {
       this.reportFilters.project = reportProject.value;
       this.renderReports();
+    });
+
+    randomContext?.addEventListener("change", () => {
+      this.randomContext = randomContext.value;
+    });
+    pickRandomTask?.addEventListener("click", () => {
+      this.pickRandomTask(randomContext?.value || "all");
     });
 
     integrationsCard.querySelectorAll("[data-placeholder]").forEach((button) => {
@@ -257,6 +277,7 @@ export class UIController {
   renderAll() {
     this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
+    this.updateSuggestionLists();
     this.renderSummary();
     this.renderFilters();
     this.renderInbox();
@@ -269,6 +290,55 @@ export class UIController {
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
     this.applyPanelVisibility();
+  }
+
+  updateSuggestionLists() {
+    const {
+      contextSuggestions,
+      peopleSuggestions,
+      energySuggestions,
+      timeSuggestions,
+      projectAreaSuggestions,
+      projectThemeSuggestions,
+      projectStatusSuggestions,
+    } = this.elements;
+    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
+    const archiveEntries = [
+      ...(this.taskManager.state?.reference || []),
+      ...(this.taskManager.state?.completionLog || []),
+    ];
+    const contexts = new Set(this.taskManager.getContexts());
+    const people = new Set();
+    const energies = new Set([...ENERGY_LEVELS]);
+    const times = new Set([...TIME_REQUIREMENTS]);
+    allTasks.forEach((task) => {
+      if (task.context) contexts.add(task.context);
+      if (task.peopleTag) people.add(task.peopleTag);
+      if (task.energyLevel) energies.add(task.energyLevel);
+      if (task.timeRequired) times.add(task.timeRequired);
+    });
+    archiveEntries.forEach((entry) => {
+      if (entry.context) contexts.add(entry.context);
+      if (entry.peopleTag) people.add(entry.peopleTag);
+      if (entry.energyLevel) energies.add(entry.energyLevel);
+      if (entry.timeRequired) times.add(entry.timeRequired);
+    });
+    fillDatalist(contextSuggestions, Array.from(contexts));
+    fillDatalist(peopleSuggestions, Array.from(people));
+    fillDatalist(energySuggestions, Array.from(energies));
+    fillDatalist(timeSuggestions, Array.from(times));
+
+    const areas = new Set([...PROJECT_AREAS]);
+    const themes = new Set([...PROJECT_THEMES]);
+    const statuses = new Set([...PROJECT_STATUSES]);
+    (this.projectCache || []).forEach((project) => {
+      if (project.areaOfFocus) areas.add(project.areaOfFocus);
+      if (project.themeTag) themes.add(project.themeTag);
+      if (project.statusTag) statuses.add(project.statusTag);
+    });
+    fillDatalist(projectAreaSuggestions, Array.from(areas));
+    fillDatalist(projectThemeSuggestions, Array.from(themes));
+    fillDatalist(projectStatusSuggestions, Array.from(statuses));
   }
 
   renderSummary() {
@@ -301,6 +371,9 @@ export class UIController {
     const projects = this.projectCache || [];
 
     fillSelect(this.elements.contextFilter, contexts, this.filters.context);
+    if (this.elements.randomContext) {
+      fillSelect(this.elements.randomContext, contexts, this.randomContext || "all");
+    }
     fillProjectSelect(this.elements.projectFilter, projects, this.filters.project);
   }
 
@@ -348,6 +421,9 @@ export class UIController {
         context === "No context"
           ? tasks.filter((task) => !task.context)
           : tasks.filter((task) => task.context === context);
+      if (!items.length) {
+        return;
+      }
       count.textContent = items.length;
 
       header.append(title, count);
@@ -386,6 +462,20 @@ export class UIController {
 
       const body = document.createElement("div");
       body.className = "project-body";
+      const tagsRow = document.createElement("div");
+      tagsRow.className = "project-tags";
+      [
+        ["Area", project.areaOfFocus],
+        ["Theme", project.themeTag],
+        ["Status", project.statusTag],
+        ["Deadline", project.deadline ? formatFriendlyDate(project.deadline) : null],
+      ].forEach(([label, value]) => {
+        if (!value) return;
+        const tag = document.createElement("span");
+        tag.className = "project-tag";
+        tag.textContent = `${label}: ${value}`;
+        tagsRow.append(tag);
+      });
       const outcome = document.createElement("div");
       outcome.className = "project-outcome";
       const outcomeLabel = document.createElement("span");
@@ -479,6 +569,9 @@ export class UIController {
         sectionsWrapper.append(section);
       });
 
+      if (tagsRow.children.length) {
+        body.append(tagsRow);
+      }
       body.append(outcome, actions, sectionsWrapper);
       details.append(summary, body);
       container.append(details);
@@ -590,18 +683,125 @@ export class UIController {
     if (reportEmpty) {
       reportEmpty.hidden = hasData;
     }
-    if (!hasData) return;
+    if (!hasData) {
+      this.activeReportKey = null;
+      this.clearReportDetails({ hidePlaceholder: true });
+      return;
+    }
     summary.forEach((entry) => {
       const item = document.createElement("li");
-      item.className = "report-row";
-      item.setAttribute("role", "listitem");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "report-row";
+      button.dataset.reportKey = entry.key;
+      const isActive = this.activeReportKey === entry.key;
+      if (isActive) {
+        button.classList.add("is-active");
+      }
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
       const label = document.createElement("strong");
       label.textContent = entry.label;
       const count = document.createElement("span");
       count.textContent = `${entry.count} done`;
-      item.append(label, count);
+      button.append(label, count);
+      button.addEventListener("click", () => {
+        this.activeReportKey = this.activeReportKey === entry.key ? null : entry.key;
+        this.renderReports();
+      });
+      item.append(button);
       reportList.append(item);
     });
+    const selectedEntry = summary.find((entry) => entry.key === this.activeReportKey);
+    if (selectedEntry) {
+      this.renderReportDetails(selectedEntry);
+    } else {
+      this.clearReportDetails();
+    }
+  }
+
+  renderReportDetails(entry) {
+    const { reportDetails, reportDetailsList, reportDetailsTitle, reportDetailsMeta, reportDetailsPlaceholder } = this.elements;
+    if (!reportDetails || !reportDetailsList) return;
+    reportDetails.hidden = false;
+    if (reportDetailsPlaceholder) {
+      reportDetailsPlaceholder.hidden = true;
+    }
+    if (reportDetailsTitle) {
+      reportDetailsTitle.textContent = entry.label;
+    }
+    if (reportDetailsMeta) {
+      reportDetailsMeta.textContent = `${entry.count} done`;
+    }
+    reportDetailsList.innerHTML = "";
+    const tasks = Array.isArray(entry.tasks) ? entry.tasks.slice() : [];
+    if (!tasks.length) {
+      const empty = document.createElement("li");
+      empty.className = "muted small-text";
+      empty.textContent = "No completion details recorded.";
+      reportDetailsList.append(empty);
+      return;
+    }
+    tasks
+      .sort((a, b) => {
+        const aTime = new Date(a.completedAt || 0).getTime();
+        const bTime = new Date(b.completedAt || 0).getTime();
+        return bTime - aTime;
+      })
+      .forEach((task) => {
+        const item = document.createElement("li");
+        item.className = "report-detail-item";
+        const title = document.createElement("strong");
+        title.textContent = task.title;
+        const meta = document.createElement("span");
+        meta.className = "report-detail-meta";
+        meta.textContent = this.formatReportTaskMeta(task);
+        item.append(title, meta);
+        reportDetailsList.append(item);
+      });
+  }
+
+  formatReportTaskMeta(task) {
+    const parts = [];
+    if (task.completedAt) {
+      const completedDate = new Date(task.completedAt);
+      if (!Number.isNaN(completedDate.getTime())) {
+        parts.push(
+          `Completed ${completedDate.toLocaleDateString(undefined, {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}`
+        );
+      }
+    }
+    if (task.context) {
+      parts.push(task.context);
+    }
+    const projectName = this.getProjectName(task.projectId);
+    if (projectName) {
+      parts.push(`#${projectName}`);
+    }
+    return parts.join(" • ") || "No additional metadata";
+  }
+
+  clearReportDetails({ hidePlaceholder = false } = {}) {
+    const { reportDetails, reportDetailsList, reportDetailsTitle, reportDetailsMeta, reportDetailsPlaceholder } = this.elements;
+    if (reportDetailsList) {
+      reportDetailsList.innerHTML = "";
+    }
+    if (reportDetailsTitle) {
+      reportDetailsTitle.textContent = "";
+    }
+    if (reportDetailsMeta) {
+      reportDetailsMeta.textContent = "";
+    }
+    if (reportDetails) {
+      reportDetails.hidden = true;
+    }
+    if (reportDetailsPlaceholder) {
+      reportDetailsPlaceholder.hidden = hidePlaceholder ? true : false;
+    }
   }
 
   filterNextTasksByProject(tasks) {
@@ -623,6 +823,22 @@ export class UIController {
     });
 
     return prioritized;
+  }
+
+  pickRandomTask(contextValue = "all") {
+    const tasks = this.taskManager.getTasks({
+      status: STATUS.NEXT,
+      context: contextValue === "all" ? undefined : contextValue,
+      includeCompleted: false,
+    });
+    if (!tasks.length) {
+      this.taskManager.notify("warn", contextValue === "all" ? "No next actions available." : `No next actions found for ${contextValue}.`);
+      return;
+    }
+    const random = tasks[Math.floor(Math.random() * tasks.length)];
+    this.setActivePanel("next");
+    this.openTaskFlyout(random.id);
+    this.taskManager.notify("info", `Try "${random.title}" next.`);
   }
 
   getReportYears(tasks) {
@@ -673,8 +889,11 @@ export class UIController {
     if (task.context) metaItems.push(this.createMetaSpan(task.context));
     const projectName = this.getProjectName(task.projectId);
     if (projectName) metaItems.push(this.createMetaSpan(projectName));
+    if (task.peopleTag) metaItems.push(this.createMetaSpan(`With ${task.peopleTag}`));
     if (task.assignee) metaItems.push(this.createMetaSpan(`With ${task.assignee}`));
     if (task.waitingFor) metaItems.push(this.createMetaSpan(`Waiting: ${task.waitingFor}`));
+    if (task.energyLevel) metaItems.push(this.createMetaSpan(`Energy: ${task.energyLevel}`));
+    if (task.timeRequired) metaItems.push(this.createMetaSpan(`Time: ${task.timeRequired}`));
     if (task.dueDate) {
       metaItems.push(this.createMetaSpan(`Due ${formatFriendlyDate(task.dueDate)}`));
     } else if (task.calendarDate) {
@@ -780,6 +999,9 @@ export class UIController {
     meta.className = "task-flyout-meta";
     meta.append(this.buildMetaRow("Context", task.context || "—"));
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
+    meta.append(this.buildMetaRow("People tag", task.peopleTag || "—"));
+    meta.append(this.buildMetaRow("Energy level", task.energyLevel || "—"));
+    meta.append(this.buildMetaRow("Time required", task.timeRequired || "—"));
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
     meta.append(this.buildMetaRow("Calendar", task.calendarDate ? formatFriendlyDate(task.calendarDate) : "—"));
     meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
@@ -851,20 +1073,43 @@ export class UIController {
 
     const contextGroup = document.createElement("label");
     contextGroup.className = "task-edit-field";
-    contextGroup.textContent = "Context";
-    const contextSelect = document.createElement("select");
-    const blankOption = document.createElement("option");
-    blankOption.value = "";
-    blankOption.textContent = "No context";
-    contextSelect.append(blankOption);
-    this.taskManager.getContexts().forEach((context) => {
-      const option = document.createElement("option");
-      option.value = context;
-      option.textContent = context;
-      contextSelect.append(option);
-    });
-    contextSelect.value = task.context || "";
-    contextGroup.append(contextSelect);
+    contextGroup.textContent = "Physical context";
+    const contextInput = document.createElement("input");
+    contextInput.type = "text";
+    contextInput.setAttribute("list", "contextSuggestions");
+    contextInput.placeholder = "@Office";
+    contextInput.value = task.context || "";
+    contextGroup.append(contextInput);
+
+    const peopleGroup = document.createElement("label");
+    peopleGroup.className = "task-edit-field";
+    peopleGroup.textContent = "People context";
+    const peopleInput = document.createElement("input");
+    peopleInput.type = "text";
+    peopleInput.setAttribute("list", "peopleSuggestions");
+    peopleInput.placeholder = "@Boss";
+    peopleInput.value = task.peopleTag || "";
+    peopleGroup.append(peopleInput);
+
+    const energyGroup = document.createElement("label");
+    energyGroup.className = "task-edit-field";
+    energyGroup.textContent = "Energy level";
+    const energyInput = document.createElement("input");
+    energyInput.type = "text";
+    energyInput.setAttribute("list", "energySuggestions");
+    energyInput.placeholder = "low / medium / custom";
+    energyInput.value = task.energyLevel || "";
+    energyGroup.append(energyInput);
+
+    const timeGroup = document.createElement("label");
+    timeGroup.className = "task-edit-field";
+    timeGroup.textContent = "Time required";
+    const timeInput = document.createElement("input");
+    timeInput.type = "text";
+    timeInput.setAttribute("list", "timeSuggestions");
+    timeInput.placeholder = "<15min / custom";
+    timeInput.value = task.timeRequired || "";
+    timeGroup.append(timeInput);
 
     const statusGroup = document.createElement("label");
     statusGroup.className = "task-edit-field";
@@ -966,6 +1211,9 @@ export class UIController {
       titleGroup,
       descriptionGroup,
       contextGroup,
+      peopleGroup,
+      energyGroup,
+      timeGroup,
       statusGroup,
       projectGroup,
       dueGroup,
@@ -985,7 +1233,10 @@ export class UIController {
       const updates = {
         title: trimmedTitle,
         description: descriptionInput.value.trim(),
-        context: contextSelect.value || null,
+        context: contextInput.value.trim() || null,
+        peopleTag: peopleInput.value.trim() || null,
+        energyLevel: energyInput.value.trim() || null,
+        timeRequired: timeInput.value.trim() || null,
         status: statusSelect.value,
         projectId: projectSelect.value || null,
         dueDate: dueInput.value || null,
@@ -1070,6 +1321,44 @@ export class UIController {
     visionInput.value = project.vision || "";
     visionField.append(visionInput);
 
+    const areaField = document.createElement("label");
+    areaField.className = "project-edit-field";
+    areaField.textContent = "Area of focus";
+    const areaInput = document.createElement("input");
+    areaInput.type = "text";
+    areaInput.setAttribute("list", "projectAreaSuggestions");
+    areaInput.placeholder = "e.g., Work";
+    areaInput.value = project.areaOfFocus || "";
+    areaField.append(areaInput);
+
+    const themeField = document.createElement("label");
+    themeField.className = "project-edit-field";
+    themeField.textContent = "Theme";
+    const themeInput = document.createElement("input");
+    themeInput.type = "text";
+    themeInput.setAttribute("list", "projectThemeSuggestions");
+    themeInput.placeholder = "Theme (optional)";
+    themeInput.value = project.themeTag || "";
+    themeField.append(themeInput);
+
+    const statusField = document.createElement("label");
+    statusField.className = "project-edit-field";
+    statusField.textContent = "Status tag";
+    const statusInput = document.createElement("input");
+    statusInput.type = "text";
+    statusInput.setAttribute("list", "projectStatusSuggestions");
+    statusInput.placeholder = "Status";
+    statusInput.value = project.statusTag || "";
+    statusField.append(statusInput);
+
+    const deadlineField = document.createElement("label");
+    deadlineField.className = "project-edit-field";
+    deadlineField.textContent = "Deadline";
+    const deadlineInput = document.createElement("input");
+    deadlineInput.type = "date";
+    deadlineInput.value = project.deadline || "";
+    deadlineField.append(deadlineInput);
+
     const actions = document.createElement("div");
     actions.className = "project-edit-actions";
 
@@ -1087,7 +1376,7 @@ export class UIController {
     saveButton.textContent = "Save";
 
     actions.append(cancelButton, saveButton);
-    form.append(nameField, visionField, actions);
+    form.append(nameField, visionField, areaField, themeField, statusField, deadlineField, actions);
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1099,6 +1388,10 @@ export class UIController {
       this.taskManager.updateProject(project.id, {
         name: trimmedName,
         vision: visionInput.value.trim(),
+        areaOfFocus: areaInput.value.trim() || null,
+        themeTag: themeInput.value.trim() || null,
+        statusTag: statusInput.value.trim() || null,
+        deadline: deadlineInput.value || null,
       });
       this.updateCounts();
     });
@@ -1198,6 +1491,11 @@ function mapElements() {
     reportProject: byId("reportProject"),
     reportList: byId("reportList"),
     reportEmpty: byId("reportEmpty"),
+    reportDetails: byId("reportDetails"),
+    reportDetailsList: byId("reportDetailsList"),
+    reportDetailsTitle: byId("reportDetailsTitle"),
+    reportDetailsMeta: byId("reportDetailsMeta"),
+    reportDetailsPlaceholder: byId("reportDetailsPlaceholder"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),
@@ -1227,6 +1525,15 @@ function mapElements() {
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     integrationsCard: document.querySelector(".integrations-card"),
+    contextSuggestions: document.getElementById("contextSuggestions"),
+    peopleSuggestions: document.getElementById("peopleSuggestions"),
+    energySuggestions: document.getElementById("energySuggestions"),
+    timeSuggestions: document.getElementById("timeSuggestions"),
+    projectAreaSuggestions: document.getElementById("projectAreaSuggestions"),
+    projectThemeSuggestions: document.getElementById("projectThemeSuggestions"),
+    projectStatusSuggestions: document.getElementById("projectStatusSuggestions"),
+    randomContext: byId("randomContext"),
+    pickRandomTask: byId("pickRandomTask"),
   };
 }
 
@@ -1302,4 +1609,16 @@ function enableDrag(element, taskId) {
   element.addEventListener("dragend", () => {
     element.classList.remove("is-dragging");
   });
+}
+
+function fillDatalist(element, values) {
+  if (!element) return;
+  element.innerHTML = "";
+  Array.from(new Set(values))
+    .filter((value) => typeof value === "string" && value.trim())
+    .forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      element.append(option);
+    });
 }

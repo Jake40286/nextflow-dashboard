@@ -143,8 +143,23 @@
             <span id="activePanelCount" class="muted small-text">0 items</span>
           </div>
           <div class="workspace-search">
-            <label class="filter-control" for="searchTasks">Search</label>
-            <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" />
+            <button
+              id="toggleSearch"
+              class="btn btn-light workspace-search-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="searchTasksContainer"
+              data-label-show="Search tasks"
+              data-label-hide="Hide search"
+            >
+              Search tasks
+            </button>
+            <div id="searchTasksContainer" class="workspace-search-field" hidden>
+              <label class="filter-control" for="searchTasks">Search</label>
+              <div class="workspace-search-input">
+                <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" autocomplete="off" />
+              </div>
+            </div>
           </div>
           <div class="random-picker" aria-label="Random task helper">
             <label class="filter-control" for="randomContext">Focus context</label>

@@ -41,6 +41,7 @@ export class UIController {
       search: "",
       date: "",
     };
+    this.isSearchVisible = false;
     this.elements = mapElements();
     this.dropzones = [];
     this.panelButtons = [];
@@ -62,6 +63,7 @@ export class UIController {
   }
 
   init() {
+    this.elements = mapElements();
     this.bindListeners();
     this.setupSummaryTabs();
     this.setupFlyout();
@@ -75,6 +77,8 @@ export class UIController {
       contextFilter,
       projectFilter,
       searchTasks,
+      searchToggle,
+      searchField,
       clearFilters,
       expandProjects,
       calendarDate,
@@ -97,9 +101,25 @@ export class UIController {
       this.renderAll();
     });
 
+    searchToggle?.addEventListener("click", () => {
+      const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
+      if (isCurrentlyVisible) {
+        this.hideSearchField({ focus: false });
+      } else {
+        this.showSearchField();
+      }
+    });
+
     searchTasks.addEventListener("input", (event) => {
       this.filters.search = event.target.value;
       this.renderAll();
+    });
+
+    searchTasks.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.clearSearch();
+      }
     });
 
     clearFilters.addEventListener("click", () => {
@@ -108,6 +128,7 @@ export class UIController {
       projectFilter.value = "all";
       searchTasks.value = "";
       calendarDate.value = "";
+      this.hideSearchField({ focus: false });
       this.renderAll();
     });
 
@@ -229,6 +250,10 @@ export class UIController {
       }
     });
     this.updateActivePanelMeta();
+    const expandButton = this.elements.expandProjects;
+    if (expandButton) {
+      expandButton.hidden = this.activePanel !== "projects";
+    }
   }
 
   updateActivePanelMeta() {
@@ -287,9 +312,71 @@ export class UIController {
     this.renderSomeday();
     this.renderCalendar();
     this.renderReports();
+    this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
     this.applyPanelVisibility();
+  }
+
+  applySearchVisibility() {
+    const { searchTasks } = this.elements;
+    if (searchTasks) {
+      searchTasks.value = this.filters.search || "";
+    }
+    if (this.filters.search) {
+      this.isSearchVisible = true;
+    }
+    this.setSearchFieldVisibility(this.isSearchVisible || Boolean(this.filters.search), { focus: false, updateState: false });
+  }
+
+  showSearchField({ focus = true } = {}) {
+    this.isSearchVisible = true;
+    this.setSearchFieldVisibility(true, { focus });
+  }
+
+  hideSearchField({ focus = true } = {}) {
+    this.isSearchVisible = false;
+    this.setSearchFieldVisibility(false, { focus });
+  }
+
+  setSearchFieldVisibility(visible, { focus = true, updateState = true } = {}) {
+    const { searchField, searchToggle, searchTasks } = this.elements;
+    if (!searchField || !searchToggle) return;
+    if (visible) {
+      searchField.hidden = false;
+      searchToggle.setAttribute("aria-expanded", "true");
+      searchToggle.classList.add("is-active");
+      const hideLabel = searchToggle.dataset.labelHide || searchToggle.textContent;
+      searchToggle.textContent = hideLabel;
+      if (updateState) {
+        this.isSearchVisible = true;
+      }
+      if (focus) {
+        searchTasks?.focus();
+      }
+    } else {
+      searchField.hidden = true;
+      searchToggle.setAttribute("aria-expanded", "false");
+      searchToggle.classList.remove("is-active");
+      const showLabel = searchToggle.dataset.labelShow || searchToggle.textContent;
+      searchToggle.textContent = showLabel;
+      if (updateState) {
+        this.isSearchVisible = false;
+      }
+      if (focus) {
+        searchToggle.focus();
+      }
+    }
+  }
+
+  clearSearch() {
+    const { searchTasks } = this.elements;
+    if (searchTasks) {
+      searchTasks.value = "";
+    }
+    this.filters.search = "";
+    this.hideSearchField({ focus: true });
+    this.renderAll();
   }
 
   updateSuggestionLists() {
@@ -1481,6 +1568,8 @@ function mapElements() {
     contextFilter: byId("contextFilter"),
     projectFilter: byId("projectFilter"),
     searchTasks: byId("searchTasks"),
+    searchToggle: byId("toggleSearch"),
+    searchField: byId("searchTasksContainer"),
     clearFilters: byId("clearFilters"),
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),

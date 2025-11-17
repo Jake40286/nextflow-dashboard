@@ -281,6 +281,38 @@ body {
   flex-direction: column;
   gap: 6px;
   flex: 1 1 240px;
+  align-self: flex-start;
+}
+
+.workspace-search-toggle {
+  align-self: flex-start;
+}
+
+.workspace-search-toggle.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.workspace-search-field {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--bg-muted);
+}
+
+.workspace-search-field[hidden] {
+  display: none;
+}
+
+.workspace-search-input {
+  display: flex;
+  gap: 8px;
+}
+
+.workspace-search-input input {
+  flex: 1;
 }
 
 .random-picker {
@@ -625,6 +657,13 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  z-index: 1;
 }
 
 .task-edit-actions-group {

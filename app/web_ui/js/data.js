@@ -423,8 +423,9 @@ export class TaskManager extends EventTarget {
       calendarDate: payload.calendarDate || null,
       completedAt: payload.completedAt || null,
     };
-    normalizeTaskTags(task);
-    const tagError = validateTaskTags(task);
+    const enforceContext = task.status !== STATUS.INBOX;
+    normalizeTaskTags(task, { enforceContext });
+    const tagError = validateTaskTags(task, { requireContext: enforceContext });
     if (tagError) {
       this.notify("error", tagError);
       return null;
@@ -448,7 +449,9 @@ export class TaskManager extends EventTarget {
       return null;
     }
     const draft = normalizeTask({ ...task, ...updates });
-    const tagError = validateTaskTags(draft);
+    const enforceContext = draft.status !== STATUS.INBOX;
+    normalizeTaskTags(draft, { enforceContext });
+    const tagError = validateTaskTags(draft, { requireContext: enforceContext });
     if (tagError) {
       this.notify("error", tagError);
       return null;
@@ -636,13 +639,18 @@ export class TaskManager extends EventTarget {
   }
 
   getContexts() {
-    const contexts = new Set([...PHYSICAL_CONTEXTS]);
+    const contexts = new Set();
     const addContext = (value) => {
-      if (value) contexts.add(value);
+      if (typeof value !== "string") return;
+      const normalized = value.trim();
+      if (normalized) contexts.add(normalized);
     };
     this.state.tasks.forEach((task) => addContext(task.context));
     (this.state.reference || []).forEach((entry) => addContext(entry.context));
     (this.state.completionLog || []).forEach((entry) => addContext(entry.context));
+    if (!contexts.size) {
+      PHYSICAL_CONTEXTS.forEach((context) => contexts.add(context));
+    }
     return Array.from(contexts);
   }
 
@@ -905,16 +913,23 @@ function normalizeCompletionEntry(entry) {
   };
 }
 
-function normalizeTaskTags(task) {
-  task.context = sanitizePhysicalContext(task.context) || PHYSICAL_CONTEXTS[0];
+function normalizeTaskTags(task, { enforceContext = true } = {}) {
+  const sanitizedContext = sanitizePhysicalContext(task.context);
+  if (sanitizedContext) {
+    task.context = sanitizedContext;
+  } else if (enforceContext) {
+    task.context = PHYSICAL_CONTEXTS[0];
+  } else {
+    task.context = null;
+  }
   task.peopleTag = sanitizePeopleTag(task.peopleTag);
   task.energyLevel = sanitizeChoice(task.energyLevel, ENERGY_LEVELS, { allowCustom: true });
   task.timeRequired = sanitizeChoice(task.timeRequired, TIME_REQUIREMENTS, { allowCustom: true });
   return task;
 }
 
-function validateTaskTags(task) {
-  if (!task.context) {
+function validateTaskTags(task, { requireContext = true } = {}) {
+  if (requireContext && !task.context) {
     return `Task requires a physical context such as ${PHYSICAL_CONTEXTS.join(", ")}.`;
   }
   if (task.peopleTag && !PEOPLE_TAG_PATTERN.test(task.peopleTag)) {

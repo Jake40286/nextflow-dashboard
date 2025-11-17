@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${PORT:-8000}:8000"
+      - "8002:8000"
     working_dir: /app
     command: python server.py
     volumes:

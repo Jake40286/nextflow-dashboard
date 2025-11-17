@@ -63,6 +63,10 @@ export class UIController {
     this.handleFlyoutKeydown = null;
     this.projectCache = null;
     this.projectLookup = new Map();
+    this.clarifyState = { taskId: null, actionable: null, currentStep: "describe", actionPlanInitialized: false };
+    this.handleClarifyKeydown = null;
+    this.lastClarifyFocus = null;
+    this.clarifyDestinationButtons = [];
   }
 
   init() {
@@ -70,6 +74,7 @@ export class UIController {
     this.bindListeners();
     this.setupSummaryTabs();
     this.setupFlyout();
+    this.bindClarifyModal();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -517,6 +522,15 @@ export class UIController {
       time: this.filters.time,
     });
     const container = this.elements.inboxList;
+    container.innerHTML = "";
+    if (!tasks.length) {
+      const banner = document.createElement("div");
+      banner.className = "inbox-zero";
+      banner.innerHTML = `<strong>Inbox zero!</strong><span class="muted small-text">Capture something new to keep the system flowing.</span>`;
+      container.append(banner);
+      this.attachDropzone(container, STATUS.INBOX);
+      return;
+    }
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
     this.attachDropzone(container, STATUS.INBOX);
   }
@@ -1099,6 +1113,414 @@ export class UIController {
     };
   }
 
+  bindClarifyModal() {
+    const {
+      clarifyModal,
+      closeClarifyModal,
+      clarifyBackdrop,
+      clarifyActionableYes,
+      clarifyActionInput,
+      clarifyActionContinue,
+      clarifyConvertProject,
+      clarifyProjectBack,
+      clarifyProjectContinue,
+      clarifyDateBack,
+      clarifyDateContinue,
+      clarifyContextBack,
+      clarifyFinish,
+      clarifyAddContext,
+      clarifyDelegateToggle,
+      clarifyDelegateInput,
+    } = this.elements;
+    if (!clarifyModal) return;
+    this.handleClarifyKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeClarifyModal();
+      }
+    };
+    this.clarifyDestinationButtons = Array.from(clarifyModal.querySelectorAll("[data-clarify-nonaction]"));
+    clarifyActionableYes?.addEventListener("click", () => this.handleClarifyActionableChoice(true));
+    this.clarifyDestinationButtons.forEach((button) => {
+      button.addEventListener("click", () => this.handleClarifyNonAction(button.dataset.clarifyNonaction));
+    });
+    clarifyActionContinue?.addEventListener("click", () => this.handleClarifyActionContinue());
+    clarifyConvertProject?.addEventListener("click", () => this.handleClarifyConvertToProject());
+    clarifyProjectBack?.addEventListener("click", () => this.showClarifyStep("action-plan"));
+    clarifyProjectContinue?.addEventListener("click", () => this.handleClarifyProjectContinue());
+    clarifyDateBack?.addEventListener("click", () => this.showClarifyStep("project"));
+    clarifyDateContinue?.addEventListener("click", () => this.handleClarifyDateContinue());
+    clarifyContextBack?.addEventListener("click", () => this.showClarifyStep("dates"));
+    clarifyFinish?.addEventListener("click", () => this.handleClarifyFinalize());
+    clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
+    clarifyDelegateToggle?.addEventListener("change", () => {
+      if (!clarifyDelegateInput) return;
+      const enabled = Boolean(clarifyDelegateToggle?.checked);
+      clarifyDelegateInput.disabled = !enabled;
+      if (!enabled) {
+        clarifyDelegateInput.value = "";
+      } else {
+        clarifyDelegateInput.focus();
+      }
+    });
+    closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
+    clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
+    clarifyActionInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this.handleClarifyActionContinue();
+      }
+    });
+  }
+
+  setClarifyModalOpen(open) {
+    const modal = this.elements.clarifyModal;
+    if (!modal) return;
+    if (open) {
+      this.lastClarifyFocus = document.activeElement;
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      if (this.handleClarifyKeydown) {
+        document.addEventListener("keydown", this.handleClarifyKeydown);
+      }
+    } else {
+      modal.classList.remove("is-open");
+      modal.setAttribute("hidden", "");
+      if (this.handleClarifyKeydown) {
+        document.removeEventListener("keydown", this.handleClarifyKeydown);
+      }
+      if (this.lastClarifyFocus && typeof this.lastClarifyFocus.focus === "function") {
+        this.lastClarifyFocus.focus();
+      }
+      this.resetClarifyState();
+    }
+  }
+
+  resetClarifyState() {
+    this.clarifyState = {
+      taskId: null,
+      nextActionTitle: "",
+      projectId: null,
+      dueType: "none",
+      calendarDate: "",
+      dueDate: "",
+      context: "",
+      delegateTo: "",
+      actionPlanInitialized: false,
+      currentStep: "actionable",
+    };
+  }
+
+  openClarifyModal(taskId) {
+    const modal = this.elements.clarifyModal;
+    if (!modal) {
+      this.openTaskFlyout(taskId);
+      return;
+    }
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) return;
+    this.resetClarifyState();
+    this.clarifyState.taskId = task.id;
+    this.clarifyState.context = task.context || "";
+    this.populateClarifyPreview(task);
+    this.populateClarifyContexts();
+    this.showClarifyStep("actionable");
+    this.setClarifyModalOpen(true);
+  }
+
+  closeClarifyModal() {
+    this.setClarifyModalOpen(false);
+  }
+
+  showClarifyStep(step) {
+    const sections = [
+      ["actionable", this.elements.clarifyStepActionable],
+      ["action-plan", this.elements.clarifyStepActionPlan],
+      ["project", this.elements.clarifyStepProject],
+      ["dates", this.elements.clarifyStepDates],
+      ["context", this.elements.clarifyStepContext],
+    ];
+    sections.forEach(([name, element]) => {
+      if (element) {
+        element.hidden = name !== step;
+      }
+    });
+    this.clarifyState.currentStep = step;
+    const focusTargets = {
+      "actionable": this.elements.clarifyActionableYes,
+      "action-plan": this.elements.clarifyActionInput,
+      "project": this.elements.clarifyProjectSelect,
+      "dates": this.elements.clarifyDateOptionNone,
+      "context": this.elements.clarifyContextSelect,
+    };
+    const focusTarget = focusTargets[step];
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      focusTarget.focus();
+    }
+  }
+
+  populateClarifyPreview(task) {
+    if (this.elements.clarifyPreviewText) {
+      this.elements.clarifyPreviewText.textContent = task.description || task.title || "(No details captured)";
+    }
+    if (this.elements.clarifyActionInput) {
+      this.elements.clarifyActionInput.value = task.title || "";
+    }
+    if (this.elements.clarifySpecificDateInput) {
+      this.elements.clarifySpecificDateInput.value = "";
+    }
+    if (this.elements.clarifyDueDateInput) {
+      this.elements.clarifyDueDateInput.value = "";
+    }
+    if (this.elements.clarifyDelegateInput) {
+      this.elements.clarifyDelegateInput.value = "";
+      this.elements.clarifyDelegateInput.disabled = true;
+    }
+    if (this.elements.clarifyDelegateToggle) {
+      this.elements.clarifyDelegateToggle.checked = false;
+    }
+    if (this.elements.clarifyProjectSelect) {
+      this.populateProjectSelect();
+    }
+    if (this.elements.clarifyProjectOptionExisting) {
+      this.elements.clarifyProjectOptionExisting.checked = true;
+    }
+    if (this.elements.clarifyProjectNewInput) {
+      this.elements.clarifyProjectNewInput.value = "";
+    }
+    if (this.elements.clarifyDateOptionNone) {
+      this.elements.clarifyDateOptionNone.checked = true;
+    }
+  }
+
+  populateClarifyContexts() {
+    const select = this.elements.clarifyContextSelect;
+    if (!select) return;
+    select.innerHTML = "";
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = "Choose a context";
+    select.append(defaultOption);
+    const contexts = this.taskManager.getContexts();
+    contexts.forEach((context) => {
+      const option = document.createElement("option");
+      option.value = context;
+      option.textContent = context;
+      select.append(option);
+    });
+    if (this.clarifyState.context) {
+      select.value = this.clarifyState.context;
+    }
+  }
+
+  populateProjectSelect() {
+    const select = this.elements.clarifyProjectSelect;
+    if (!select) return;
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "none";
+    placeholder.textContent = "Select a project";
+    select.append(placeholder);
+    const projects = this.taskManager.getProjects({ includeSomeday: true });
+    projects.forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.id;
+      option.textContent = project.name + (project.someday ? " (Someday)" : "");
+      select.append(option);
+    });
+    if (this.clarifyState.projectId) {
+      select.value = this.clarifyState.projectId;
+    }
+  }
+
+  handleClarifyActionableChoice(isActionable) {
+    if (!this.clarifyState.taskId) return;
+    if (isActionable) {
+      this.showClarifyStep("action-plan");
+    }
+  }
+
+  handleClarifyNonAction(destination) {
+    if (!this.clarifyState.taskId || !destination) return;
+    if (destination === "trash") {
+      this.taskManager.deleteTask(this.clarifyState.taskId);
+      this.taskManager.notify("info", "Captured idea deleted.");
+    } else if (destination === "reference") {
+      this.taskManager.completeTask(this.clarifyState.taskId, { archive: "reference" });
+    } else if (destination === "someday") {
+      this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
+      this.taskManager.notify("info", "Moved to Someday / Maybe.");
+    }
+    this.closeClarifyModal();
+  }
+
+  handleClarifyActionContinue() {
+    if (!this.clarifyState.taskId) return;
+    const title = this.elements.clarifyActionInput?.value?.trim();
+    if (!title) {
+      this.taskManager.notify("warn", "Describe the next physical action before continuing.");
+      this.elements.clarifyActionInput?.focus();
+      return;
+    }
+    this.clarifyState.nextActionTitle = title;
+    this.showClarifyStep("project");
+  }
+
+  handleClarifyConvertToProject() {
+    if (!this.clarifyState.taskId) return;
+    const actionTitle = this.elements.clarifyActionInput?.value?.trim();
+    if (!actionTitle) {
+      this.taskManager.notify("warn", "Describe the next action before converting to a project.");
+      this.elements.clarifyActionInput?.focus();
+      return;
+    }
+    this.clarifyState.nextActionTitle = actionTitle;
+    const projectName = window.prompt("Project name");
+    if (!projectName || !projectName.trim()) {
+      return;
+    }
+    const project = this.taskManager.addProject(projectName.trim());
+    if (project) {
+      this.clarifyState.projectId = project.id;
+      this.populateProjectSelect();
+      if (this.elements.clarifyProjectSelect) {
+        this.elements.clarifyProjectSelect.value = project.id;
+      }
+      if (this.elements.clarifyProjectOptionExisting) {
+        this.elements.clarifyProjectOptionExisting.checked = true;
+      }
+      this.taskManager.notify("info", `Created project "${project.name}".`);
+      this.showClarifyStep("project");
+    }
+  }
+
+  handleClarifyProjectContinue() {
+    if (!this.clarifyState.taskId) return;
+    const existingSelected = this.elements.clarifyProjectOptionExisting?.checked;
+    const newSelected = this.elements.clarifyProjectOptionNew?.checked;
+    const noneSelected = this.elements.clarifyProjectOptionNone?.checked;
+    if (existingSelected) {
+      const selectedId = this.elements.clarifyProjectSelect?.value;
+      if (selectedId && selectedId !== "none") {
+        this.clarifyState.projectId = selectedId;
+      } else {
+        this.clarifyState.projectId = null;
+      }
+    } else if (newSelected) {
+      const newName = this.elements.clarifyProjectNewInput?.value?.trim();
+      if (!newName) {
+        this.taskManager.notify("warn", "Provide a project name.");
+        this.elements.clarifyProjectNewInput?.focus();
+        return;
+      }
+      const project = this.taskManager.addProject(newName);
+      if (project) {
+        this.clarifyState.projectId = project.id;
+        this.populateProjectSelect();
+        this.elements.clarifyProjectSelect.value = project.id;
+        if (this.elements.clarifyProjectOptionExisting) {
+          this.elements.clarifyProjectOptionExisting.checked = true;
+        }
+        if (this.elements.clarifyProjectOptionNew) {
+          this.elements.clarifyProjectOptionNew.checked = false;
+        }
+      }
+    } else if (noneSelected) {
+      this.clarifyState.projectId = null;
+    }
+    this.showClarifyStep("dates");
+  }
+
+  handleClarifyDateContinue() {
+    if (!this.clarifyState.taskId) return;
+    const specific = this.elements.clarifyDateOptionSpecific?.checked;
+    const due = this.elements.clarifyDateOptionDue?.checked;
+    const none = this.elements.clarifyDateOptionNone?.checked;
+    if (specific) {
+      const date = this.elements.clarifySpecificDateInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a calendar date.");
+        return;
+      }
+      this.clarifyState.dueType = "calendar";
+      this.clarifyState.calendarDate = date;
+      this.clarifyState.dueDate = "";
+    } else if (due) {
+      const date = this.elements.clarifyDueDateInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a due date.");
+        return;
+      }
+      this.clarifyState.dueType = "due";
+      this.clarifyState.dueDate = date;
+      this.clarifyState.calendarDate = "";
+    } else if (none) {
+      this.clarifyState.dueType = "none";
+      this.clarifyState.dueDate = "";
+      this.clarifyState.calendarDate = "";
+    }
+    this.showClarifyStep("context");
+  }
+
+  handleClarifyAddContext() {
+    const nextContext = window.prompt("New context name (include @ if desired)");
+    if (!nextContext || !nextContext.trim()) return;
+    const select = this.elements.clarifyContextSelect;
+    if (!select) return;
+    const normalized = nextContext.trim();
+    const option = document.createElement("option");
+    option.value = normalized;
+    option.textContent = normalized;
+    select.append(option);
+    select.value = normalized;
+    this.clarifyState.context = normalized;
+  }
+
+  handleClarifyFinalize() {
+    if (!this.clarifyState.taskId) return;
+    const contextValue = this.elements.clarifyContextSelect?.value;
+    if (!contextValue) {
+      this.taskManager.notify("warn", "Choose a context.");
+      this.elements.clarifyContextSelect?.focus();
+      return;
+    }
+    this.clarifyState.context = contextValue;
+    const delegateEnabled = Boolean(this.elements.clarifyDelegateToggle?.checked);
+    const delegateName = this.elements.clarifyDelegateInput?.value?.trim();
+    if (delegateEnabled && !delegateName) {
+      this.taskManager.notify("warn", "Provide who you are waiting on.");
+      this.elements.clarifyDelegateInput?.focus();
+      return;
+    }
+    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
+    if (!task) {
+      this.closeClarifyModal();
+      return;
+    }
+    const updates = {
+      title: this.clarifyState.nextActionTitle || task.title,
+      context: contextValue,
+      projectId: this.clarifyState.projectId || null,
+      calendarDate: null,
+      dueDate: null,
+      waitingFor: null,
+      status: STATUS.NEXT,
+    };
+    if (this.clarifyState.dueType === "calendar") {
+      updates.calendarDate = this.clarifyState.calendarDate;
+    } else if (this.clarifyState.dueType === "due") {
+      updates.dueDate = this.clarifyState.dueDate;
+    }
+    if (delegateEnabled && delegateName) {
+      updates.status = STATUS.WAITING;
+      updates.waitingFor = delegateName;
+    }
+    this.taskManager.updateTask(task.id, updates);
+    this.taskManager.notify("info", "Task organized and removed from Inbox.");
+    this.closeClarifyModal();
+    this.setActivePanel("inbox");
+  }
+
   openTaskFlyout(taskId) {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
@@ -1140,7 +1562,7 @@ export class UIController {
     content.innerHTML = "";
 
     const description = document.createElement("p");
-    description.textContent = task.description || "No description yet.";
+    description.textContent = task.description || task.title || "No description yet.";
     description.className = "muted";
 
     const meta = document.createElement("div");
@@ -1155,6 +1577,27 @@ export class UIController {
     meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
     meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
+
+    if (task.status === STATUS.INBOX) {
+      const inboxPanel = document.createElement("div");
+      inboxPanel.className = "inbox-process-panel";
+      const instructions = document.createElement("p");
+      instructions.textContent = "Get clear on what this item means, then route it to the right list.";
+      const processButton = document.createElement("button");
+      processButton.type = "button";
+      processButton.className = "btn btn-primary";
+      processButton.textContent = "Process";
+      processButton.addEventListener("click", () => {
+        this.closeTaskFlyout();
+        this.openClarifyModal(task.id);
+      });
+      const reminder = document.createElement("p");
+      reminder.className = "muted small-text";
+      reminder.textContent = "Processing will walk through Clarify → Organize.";
+      inboxPanel.append(instructions, processButton, reminder);
+      content.append(description, meta, inboxPanel);
+      return;
+    }
 
     const actionToolbar = document.createElement("div");
     actionToolbar.className = "task-flyout-actions";
@@ -1687,6 +2130,39 @@ function mapElements() {
     projectStatusSuggestions: document.getElementById("projectStatusSuggestions"),
     randomContext: byId("randomContext"),
     pickRandomTask: byId("pickRandomTask"),
+    clarifyModal: document.getElementById("clarifyModal"),
+    clarifyBackdrop: document.querySelector("#clarifyModal .modal-backdrop"),
+    closeClarifyModal: byId("closeClarifyModal"),
+    clarifyStepActionable: byId("clarifyStepActionable"),
+    clarifyStepActionPlan: byId("clarifyStepActionPlan"),
+    clarifyStepProject: byId("clarifyStepProject"),
+    clarifyStepDates: byId("clarifyStepDates"),
+    clarifyStepContext: byId("clarifyStepContext"),
+    clarifyPreviewText: byId("clarifyPreviewText"),
+    clarifyActionableYes: byId("clarifyActionableYes"),
+    clarifyActionInput: byId("clarifyActionInput"),
+    clarifyActionContinue: byId("clarifyActionContinue"),
+    clarifyConvertProject: byId("clarifyConvertProject"),
+    clarifyProjectSelect: byId("clarifyProjectSelect"),
+    clarifyProjectOptionExisting: byId("clarifyProjectOptionExisting"),
+    clarifyProjectOptionNew: byId("clarifyProjectOptionNew"),
+    clarifyProjectOptionNone: byId("clarifyProjectOptionNone"),
+    clarifyProjectNewInput: byId("clarifyProjectNewInput"),
+    clarifyProjectBack: byId("clarifyProjectBack"),
+    clarifyProjectContinue: byId("clarifyProjectContinue"),
+    clarifyDateOptionSpecific: byId("clarifyDateOptionSpecific"),
+    clarifyDateOptionDue: byId("clarifyDateOptionDue"),
+    clarifyDateOptionNone: byId("clarifyDateOptionNone"),
+    clarifySpecificDateInput: byId("clarifySpecificDateInput"),
+    clarifyDueDateInput: byId("clarifyDueDateInput"),
+    clarifyDateBack: byId("clarifyDateBack"),
+    clarifyDateContinue: byId("clarifyDateContinue"),
+    clarifyContextSelect: byId("clarifyContextSelect"),
+    clarifyAddContext: byId("clarifyAddContext"),
+    clarifyDelegateToggle: byId("clarifyDelegateToggle"),
+    clarifyDelegateInput: byId("clarifyDelegateInput"),
+    clarifyContextBack: byId("clarifyContextBack"),
+    clarifyFinish: byId("clarifyFinish"),
   };
 }
 

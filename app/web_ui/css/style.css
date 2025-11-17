@@ -223,6 +223,109 @@ body {
   gap: 8px;
 }
 
+.clarify-modal-body .clarify-step {
+  margin-bottom: 1.5rem;
+}
+
+.clarify-form input,
+.clarify-form textarea,
+.clarify-step input,
+.clarify-step textarea {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.clarify-form textarea,
+.clarify-step textarea {
+  resize: vertical;
+}
+
+.clarify-option-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.clarify-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clarify-back {
+  margin-top: 0.25rem;
+}
+
+.clarify-project-option {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 1rem;
+}
+
+.clarify-project-option label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.clarify-project-option input[type="radio"],
+.clarify-project-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.clarify-context-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.clarify-context-control select {
+  flex: 1;
+}
+
+.clarify-step blockquote {
+  margin: 0 0 0.75rem;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+
+.clarify-step h3 {
+  margin-top: 0;
+}
+
+.inbox-process-panel {
+  margin-top: 1rem;
+  padding: 16px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  display: grid;
+  gap: 8px;
+}
+
+.inbox-zero {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  text-align: center;
+  box-shadow: inset 0 0 0 2px var(--accent-soft);
+}
+
+.inbox-zero strong {
+  display: block;
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+}
+
 .alerts {
   min-height: 24px;
 }

@@ -2053,6 +2053,8 @@ export class UIController {
   syncTheme(theme) {
     const appRoot = this.elements.appRoot;
     appRoot.dataset.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
     const toggle = this.elements.themeToggle;
     toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
     toggle.querySelector(".theme-icon").textContent = theme === "dark" ? "☾" : "☀︎";

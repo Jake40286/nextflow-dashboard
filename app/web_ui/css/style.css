@@ -20,7 +20,7 @@
   --danger: #ef4444;
 }
 
-.app[data-theme="dark"] {
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f1624;
   --bg-elevated: #151d2f;

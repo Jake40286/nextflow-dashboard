@@ -2,6 +2,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
+from datetime import datetime
 import json
 import os
 import sys
@@ -10,6 +11,7 @@ import threading
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "/data/state.json"))
+BACKUP_DIR = Path(os.getenv("STATE_BACKUP_DIR", STATE_FILE.parent / "backups"))
 STATE_LOCK = threading.Lock()
 
 
@@ -91,6 +93,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._ensure_state_dir()
         with STATE_LOCK:
             STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            try:
+                BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+                stamp = datetime.utcnow().strftime("%Y-%m-%d")
+                backup_file = BACKUP_DIR / f"state-{stamp}.json"
+                backup_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            except Exception as error:  # noqa: BLE001
+                print(f"Failed to write state backup: {error}", file=sys.stderr)
         self._send_json({"status": "ok"})
 
 

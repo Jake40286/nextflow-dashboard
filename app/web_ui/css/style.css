@@ -326,6 +326,15 @@ body {
   margin-bottom: 4px;
 }
 
+.closure-modal textarea {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  resize: vertical;
+}
+
 .alerts {
   min-height: 24px;
 }
@@ -598,6 +607,12 @@ body {
 .report-detail-meta {
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.report-detail-notes {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .contexts {

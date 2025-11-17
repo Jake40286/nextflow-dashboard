@@ -422,6 +422,7 @@ export class TaskManager extends EventTarget {
       assignee: payload.assignee || null,
       calendarDate: payload.calendarDate || null,
       completedAt: payload.completedAt || null,
+      closureNotes: payload.closureNotes?.trim() || null,
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -479,7 +480,7 @@ export class TaskManager extends EventTarget {
     this.emitChange();
   }
 
-  completeTask(id, { archive = "reference" } = {}) {
+  completeTask(id, { archive = "reference", closureNotes } = {}) {
     const taskIndex = this.state.tasks.findIndex((task) => task.id === id);
     if (taskIndex === -1) {
       this.notify("error", "Cannot complete missing task.");
@@ -487,6 +488,12 @@ export class TaskManager extends EventTarget {
     }
     const [task] = this.state.tasks.splice(taskIndex, 1);
     normalizeTaskTags(task);
+    if (typeof closureNotes === "string") {
+      const trimmed = closureNotes.trim();
+      if (trimmed) {
+        task.closureNotes = trimmed;
+      }
+    }
     const completedAt = new Date().toISOString();
     const archiveType = archive === "reference" ? "reference" : "deleted";
     const snapshot = createCompletionSnapshot(task, completedAt, archiveType);
@@ -875,6 +882,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     completedAt,
     archivedAt: new Date().toISOString(),
     archiveType,
+    closureNotes: task.closureNotes || null,
   };
 }
 
@@ -887,6 +895,7 @@ function normalizeTask(task) {
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
+    closureNotes: task.closureNotes ?? null,
   };
   return normalizeTaskTags(normalized);
 }
@@ -910,6 +919,7 @@ function normalizeCompletionEntry(entry) {
     completedAt: entry.completedAt || entry.archivedAt || null,
     archivedAt: entry.archivedAt || entry.completedAt || null,
     archiveType: entry.archiveType || "reference",
+    closureNotes: entry.closureNotes || null,
   };
 }
 

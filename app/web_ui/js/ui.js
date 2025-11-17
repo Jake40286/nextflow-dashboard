@@ -67,6 +67,7 @@ export class UIController {
     this.handleClarifyKeydown = null;
     this.lastClarifyFocus = null;
     this.clarifyDestinationButtons = [];
+    this.pendingClosure = null;
   }
 
   init() {
@@ -918,6 +919,12 @@ export class UIController {
         meta.className = "report-detail-meta";
         meta.textContent = this.formatReportTaskMeta(task);
         item.append(title, meta);
+        if (task.closureNotes) {
+          const notes = document.createElement("p");
+          notes.className = "report-detail-notes";
+          notes.textContent = `Notes: ${task.closureNotes}`;
+          item.append(notes);
+        }
         reportDetailsList.append(item);
       });
   }
@@ -1171,6 +1178,47 @@ export class UIController {
         this.handleClarifyActionContinue();
       }
     });
+    const {
+      closureModal,
+      closureBackdrop,
+      closeClosureModal,
+      cancelClosureNotes,
+      saveClosureNotes,
+      closureNotesInput,
+    } = this.elements;
+    if (closureModal) {
+      const closeModal = () => {
+        closureModal.classList.remove("is-open");
+        closureModal.setAttribute("hidden", "");
+        this.pendingClosure = null;
+      };
+      const handleSave = () => {
+        if (!this.pendingClosure) {
+          closeModal();
+          return;
+        }
+        const notes = closureNotesInput.value.trim();
+        if (notes && notes !== this.pendingClosure.existing) {
+          this.taskManager.updateTask(this.pendingClosure.taskId, { closureNotes: notes });
+        }
+        this.taskManager.completeTask(this.pendingClosure.taskId, {
+          archive: this.pendingClosure.archive,
+          closureNotes: notes || this.pendingClosure.existing,
+        });
+        this.closeTaskFlyout();
+        closeModal();
+      };
+      closeClosureModal?.addEventListener("click", closeModal);
+      cancelClosureNotes?.addEventListener("click", closeModal);
+      closureBackdrop?.addEventListener("click", closeModal);
+      saveClosureNotes?.addEventListener("click", handleSave);
+      closureNotesInput?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          handleSave();
+        }
+      });
+    }
   }
 
   setClarifyModalOpen(open) {
@@ -1622,16 +1670,14 @@ export class UIController {
       completeButton.className = "btn btn-primary";
       completeButton.textContent = "Complete";
       completeButton.addEventListener("click", () => {
-        this.taskManager.completeTask(task.id, { archive: "reference" });
-        this.closeTaskFlyout();
+        this.openClosureNotes(task.id, "reference");
       });
       const completeDeleteButton = document.createElement("button");
       completeDeleteButton.type = "button";
       completeDeleteButton.className = "btn btn-danger";
       completeDeleteButton.textContent = "Complete & Delete";
       completeDeleteButton.addEventListener("click", () => {
-        this.taskManager.completeTask(task.id, { archive: "log" });
-        this.closeTaskFlyout();
+        this.openClosureNotes(task.id, "log");
       });
       actionToolbar.append(completeButton, completeDeleteButton);
     }
@@ -1766,6 +1812,15 @@ export class UIController {
     assigneeInput.value = task.assignee || "";
     assigneeGroup.append(assigneeInput);
 
+    const closureGroup = document.createElement("label");
+    closureGroup.className = "task-edit-field";
+    closureGroup.textContent = "Closure notes";
+    const closureInput = document.createElement("textarea");
+    closureInput.rows = 3;
+    closureInput.placeholder = "Optional wrap-up notes when completing this task.";
+    closureInput.value = task.closureNotes || "";
+    closureGroup.append(closureInput);
+
     const actions = document.createElement("div");
     actions.className = "task-edit-actions";
 
@@ -1811,6 +1866,7 @@ export class UIController {
       calendarGroup,
       waitingGroup,
       assigneeGroup,
+      closureGroup,
       actions
     );
 
@@ -1834,6 +1890,7 @@ export class UIController {
         calendarDate: calendarInput.value || null,
         waitingFor: waitingInput.value.trim() || null,
         assignee: assigneeInput.value.trim() || null,
+        closureNotes: closureInput.value.trim() || null,
       };
 
       if (updates.status === STATUS.WAITING && !updates.waitingFor) {
@@ -2064,6 +2121,23 @@ export class UIController {
     const year = new Date().getFullYear();
     this.elements.footerYear.textContent = year;
   }
+
+  openClosureNotes(taskId, archive = "reference") {
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) return;
+    this.pendingClosure = { taskId, archive, existing: task.closureNotes || "" };
+    const modal = this.elements.closureModal;
+    if (!modal) {
+      this.taskManager.completeTask(taskId, { archive, closureNotes: this.pendingClosure.existing });
+      this.closeTaskFlyout();
+      this.pendingClosure = null;
+      return;
+    }
+    this.elements.closureNotesInput.value = this.pendingClosure.existing;
+    modal.classList.add("is-open");
+    modal.removeAttribute("hidden");
+    this.elements.closureNotesInput.focus();
+  }
 }
 
 function mapElements() {
@@ -2165,6 +2239,12 @@ function mapElements() {
     clarifyDelegateInput: byId("clarifyDelegateInput"),
     clarifyContextBack: byId("clarifyContextBack"),
     clarifyFinish: byId("clarifyFinish"),
+    closureModal: document.getElementById("closureModal"),
+    closureBackdrop: document.querySelector("#closureModal .modal-backdrop"),
+    closeClosureModal: byId("closeClosureModal"),
+    closureNotesInput: byId("closureNotesInput"),
+    cancelClosureNotes: byId("cancelClosureNotes"),
+    saveClosureNotes: byId("saveClosureNotes"),
   };
 }
 

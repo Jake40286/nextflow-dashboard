@@ -1,4 +1,5 @@
 const STORAGE_KEY = "gtd-dashboard-state-v1";
+const STATE_ENDPOINT = "/state";
 
 export const STATUS = Object.freeze({
   INBOX: "inbox",
@@ -224,10 +225,67 @@ const defaultState = () => ({
   },
 });
 
+function hydrateState(raw = {}) {
+  const nextState = {
+    ...defaultState(),
+    ...raw,
+  };
+  nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
+  nextState.reference = (nextState.reference || []).map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
+  nextState.completionLog = (nextState.completionLog || [])
+    .map((entry) => normalizeCompletionEntry(entry))
+    .filter(Boolean);
+  nextState.projects = (nextState.projects || []).map((project) => normalizeProjectTags(project));
+  return nextState;
+}
+
 function addDaysIso(days) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+async function readServerState() {
+  if (typeof fetch === "undefined") {
+    throw new Error("Fetch API is unavailable");
+  }
+  const response = await fetch(STATE_ENDPOINT, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Server responded with ${response.status}`);
+  }
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Invalid server state payload", error);
+    return {};
+  }
+}
+
+async function writeServerState(state) {
+  if (typeof fetch === "undefined") {
+    throw new Error("Fetch API is unavailable");
+  }
+  const payload = JSON.stringify(state);
+  const methods = ["PUT", "POST"];
+  let lastError = null;
+  for (const method of methods) {
+    try {
+      const response = await fetch(STATE_ENDPOINT, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+      });
+      if (!response.ok) {
+        throw new Error(`Failed with status ${response.status}`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Failed to persist state");
 }
 
 function safeLocalStorage() {
@@ -253,73 +311,92 @@ export class TaskManager extends EventTarget {
     super();
     this.storageKey = storageKey;
     this.storage = safeLocalStorage();
-    this.state = defaultState();
-    this.load();
-    this.state.tasks = (this.state.tasks || []).map((task) => normalizeTask(task));
-    this.state.reference = (this.state.reference || []).map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
-    this.state.completionLog = (this.state.completionLog || [])
-      .map((entry) => normalizeCompletionEntry(entry))
-      .filter(Boolean);
-    this.state.projects = (this.state.projects || []).map((project) => normalizeProjectTags(project));
+    this.state = hydrateState();
+    this.remoteSyncEnabled = typeof fetch !== "undefined";
+    this.loadFromLocal();
+    if (this.remoteSyncEnabled) {
+      this.loadRemoteState();
+    }
   }
 
-  load() {
+  async loadRemoteState() {
+    try {
+      const remoteState = await readServerState();
+      this.state = hydrateState(remoteState || {});
+      this.emitChange({ persist: false });
+    } catch (error) {
+      console.error("Failed to load remote state", error);
+      this.notify("warn", "Server storage unavailable. Showing local data until it returns.");
+    }
+  }
+
+  loadFromLocal() {
     if (!this.storage) {
-      this.notify("warn", "Local storage is unavailable. Using in-memory state.");
       return;
     }
-
     try {
       const raw = this.storage.getItem(this.storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        const nextState = {
-          ...defaultState(),
-          ...parsed,
-        };
-        nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
-        nextState.reference = (nextState.reference || [])
-          .map((entry) => normalizeCompletionEntry(entry))
-          .filter(Boolean);
-        nextState.completionLog = (nextState.completionLog || [])
-          .map((entry) => normalizeCompletionEntry(entry))
-          .filter(Boolean);
-        nextState.projects = (nextState.projects || []).map((project) => normalizeProjectTags(project));
-        this.state = nextState;
+        this.state = hydrateState(JSON.parse(raw));
       }
     } catch (error) {
       console.error("Failed to load state", error);
       this.notify("error", "Could not load saved data. Reverting to defaults.");
-      this.state = defaultState();
+      this.state = hydrateState();
     }
   }
 
-  save() {
+  persistLocally() {
     if (!this.storage) return;
     try {
       this.storage.setItem(this.storageKey, JSON.stringify(this.state));
     } catch (error) {
-      console.error("Failed to save state", error);
-      this.notify("error", "Unable to save changes. Storage might be full.");
+      console.error("Failed to cache state locally", error);
     }
+  }
+
+  persistRemotely() {
+    if (!this.remoteSyncEnabled) return;
+    writeServerState(this.state).catch((error) => {
+      console.error("Failed to save remote state", error);
+      this.notify("error", "Unable to save changes to server storage.");
+    });
+  }
+
+  save() {
+    this.persistLocally();
+    this.persistRemotely();
   }
 
   notify(level, message) {
     this.dispatchEvent(new CustomEvent("toast", { detail: { level, message } }));
   }
 
-  emitChange() {
+  emitChange(options = {}) {
+    const { persist = true } = options;
     this.dispatchEvent(new CustomEvent("statechange", { detail: this.state }));
-    this.save();
+    if (persist) {
+      this.save();
+    }
   }
 
-  getTasks({ status, context, projectId, searchTerm, includeCompleted = false } = {}) {
+  getTasks({ status, context, projectId, searchTerm, person, energy, time, includeCompleted = false } = {}) {
+    const matchesValue = (value, filter) => {
+      if (!filter || filter === "all") return true;
+      const normalizedFilter = String(filter).trim();
+      if (!normalizedFilter) return true;
+      return value === normalizedFilter;
+    };
+
     return this.state.tasks.filter((task) => {
       if (!includeCompleted && task.completedAt) return false;
       if (status && task.status !== status) return false;
       if (context && context !== "all" && task.context !== context) return false;
       if (projectId && projectId !== "all" && task.projectId !== projectId) return false;
       if (searchTerm && !matchesSearch(task, searchTerm)) return false;
+      if (!matchesValue(task.peopleTag, person)) return false;
+      if (!matchesValue(task.energyLevel, energy)) return false;
+      if (!matchesValue(task.timeRequired, time)) return false;
       return true;
     });
   }

@@ -4,9 +4,9 @@ Static GTD dashboard bundled with a tiny Python HTTP server so it can run anywhe
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in the values (including `KEYRING_SERVICE` and `KEYRING_USERNAME`).
+1. Copy `.env.example` to `.env` and fill in the values (including `KEYRING_SERVICE` and `KEYRING_USERNAME`). `STATE_FILE` controls where the dashboard writes the shared JSON state inside the container (defaults to `/data/state.json`).
 2. Ensure `app/` holds the GTD dashboard (frontend lives in `app/web_ui`).
-3. Keep `data/` available for anything you want persisted or shared with other services.
+3. Keep `data/` available for anything you want persisted or shared with other services. The server writes the task/project state JSON here so all browsers see the same data.
 
 ## Running with Docker Compose
 
@@ -14,7 +14,7 @@ Static GTD dashboard bundled with a tiny Python HTTP server so it can run anywhe
 docker compose up --build -d
 ```
 
-- The Compose file loads `.env`, maps `./app` to `/app` and `./data` to `/data`, and publishes `${PORT:-8000}` on the host.
+- The Compose file loads `.env`, maps `./app` to `/app` and `./data` to `/data`, and publishes `${PORT:-8000}` on the host. The `/state` endpoint inside the container reads/writes the JSON file at `STATE_FILE`, so ensure that path lives on a persistent volume (for example the provided `./data` bind mount).
 - Default command is `python server.py`, which uses `HOST`/`PORT` from the environment to run a threaded HTTP server inside the container.
 - Stop the stack with `docker compose down` when finished.
 

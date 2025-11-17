@@ -38,6 +38,9 @@ export class UIController {
     this.filters = {
       context: "all",
       project: "all",
+      person: "all",
+      energy: "all",
+      time: "all",
       search: "",
       date: "",
     };
@@ -76,6 +79,9 @@ export class UIController {
     const {
       contextFilter,
       projectFilter,
+      personFilter,
+      energyFilter,
+      timeFilter,
       searchTasks,
       searchToggle,
       searchField,
@@ -101,6 +107,21 @@ export class UIController {
       this.renderAll();
     });
 
+    personFilter?.addEventListener("change", () => {
+      this.filters.person = personFilter.value;
+      this.renderAll();
+    });
+
+    energyFilter?.addEventListener("change", () => {
+      this.filters.energy = energyFilter.value;
+      this.renderAll();
+    });
+
+    timeFilter?.addEventListener("change", () => {
+      this.filters.time = timeFilter.value;
+      this.renderAll();
+    });
+
     searchToggle?.addEventListener("click", () => {
       const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
       if (isCurrentlyVisible) {
@@ -123,9 +144,12 @@ export class UIController {
     });
 
     clearFilters.addEventListener("click", () => {
-      this.filters = { context: "all", project: "all", search: "", date: "" };
+      this.filters = { context: "all", project: "all", person: "all", energy: "all", time: "all", search: "", date: "" };
       contextFilter.value = "all";
       projectFilter.value = "all";
+      if (personFilter) personFilter.value = "all";
+      if (energyFilter) energyFilter.value = "all";
+      if (timeFilter) timeFilter.value = "all";
       searchTasks.value = "";
       calendarDate.value = "";
       this.hideSearchField({ focus: false });
@@ -462,6 +486,24 @@ export class UIController {
       fillSelect(this.elements.randomContext, contexts, this.randomContext || "all");
     }
     fillProjectSelect(this.elements.projectFilter, projects, this.filters.project);
+    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
+    const people = new Set();
+    const energyLevels = new Set([...ENERGY_LEVELS]);
+    const timeEstimates = new Set([...TIME_REQUIREMENTS]);
+    allTasks.forEach((task) => {
+      if (task.peopleTag) people.add(task.peopleTag);
+      if (task.energyLevel) energyLevels.add(task.energyLevel);
+      if (task.timeRequired) timeEstimates.add(task.timeRequired);
+    });
+    if (this.elements.personFilter) {
+      fillSelect(this.elements.personFilter, Array.from(people).sort((a, b) => a.localeCompare(b)), this.filters.person);
+    }
+    if (this.elements.energyFilter) {
+      fillSelect(this.elements.energyFilter, Array.from(energyLevels).sort((a, b) => a.localeCompare(b)), this.filters.energy);
+    }
+    if (this.elements.timeFilter) {
+      fillSelect(this.elements.timeFilter, Array.from(timeEstimates).sort((a, b) => a.localeCompare(b)), this.filters.time);
+    }
   }
 
   renderInbox() {
@@ -470,6 +512,9 @@ export class UIController {
       context: this.filters.context,
       projectId: this.filters.project,
       searchTerm: this.filters.search,
+      person: this.filters.person,
+      energy: this.filters.energy,
+      time: this.filters.time,
     });
     const container = this.elements.inboxList;
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
@@ -482,6 +527,9 @@ export class UIController {
       context: this.filters.context,
       projectId: this.filters.project,
       searchTerm: this.filters.search,
+      person: this.filters.person,
+      energy: this.filters.energy,
+      time: this.filters.time,
     });
     const tasks = this.filterNextTasksByProject(allNextTasks);
     const board = this.elements.contextBoard;
@@ -605,7 +653,14 @@ export class UIController {
       actions.append(deleteButton);
 
       const projectTasks = this.taskManager
-        .getTasks({ projectId: project.id, searchTerm: this.filters.search })
+        .getTasks({
+          projectId: project.id,
+          searchTerm: this.filters.search,
+          context: this.filters.context,
+          person: this.filters.person,
+          energy: this.filters.energy,
+          time: this.filters.time,
+        })
         .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
 
       const grouped = {
@@ -671,6 +726,9 @@ export class UIController {
       context: this.filters.context,
       projectId: this.filters.project,
       searchTerm: this.filters.search,
+      person: this.filters.person,
+      energy: this.filters.energy,
+      time: this.filters.time,
     });
     const container = this.elements.waitingList;
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
@@ -683,6 +741,9 @@ export class UIController {
       context: this.filters.context,
       projectId: this.filters.project,
       searchTerm: this.filters.search,
+      person: this.filters.person,
+      energy: this.filters.energy,
+      time: this.filters.time,
     });
     const container = this.elements.somedayList;
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
@@ -1567,6 +1628,9 @@ function mapElements() {
     alerts: document.querySelector(".alerts"),
     contextFilter: byId("contextFilter"),
     projectFilter: byId("projectFilter"),
+    personFilter: byId("personFilter"),
+    energyFilter: byId("energyFilter"),
+    timeFilter: byId("timeFilter"),
     searchTasks: byId("searchTasks"),
     searchToggle: byId("toggleSearch"),
     searchField: byId("searchTasksContainer"),

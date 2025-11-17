@@ -103,6 +103,24 @@
             <option value="all">All Projects</option>
           </select>
           <small id="projectHelp" class="muted">View tasks tied to a project.</small>
+
+          <label class="filter-control" for="personFilter">Person</label>
+          <select id="personFilter" aria-describedby="personHelp">
+            <option value="all">All People</option>
+          </select>
+          <small id="personHelp" class="muted">Limit to tasks assigned to a person.</small>
+
+          <label class="filter-control" for="energyFilter">Energy</label>
+          <select id="energyFilter" aria-describedby="energyHelp">
+            <option value="all">All Energy levels</option>
+          </select>
+          <small id="energyHelp" class="muted">Filter tasks by tracked energy.</small>
+
+          <label class="filter-control" for="timeFilter">Time</label>
+          <select id="timeFilter" aria-describedby="timeHelp">
+            <option value="all">All Durations</option>
+          </select>
+          <small id="timeHelp" class="muted">Choose tasks based on estimated duration.</small>
         </section>
 
         <section class="card integrations-card" aria-labelledby="integrationsHeading">

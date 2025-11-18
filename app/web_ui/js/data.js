@@ -10,8 +10,8 @@ export const STATUS = Object.freeze({
 
 export const PHYSICAL_CONTEXTS = ["@Computer", "@Phone", "@Office", "@Home", "@Errands", "@Lab", "@Work", "@Team", "@Desk"];
 export const PEOPLE_TAG_PATTERN = /^@[A-Za-z0-9][A-Za-z0-9_-]*$/;
-export const ENERGY_LEVELS = ["low", "medium", "high", "deep_work"];
-export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", ">1hr"];
+export const ENERGY_LEVELS = ["low", "medium", "high"];
+export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", "30min+"];
 export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
 export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
@@ -933,8 +933,8 @@ function normalizeTaskTags(task, { enforceContext = true } = {}) {
     task.context = null;
   }
   task.peopleTag = sanitizePeopleTag(task.peopleTag);
-  task.energyLevel = sanitizeChoice(task.energyLevel, ENERGY_LEVELS, { allowCustom: true });
-  task.timeRequired = sanitizeChoice(task.timeRequired, TIME_REQUIREMENTS, { allowCustom: true });
+  task.energyLevel = sanitizeChoice(task.energyLevel, ENERGY_LEVELS, { allowCustom: false });
+  task.timeRequired = sanitizeChoice(task.timeRequired, TIME_REQUIREMENTS, { allowCustom: false });
   return task;
 }
 

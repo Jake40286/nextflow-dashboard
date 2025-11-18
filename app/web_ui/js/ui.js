@@ -1731,35 +1731,44 @@ export class UIController {
     const energyGroup = document.createElement("label");
     energyGroup.className = "task-edit-field";
     energyGroup.textContent = "Energy level";
-    const energyInput = document.createElement("input");
-    energyInput.type = "text";
-    energyInput.setAttribute("list", "energySuggestions");
-    energyInput.placeholder = "low / medium / custom";
+    const energyInput = document.createElement("select");
+    const emptyEnergy = document.createElement("option");
+    emptyEnergy.value = "";
+    emptyEnergy.textContent = "Select energy";
+    energyInput.append(emptyEnergy);
+    ENERGY_LEVELS.forEach((level) => {
+      const option = document.createElement("option");
+      option.value = level;
+      option.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+      energyInput.append(option);
+    });
     energyInput.value = task.energyLevel || "";
     energyGroup.append(energyInput);
 
     const timeGroup = document.createElement("label");
     timeGroup.className = "task-edit-field";
     timeGroup.textContent = "Time required";
-    const timeInput = document.createElement("input");
-    timeInput.type = "text";
-    timeInput.setAttribute("list", "timeSuggestions");
-    timeInput.placeholder = "<15min / custom";
+    const timeInput = document.createElement("select");
+    const emptyTime = document.createElement("option");
+    emptyTime.value = "";
+    emptyTime.textContent = "Select duration";
+    timeInput.append(emptyTime);
+    TIME_REQUIREMENTS.forEach((duration) => {
+      const option = document.createElement("option");
+      option.value = duration;
+      option.textContent = duration;
+      timeInput.append(option);
+    });
     timeInput.value = task.timeRequired || "";
     timeGroup.append(timeInput);
 
     const statusGroup = document.createElement("label");
     statusGroup.className = "task-edit-field";
     statusGroup.textContent = "Status";
-    const statusSelect = document.createElement("select");
-    Object.values(STATUS).forEach((statusValue) => {
-      const option = document.createElement("option");
-      option.value = statusValue;
-      option.textContent = STATUS_LABELS[statusValue] || statusValue;
-      statusSelect.append(option);
-    });
-    statusSelect.value = task.status;
-    statusGroup.append(statusSelect);
+    const statusValue = document.createElement("div");
+    statusValue.className = "muted";
+    statusValue.textContent = `${STATUS_LABELS[task.status] || task.status} (use workflow buttons to change)`;
+    statusGroup.append(statusValue);
 
     const projectGroup = document.createElement("label");
     projectGroup.className = "task-edit-field";
@@ -1882,9 +1891,8 @@ export class UIController {
         description: descriptionInput.value.trim(),
         context: contextInput.value.trim() || null,
         peopleTag: peopleInput.value.trim() || null,
-        energyLevel: energyInput.value.trim() || null,
-        timeRequired: timeInput.value.trim() || null,
-        status: statusSelect.value,
+        energyLevel: energyInput.value || null,
+        timeRequired: timeInput.value || null,
         projectId: projectSelect.value || null,
         dueDate: dueInput.value || null,
         calendarDate: calendarInput.value || null,
@@ -1893,10 +1901,10 @@ export class UIController {
         closureNotes: closureInput.value.trim() || null,
       };
 
-      if (updates.status === STATUS.WAITING && !updates.waitingFor) {
+      if (task.status === STATUS.WAITING && !updates.waitingFor) {
         updates.waitingFor = "Pending assignee";
       }
-      if (updates.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
+      if (task.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
         updates.waitingFor = null;
       }
 

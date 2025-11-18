@@ -924,7 +924,7 @@ function normalizeCompletionEntry(entry) {
 }
 
 function normalizeTaskTags(task, { enforceContext = true } = {}) {
-  const sanitizedContext = sanitizePhysicalContext(task.context);
+  const sanitizedContext = sanitizePhysicalContext(task.context, { allowEmpty: !enforceContext });
   if (sanitizedContext) {
     task.context = sanitizedContext;
   } else if (enforceContext) {
@@ -985,8 +985,8 @@ function sanitizeChoice(value, allowed, { allowCustom = false, allowEmpty = true
   return allowEmpty ? null : allowed?.[0] ?? null;
 }
 
-function sanitizePhysicalContext(value) {
-  return sanitizeChoice(value, PHYSICAL_CONTEXTS, { allowCustom: true, allowEmpty: false });
+function sanitizePhysicalContext(value, { allowEmpty = false } = {}) {
+  return sanitizeChoice(value, PHYSICAL_CONTEXTS, { allowCustom: true, allowEmpty });
 }
 
 function sanitizePeopleTag(value) {

@@ -54,8 +54,8 @@ export class UIController {
     this.reportFilters = {
       grouping: "week",
       year: new Date().getFullYear(),
-      context: "all",
-      project: "all",
+      contexts: ["all"],
+      projects: ["all"],
     };
     this.activeReportKey = null;
     this.currentFlyoutTaskId = null;
@@ -68,6 +68,7 @@ export class UIController {
     this.lastClarifyFocus = null;
     this.clarifyDestinationButtons = [];
     this.pendingClosure = null;
+    this.projectCompletionState = { projectId: null };
   }
 
   init() {
@@ -76,6 +77,7 @@ export class UIController {
     this.setupSummaryTabs();
     this.setupFlyout();
     this.bindClarifyModal();
+    this.bindProjectCompletionModal();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -97,8 +99,6 @@ export class UIController {
       integrationsCard,
       reportGrouping,
       reportYear,
-      reportContext,
-      reportProject,
       randomContext,
       pickRandomTask,
     } = this.elements;
@@ -182,15 +182,6 @@ export class UIController {
       this.reportFilters.year = Number.isNaN(nextYear) ? new Date().getFullYear() : nextYear;
       this.renderReports();
     });
-    reportContext?.addEventListener("change", () => {
-      this.reportFilters.context = reportContext.value;
-      this.renderReports();
-    });
-    reportProject?.addEventListener("change", () => {
-      this.reportFilters.project = reportProject.value;
-      this.renderReports();
-    });
-
     randomContext?.addEventListener("change", () => {
       this.randomContext = randomContext.value;
     });
@@ -655,6 +646,13 @@ export class UIController {
         actions.append(activate);
       }
 
+      const completeButton = document.createElement("button");
+      completeButton.type = "button";
+      completeButton.className = "btn btn-primary";
+      completeButton.textContent = "Mark complete";
+      completeButton.addEventListener("click", () => this.openProjectCompleteModal(project));
+      actions.append(completeButton);
+
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger";
@@ -733,6 +731,148 @@ export class UIController {
       details.append(summary, body);
       container.append(details);
     });
+
+    this.renderCompletedProjects();
+  }
+
+  renderCompletedProjects() {
+    const container = this.elements.completedProjectsList;
+    if (!container) return;
+    container.innerHTML = "";
+    const completed = this.taskManager.getCompletedProjects();
+    if (!completed.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text";
+      empty.textContent = "No completed projects yet. Finish a project to see it here.";
+      container.append(empty);
+      return;
+    }
+    completed.forEach((entry) => {
+      const card = document.createElement("article");
+      card.className = "completed-project";
+
+      const title = document.createElement("h4");
+      title.className = "completed-project-title";
+      title.textContent = entry.name;
+      card.append(title);
+
+      const meta = document.createElement("div");
+      meta.className = "completed-project-meta";
+      const metaParts = [`Completed ${formatFriendlyDate(entry.completedAt)}`];
+      if (entry.snapshot?.areaOfFocus) {
+        metaParts.push(`Area: ${entry.snapshot.areaOfFocus}`);
+      }
+      if (entry.snapshot?.themeTag) {
+        metaParts.push(`Theme: ${entry.snapshot.themeTag}`);
+      }
+      metaParts.forEach((text) => {
+        const span = document.createElement("span");
+        span.textContent = text;
+        meta.append(span);
+      });
+      card.append(meta);
+
+      if (entry.snapshot?.tags?.length) {
+        const tagsRow = document.createElement("div");
+        tagsRow.className = "project-tags";
+        entry.snapshot.tags.forEach((tagText) => {
+          const tag = document.createElement("span");
+          tag.className = "project-tag";
+          tag.textContent = tagText;
+          tagsRow.append(tag);
+        });
+        card.append(tagsRow);
+      }
+
+      const notesForm = document.createElement("form");
+      notesForm.className = "completed-project-notes";
+      const makeField = (labelText, value) => {
+        const label = document.createElement("label");
+        const caption = document.createElement("span");
+        caption.textContent = labelText;
+        const textarea = document.createElement("textarea");
+        textarea.value = value || "";
+        textarea.placeholder = labelText;
+        label.append(caption, textarea);
+        notesForm.append(label);
+        return textarea;
+      };
+      const achievedInput = makeField("What was achieved", entry.closureNotes?.achieved || "");
+      const lessonsInput = makeField("Lessons learned", entry.closureNotes?.lessons || "");
+      const followUpInput = makeField("Follow-up items", entry.closureNotes?.followUp || "");
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.className = "btn btn-primary";
+      saveButton.textContent = "Save notes";
+      notesForm.append(saveButton);
+      notesForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        this.taskManager.updateCompletedProject(entry.id, {
+          closureNotes: {
+            achieved: achievedInput.value,
+            lessons: lessonsInput.value,
+            followUp: followUpInput.value,
+          },
+        });
+      });
+      card.append(notesForm);
+      container.append(card);
+    });
+  }
+
+  bindProjectCompletionModal() {
+    const {
+      projectCompleteModal,
+      closeProjectCompleteModal,
+      projectCompleteBackdrop,
+      projectCompleteCancel,
+      projectCompleteForm,
+    } = this.elements;
+    if (!projectCompleteModal) return;
+    const close = () => this.closeProjectCompleteModal();
+    closeProjectCompleteModal?.addEventListener("click", close);
+    projectCompleteBackdrop?.addEventListener("click", close);
+    projectCompleteCancel?.addEventListener("click", close);
+    projectCompleteForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.handleProjectCompletionSubmit();
+    });
+  }
+
+  openProjectCompleteModal(project) {
+    const modal = this.elements.projectCompleteModal;
+    if (!modal || !project) return;
+    this.projectCompletionState = { projectId: project.id };
+    this.elements.projectCompleteForm?.reset();
+    if (this.elements.projectCompleteName) {
+      this.elements.projectCompleteName.textContent = project.name;
+    }
+    modal.classList.add("is-open");
+    modal.removeAttribute("hidden");
+    this.elements.projectCompleteAchieved?.focus();
+  }
+
+  closeProjectCompleteModal() {
+    const modal = this.elements.projectCompleteModal;
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("hidden", "");
+    this.projectCompletionState = { projectId: null };
+    this.elements.projectCompleteForm?.reset();
+  }
+
+  handleProjectCompletionSubmit() {
+    if (!this.projectCompletionState?.projectId) {
+      this.closeProjectCompleteModal();
+      return;
+    }
+    const payload = {
+      achieved: this.elements.projectCompleteAchieved?.value || "",
+      lessons: this.elements.projectCompleteLessons?.value || "",
+      followUp: this.elements.projectCompleteFollowUp?.value || "",
+    };
+    this.taskManager.completeProject(this.projectCompletionState.projectId, payload);
+    this.closeProjectCompleteModal();
   }
 
   renderWaitingFor() {
@@ -799,22 +939,16 @@ export class UIController {
   }
 
   renderReports() {
-    const { reportList, reportEmpty, reportGrouping, reportYear, reportContext, reportProject } = this.elements;
+    const { reportList, reportEmpty, reportGrouping, reportYear } = this.elements;
     if (!reportList) return;
     const grouping = this.reportFilters.grouping;
     if (reportGrouping) {
       reportGrouping.value = grouping;
     }
     const contexts = this.taskManager.getContexts();
-    if (reportContext) {
-      fillSelect(reportContext, contexts, this.reportFilters.context);
-      this.reportFilters.context = reportContext.value;
-    }
+    this.renderReportContextPicker(contexts);
     const projects = this.projectCache || [];
-    if (reportProject) {
-      fillProjectSelect(reportProject, projects, this.reportFilters.project);
-      this.reportFilters.project = reportProject.value;
-    }
+    this.renderReportProjectPicker(projects);
     const completedTasks = this.taskManager.getCompletedTasks();
     const years = this.getReportYears(completedTasks);
     if (!years.includes(this.reportFilters.year)) {
@@ -838,8 +972,8 @@ export class UIController {
     const summary = this.taskManager.getCompletionSummary({
       grouping,
       year: grouping === "year" ? undefined : this.reportFilters.year,
-      context: this.reportFilters.context,
-      projectId: this.reportFilters.project,
+      contexts: this.reportFilters.contexts,
+      projectIds: this.reportFilters.projects,
     });
     reportList.innerHTML = "";
     const hasData = summary.length > 0;
@@ -880,6 +1014,127 @@ export class UIController {
     } else {
       this.clearReportDetails();
     }
+  }
+
+  renderReportContextPicker(contexts) {
+    const menu = this.elements.reportContextOptions;
+    if (!menu) return;
+    const filtered = contexts.filter((context) => context && context.toLowerCase() !== "all");
+    const options = [
+      { label: "All contexts", value: "all" },
+      ...filtered.map((context) => ({ label: context, value: context })),
+    ];
+    menu.innerHTML = "";
+    options.forEach((option) => {
+      const id = `report-context-${option.value === "all" ? "all" : option.value.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+      const label = document.createElement("label");
+      label.setAttribute("for", id);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = id;
+      checkbox.value = option.value;
+      checkbox.checked = this.isReportValueSelected("contexts", option.value);
+      checkbox.addEventListener("change", () => {
+        this.updateReportFilterSelection("contexts", option.value, checkbox.checked);
+        this.renderReports();
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      menu.append(label);
+    });
+    this.updateReportPickerSummary("contexts");
+  }
+
+  renderReportProjectPicker(projects) {
+    const menu = this.elements.reportProjectOptions;
+    if (!menu) return;
+    const options = [
+      { label: "All projects", value: "all" },
+      { label: "No project", value: "none" },
+      ...projects.map((project) => ({ label: project.name, value: project.id })),
+    ];
+    menu.innerHTML = "";
+    options.forEach((option) => {
+      const id = `report-project-${option.value.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+      const label = document.createElement("label");
+      label.setAttribute("for", id);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = id;
+      checkbox.value = option.value;
+      checkbox.checked = this.isReportValueSelected("projects", option.value);
+      checkbox.addEventListener("change", () => {
+        this.updateReportFilterSelection("projects", option.value, checkbox.checked);
+        this.renderReports();
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      menu.append(label);
+    });
+    this.updateReportPickerSummary("projects");
+  }
+
+  updateReportFilterSelection(key, value, checked) {
+    const current = Array.isArray(this.reportFilters[key]) ? [...this.reportFilters[key]] : ["all"];
+    const selections = new Set(current);
+    if (value === "all") {
+      if (checked) {
+        this.reportFilters[key] = ["all"];
+      } else if (!selections.size || selections.has("all")) {
+        this.reportFilters[key] = ["all"];
+      }
+      return;
+    }
+    selections.delete("all");
+    if (checked) {
+      selections.add(value);
+    } else {
+      selections.delete(value);
+    }
+    if (!selections.size) {
+      selections.add("all");
+    }
+    this.reportFilters[key] = Array.from(selections);
+  }
+
+  isReportValueSelected(key, value) {
+    const selections = Array.isArray(this.reportFilters[key]) ? this.reportFilters[key] : ["all"];
+    if (value === "all") {
+      return selections.includes("all") || !selections.length;
+    }
+    if (selections.includes("all")) {
+      return false;
+    }
+    return selections.includes(value);
+  }
+
+  updateReportPickerSummary(type) {
+    const key = type === "contexts" ? "contexts" : "projects";
+    const toggle = type === "contexts" ? this.elements.reportContextToggle : this.elements.reportProjectToggle;
+    if (!toggle) return;
+    const selections = Array.isArray(this.reportFilters[key]) ? this.reportFilters[key] : ["all"];
+    const defaultLabel = type === "contexts" ? "All contexts" : "All projects";
+    if (!selections.length || selections.includes("all")) {
+      toggle.textContent = defaultLabel;
+      return;
+    }
+    if (selections.length === 1) {
+      const value = selections[0];
+      if (type === "projects") {
+        if (value === "none") {
+          toggle.textContent = "No project";
+        } else {
+          const project = this.projectLookup?.get(value);
+          toggle.textContent = project?.name || "1 project";
+        }
+      } else {
+        toggle.textContent = value;
+      }
+      return;
+    }
+    toggle.textContent = `${selections.length} selected`;
   }
 
   renderReportDetails(entry) {
@@ -1330,8 +1585,8 @@ export class UIController {
     if (this.elements.clarifyProjectSelect) {
       this.populateProjectSelect();
     }
-    if (this.elements.clarifyProjectOptionExisting) {
-      this.elements.clarifyProjectOptionExisting.checked = true;
+    if (this.elements.clarifyProjectOptionNone) {
+      this.elements.clarifyProjectOptionNone.checked = true;
     }
     if (this.elements.clarifyProjectNewInput) {
       this.elements.clarifyProjectNewInput.value = "";
@@ -1367,7 +1622,7 @@ export class UIController {
     select.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "none";
-    placeholder.textContent = "Select a project";
+    placeholder.textContent = "No project";
     select.append(placeholder);
     const projects = this.taskManager.getProjects({ includeSomeday: true });
     projects.forEach((project) => {
@@ -1376,9 +1631,7 @@ export class UIController {
       option.textContent = project.name + (project.someday ? " (Someday)" : "");
       select.append(option);
     });
-    if (this.clarifyState.projectId) {
-      select.value = this.clarifyState.projectId;
-    }
+    select.value = this.clarifyState.projectId || "none";
   }
 
   handleClarifyActionableChoice(isActionable) {
@@ -1391,6 +1644,12 @@ export class UIController {
   handleClarifyNonAction(destination) {
     if (!this.clarifyState.taskId || !destination) return;
     if (destination === "trash") {
+      const task = this.taskManager.getTaskById(this.clarifyState.taskId);
+      const label = task?.title || "this capture";
+      const confirmed = window.confirm(`Delete "${label}"? This cannot be undone.`);
+      if (!confirmed) {
+        return;
+      }
       this.taskManager.deleteTask(this.clarifyState.taskId);
       this.taskManager.notify("info", "Captured idea deleted.");
     } else if (destination === "reference") {
@@ -1427,7 +1686,13 @@ export class UIController {
     if (!projectName || !projectName.trim()) {
       return;
     }
-    const project = this.taskManager.addProject(projectName.trim());
+    const trimmedName = projectName.trim();
+    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
+    const confirmed = window.confirm(`Convert "${task?.title || "this task"}" into project "${trimmedName}"?`);
+    if (!confirmed) {
+      return;
+    }
+    const project = this.taskManager.addProject(trimmedName);
     if (project) {
       this.clarifyState.projectId = project.id;
       this.populateProjectSelect();
@@ -1773,6 +2038,8 @@ export class UIController {
     const projectGroup = document.createElement("label");
     projectGroup.className = "task-edit-field";
     projectGroup.textContent = "Project";
+    const projectControls = document.createElement("div");
+    projectControls.className = "task-project-controls";
     const projectSelect = document.createElement("select");
     const noProjectOption = document.createElement("option");
     noProjectOption.value = "";
@@ -1785,7 +2052,13 @@ export class UIController {
       projectSelect.append(option);
     });
     projectSelect.value = task.projectId || "";
-    projectGroup.append(projectSelect);
+    const createProjectButton = document.createElement("button");
+    createProjectButton.type = "button";
+    createProjectButton.className = "btn btn-link task-project-create";
+    createProjectButton.textContent = "New project";
+    createProjectButton.addEventListener("click", () => this.createProjectForTask(task));
+    projectControls.append(projectSelect, createProjectButton);
+    projectGroup.append(projectControls);
 
     const dueGroup = document.createElement("label");
     dueGroup.className = "task-edit-field";
@@ -1912,6 +2185,21 @@ export class UIController {
     });
 
     return form;
+  }
+
+  createProjectForTask(task) {
+    if (!task) return;
+    const proposedName = window.prompt("New project name");
+    if (!proposedName || !proposedName.trim()) return;
+    const trimmedName = proposedName.trim();
+    const confirmMessage = `Create project "${trimmedName}" and assign it to "${task.title || "this task"}"?`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+    const project = this.taskManager.addProject(trimmedName);
+    if (project) {
+      this.taskManager.updateTask(task.id, { projectId: project.id });
+    }
   }
 
   buildMetaRow(label, value) {
@@ -2167,8 +2455,12 @@ function mapElements() {
     calendarList: byId("calendarList"),
     reportGrouping: byId("reportGrouping"),
     reportYear: byId("reportYear"),
-    reportContext: byId("reportContext"),
-    reportProject: byId("reportProject"),
+    reportContextPicker: byId("reportContextPicker"),
+    reportContextToggle: byId("reportContextToggle"),
+    reportContextOptions: byId("reportContextOptions"),
+    reportProjectPicker: byId("reportProjectPicker"),
+    reportProjectToggle: byId("reportProjectToggle"),
+    reportProjectOptions: byId("reportProjectOptions"),
     reportList: byId("reportList"),
     reportEmpty: byId("reportEmpty"),
     reportDetails: byId("reportDetails"),
@@ -2187,6 +2479,7 @@ function mapElements() {
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
     contextBoard: document.querySelector("[data-context-board]"),
     projectList: document.querySelector("[data-projects]"),
+    completedProjectsList: document.querySelector("[data-completed-projects]"),
     waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
     somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),
     exportMarkdown: byId("exportMarkdown"),
@@ -2253,6 +2546,15 @@ function mapElements() {
     closureNotesInput: byId("closureNotesInput"),
     cancelClosureNotes: byId("cancelClosureNotes"),
     saveClosureNotes: byId("saveClosureNotes"),
+    projectCompleteModal: document.getElementById("projectCompleteModal"),
+    projectCompleteBackdrop: document.querySelector("#projectCompleteModal .modal-backdrop"),
+    closeProjectCompleteModal: byId("closeProjectCompleteModal"),
+    projectCompleteForm: byId("projectCompleteForm"),
+    projectCompleteName: byId("projectCompleteName"),
+    projectCompleteAchieved: byId("projectCompleteAchieved"),
+    projectCompleteLessons: byId("projectCompleteLessons"),
+    projectCompleteFollowUp: byId("projectCompleteFollowUp"),
+    projectCompleteCancel: byId("projectCompleteCancel"),
   };
 }
 

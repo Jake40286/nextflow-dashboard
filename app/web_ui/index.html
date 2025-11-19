@@ -224,6 +224,13 @@
           <button type="submit" class="btn btn-primary">Add project</button>
         </form>
         <div class="panel-body" data-projects></div>
+        <section class="completed-projects-card" aria-labelledby="completedProjectsHeading">
+          <header class="completed-projects-header">
+            <h3 id="completedProjectsHeading">Completed Projects</h3>
+            <p class="muted small-text">Archive of finished work. Edit closure notes anytime.</p>
+          </header>
+          <div class="completed-projects-body" data-completed-projects></div>
+        </section>
       </div>
     </section>
 
@@ -263,14 +270,16 @@
             </select>
             <label class="filter-control" for="reportYear">Year</label>
             <select id="reportYear"></select>
-            <label class="filter-control" for="reportContext">Context</label>
-            <select id="reportContext">
-              <option value="all">All contexts</option>
-            </select>
-            <label class="filter-control" for="reportProject">Project</label>
-            <select id="reportProject">
-              <option value="all">All projects</option>
-            </select>
+            <label class="filter-control" for="reportContextToggle">Context</label>
+            <details class="report-multiselect" id="reportContextPicker">
+              <summary id="reportContextToggle">All contexts</summary>
+              <div class="report-multiselect-options" id="reportContextOptions"></div>
+            </details>
+            <label class="filter-control" for="reportProjectToggle">Project</label>
+            <details class="report-multiselect" id="reportProjectPicker">
+              <summary id="reportProjectToggle">All projects</summary>
+              <div class="report-multiselect-options" id="reportProjectOptions"></div>
+            </details>
           </div>
           <div class="panel-body report-body">
             <div id="reportEmpty" class="muted small-text" hidden>No matching completions. Adjust the filters or mark tasks complete to start building this report.</div>
@@ -318,6 +327,37 @@
           <button id="cancelClosureNotes" class="btn btn-light" type="button">Cancel</button>
           <button id="saveClosureNotes" class="btn btn-primary" type="button">Finish</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="projectCompleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="projectCompleteTitle" hidden>
+    <div class="modal-backdrop" data-project-complete-close></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="projectCompleteTitle">Complete project</h2>
+        <button id="closeProjectCompleteModal" class="btn btn-light" type="button" aria-label="Cancel project completion">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small-text">Capture optional wrap-up notes for <strong id="projectCompleteName"></strong>.</p>
+        <form id="projectCompleteForm" class="project-complete-form">
+          <label class="project-complete-field" for="projectCompleteAchieved">
+            <span class="project-complete-label">What was achieved</span>
+            <textarea id="projectCompleteAchieved" rows="3" placeholder="Key outcomes (optional)"></textarea>
+          </label>
+          <label class="project-complete-field" for="projectCompleteLessons">
+            <span class="project-complete-label">Lessons learned</span>
+            <textarea id="projectCompleteLessons" rows="3" placeholder="Insights to carry forward"></textarea>
+          </label>
+          <label class="project-complete-field" for="projectCompleteFollowUp">
+            <span class="project-complete-label">Follow-up items</span>
+            <textarea id="projectCompleteFollowUp" rows="3" placeholder="Next steps or reminders"></textarea>
+          </label>
+          <div class="clarify-option-buttons">
+            <button id="projectCompleteCancel" class="btn btn-light" type="button">Cancel</button>
+            <button class="btn btn-primary" type="submit">Mark complete</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -372,17 +412,17 @@
         <section id="clarifyStepProject" class="clarify-step" data-clarify-step="project" hidden>
           <h3>Is this part of a larger outcome?</h3>
           <div class="clarify-project-option">
-            <label><input id="clarifyProjectOptionExisting" type="radio" name="clarifyProjectOption" value="existing" checked /> Link to an existing project</label>
+            <label><input id="clarifyProjectOptionNone" type="radio" name="clarifyProjectOption" value="none" checked /> No project</label>
+          </div>
+          <div class="clarify-project-option">
+            <label><input id="clarifyProjectOptionExisting" type="radio" name="clarifyProjectOption" value="existing" /> Link to an existing project</label>
             <select id="clarifyProjectSelect">
-              <option value="none">Select a project</option>
+              <option value="none">No project</option>
             </select>
           </div>
           <div class="clarify-project-option">
             <label><input id="clarifyProjectOptionNew" type="radio" name="clarifyProjectOption" value="new" /> Create a new project</label>
             <input id="clarifyProjectNewInput" type="text" placeholder="New project name" autocomplete="off" />
-          </div>
-          <div class="clarify-project-option">
-            <label><input id="clarifyProjectOptionNone" type="radio" name="clarifyProjectOption" value="none" /> No project</label>
           </div>
           <div class="clarify-option-buttons">
             <button id="clarifyProjectBack" class="btn btn-link" type="button">Back</button>

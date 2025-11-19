@@ -516,6 +516,62 @@ body {
   align-items: end;
 }
 
+.report-multiselect {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: var(--bg);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.report-multiselect summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.report-multiselect summary::marker {
+  display: none;
+}
+
+.report-multiselect summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-multiselect summary::after {
+  content: "▾";
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform var(--transition);
+}
+
+.report-multiselect[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.report-multiselect-options {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.report-multiselect-options label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.report-multiselect-options input[type="checkbox"] {
+  width: auto;
+}
+
 .report-body {
   display: grid;
   gap: 12px;
@@ -764,6 +820,21 @@ body {
 .task-edit-field textarea,
 .task-edit-field select {
   width: 100%;
+}
+
+.task-project-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-project-controls select {
+  flex: 1;
+}
+
+.task-project-create {
+  flex-shrink: 0;
+  padding-inline: 4px;
 }
 
 .task-edit-field input[type="date"] {
@@ -1209,6 +1280,88 @@ textarea:focus-visible {
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.completed-projects-card {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.completed-projects-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.completed-projects-body {
+  display: grid;
+  gap: 12px;
+}
+
+.completed-project {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--bg-muted);
+  display: grid;
+  gap: 10px;
+}
+
+.completed-project-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.completed-project-meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.completed-project-notes {
+  display: grid;
+  gap: 8px;
+}
+
+.completed-project-notes label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.completed-project-notes textarea {
+  width: 100%;
+  min-height: 70px;
+}
+
+.completed-project-notes button {
+  justify-self: flex-end;
+}
+
+.project-complete-form {
+  display: grid;
+  gap: 12px;
+}
+
+.project-complete-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.project-complete-field textarea {
+  width: 100%;
 }
 
 .checklist {

@@ -200,6 +200,10 @@ export class UIController {
     this.taskManager.addEventListener("toast", (event) => {
       this.showToast(event.detail.level, event.detail.message);
     });
+
+    this.taskManager.addEventListener("connection", (event) => {
+      this.updateConnectionIndicator(event.detail.status);
+    });
   }
 
   setupSummaryTabs() {
@@ -2934,30 +2938,26 @@ export class UIController {
   }
 
   startConnectionChecks() {
-    const updateIndicator = (status) => {
-    const dot = this.elements.connectionStatusDot;
-    if (!dot) return;
-    dot.classList.toggle("is-online", status === "online");
-    dot.classList.toggle("is-offline", status === "offline");
-    dot.setAttribute("aria-label", status === "online" ? "Online" : "Offline");
-  };
+    const updateIndicator = (status) => this.updateConnectionIndicator(status);
     const check = async () => {
       try {
-        await readServerState();
-        if (this.connectionStatus !== "online") {
-          this.connectionStatus = "online";
-          updateIndicator("online");
-        }
+        await this.taskManager.checkConnectivity();
+        updateIndicator(this.taskManager.connectionStatus);
       } catch (error) {
-        if (this.connectionStatus !== "offline") {
-          this.connectionStatus = "offline";
-          updateIndicator("offline");
-        }
+        updateIndicator("offline");
       }
       this.connectionCheckTimer = setTimeout(check, 60000);
     };
     updateIndicator(this.connectionStatus);
     check();
+  }
+
+  updateConnectionIndicator(status) {
+    const dot = this.elements.connectionStatusDot;
+    if (!dot) return;
+    dot.classList.toggle("is-online", status === "online");
+    dot.classList.toggle("is-offline", status === "offline");
+    dot.setAttribute("aria-label", status === "online" ? "Online" : "Offline");
   }
 
   syncTheme(theme) {

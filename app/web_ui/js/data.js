@@ -325,6 +325,7 @@ export class TaskManager extends EventTarget {
     this.pendingRemoteState = null;
     this.remoteRetryTimer = null;
     this.lastLocalSignature = hashState(this.state);
+    this.connectionStatus = "unknown";
     this.loadFromLocal();
     if (this.remoteSyncEnabled) {
       this.loadRemoteState();
@@ -336,9 +337,11 @@ export class TaskManager extends EventTarget {
       const remoteState = await readServerState();
       this.state = hydrateState(remoteState || {});
       this.remoteSignature = hashState(this.state);
+      this.setConnectionStatus("online");
       this.emitChange({ persist: false });
     } catch (error) {
       console.error("Failed to load remote state", error);
+      this.setConnectionStatus("offline");
       this.notify("warn", "Server storage unavailable. Showing local data until it returns.");
     }
   }
@@ -389,18 +392,41 @@ export class TaskManager extends EventTarget {
       await writeServerState(this.pendingRemoteState);
       this.remoteSignature = hashState(this.pendingRemoteState);
       this.pendingRemoteState = null;
+      this.setConnectionStatus("online");
       if (this.remoteRetryTimer) {
         clearTimeout(this.remoteRetryTimer);
         this.remoteRetryTimer = null;
       }
     } catch (error) {
       console.error("Failed to sync remote state", error);
-    if (this.remoteRetryTimer) return;
+      this.setConnectionStatus("offline");
+      if (this.remoteRetryTimer) return;
       this.remoteRetryTimer = setTimeout(() => {
         this.remoteRetryTimer = null;
         this.flushRemoteQueue();
       }, 60000);
     }
+  }
+
+  async checkConnectivity() {
+    if (!this.remoteSyncEnabled) {
+      this.setConnectionStatus("offline");
+      return false;
+    }
+    try {
+      await readServerState();
+      this.setConnectionStatus("online");
+      return true;
+    } catch (error) {
+      this.setConnectionStatus("offline");
+      return false;
+    }
+  }
+
+  setConnectionStatus(status) {
+    if (this.connectionStatus === status) return;
+    this.connectionStatus = status;
+    this.dispatchEvent(new CustomEvent("connection", { detail: { status } }));
   }
 
   save() {

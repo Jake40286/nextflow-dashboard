@@ -232,6 +232,10 @@ function hydrateState(raw = {}) {
     ...raw,
   };
   nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
+  if ((!raw || raw.tasks === undefined) && nextState.tasks.length === 0) {
+    // If no saved tasks exist (e.g., first load, bad state read), fall back to starter data.
+    nextState.tasks = defaultState().tasks.map((task) => normalizeTask(task));
+  }
   nextState.reference = (nextState.reference || []).map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
   nextState.completionLog = (nextState.completionLog || [])
     .map((entry) => normalizeCompletionEntry(entry))

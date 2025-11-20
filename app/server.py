@@ -11,6 +11,7 @@ import threading
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "/data/state.json"))
+COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "/data/completed.json"))
 BACKUP_DIR = Path(os.getenv("STATE_BACKUP_DIR", STATE_FILE.parent / "backups"))
 STATE_LOCK = threading.Lock()
 
@@ -43,6 +44,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
     def _ensure_state_dir(self):
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        COMPLETED_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     def do_GET(self):
         if self._is_state_endpoint():
@@ -64,14 +66,21 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
     def _handle_state_get(self):
         self._ensure_state_dir()
-        if STATE_FILE.exists():
-            with STATE_LOCK:
-                try:
-                    payload = json.loads(STATE_FILE.read_text(encoding="utf-8") or "{}")
-                except json.JSONDecodeError:
-                    payload = {}
-        else:
+        with STATE_LOCK:
             payload = {}
+            try:
+                if STATE_FILE.exists():
+                    payload = json.loads(STATE_FILE.read_text(encoding="utf-8") or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            try:
+                if COMPLETED_FILE.exists():
+                    completed_blob = json.loads(COMPLETED_FILE.read_text(encoding="utf-8") or "{}")
+                    payload["reference"] = completed_blob.get("reference", payload.get("reference"))
+                    payload["completionLog"] = completed_blob.get("completionLog", payload.get("completionLog"))
+                    payload["completedProjects"] = completed_blob.get("completedProjects", payload.get("completedProjects"))
+            except json.JSONDecodeError:
+                pass
         self._send_json(payload)
 
     def _handle_state_write(self):
@@ -92,7 +101,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
         self._ensure_state_dir()
         with STATE_LOCK:
-            STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            core_payload = dict(payload or {})
+            completed_payload = {
+                "reference": core_payload.pop("reference", []),
+                "completionLog": core_payload.pop("completionLog", []),
+                "completedProjects": core_payload.pop("completedProjects", []),
+            }
+            STATE_FILE.write_text(json.dumps(core_payload, indent=2), encoding="utf-8")
+            COMPLETED_FILE.write_text(json.dumps(completed_payload, indent=2), encoding="utf-8")
             try:
                 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
                 stamp = datetime.utcnow().strftime("%Y-%m-%d")

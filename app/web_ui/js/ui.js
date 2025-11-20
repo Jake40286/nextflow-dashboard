@@ -938,8 +938,24 @@ export class UIController {
         card.append(tagsRow);
       }
 
+      const notesDisplay = document.createElement("div");
+      notesDisplay.className = "completed-project-notes";
+      const noteText = (label, value) => {
+        const row = document.createElement("p");
+        row.className = "muted small-text";
+        row.textContent = `${label}: ${value || "—"}`;
+        return row;
+      };
+      notesDisplay.append(
+        noteText("What was achieved", entry.closureNotes?.achieved),
+        noteText("Lessons learned", entry.closureNotes?.lessons),
+        noteText("Follow-up items", entry.closureNotes?.followUp)
+      );
+      card.append(notesDisplay);
+
       const notesForm = document.createElement("form");
       notesForm.className = "completed-project-notes";
+      notesForm.hidden = true;
       const makeField = (labelText, value) => {
         const label = document.createElement("label");
         const caption = document.createElement("span");
@@ -954,11 +970,18 @@ export class UIController {
       const achievedInput = makeField("What was achieved", entry.closureNotes?.achieved || "");
       const lessonsInput = makeField("Lessons learned", entry.closureNotes?.lessons || "");
       const followUpInput = makeField("Follow-up items", entry.closureNotes?.followUp || "");
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "completed-project-actions";
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.className = "btn btn-primary";
       saveButton.textContent = "Save notes";
-      notesForm.append(saveButton);
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "btn btn-light";
+      cancelButton.textContent = "Cancel";
+      actionsRow.append(cancelButton, saveButton);
+      notesForm.append(actionsRow);
       notesForm.addEventListener("submit", (event) => {
         event.preventDefault();
         this.taskManager.updateCompletedProject(entry.id, {
@@ -968,8 +991,31 @@ export class UIController {
             followUp: followUpInput.value,
           },
         });
+        notesForm.hidden = true;
+        notesDisplay.hidden = false;
+        // Update display
+        notesDisplay.innerHTML = "";
+        notesDisplay.append(
+          noteText("What was achieved", achievedInput.value),
+          noteText("Lessons learned", lessonsInput.value),
+          noteText("Follow-up items", followUpInput.value)
+        );
+      });
+      cancelButton.addEventListener("click", () => {
+        notesForm.hidden = true;
+        notesDisplay.hidden = false;
       });
       card.append(notesForm);
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "btn btn-light completed-project-edit";
+      editButton.textContent = "Edit notes";
+      editButton.addEventListener("click", () => {
+        notesForm.hidden = false;
+        notesDisplay.hidden = true;
+      });
+      card.append(editButton);
       container.append(card);
     });
   }

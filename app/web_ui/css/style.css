@@ -1518,6 +1518,16 @@ textarea:focus-visible {
   justify-self: flex-end;
 }
 
+.completed-project-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.completed-project-edit {
+  justify-self: flex-start;
+}
+
 .project-complete-form {
   display: grid;
   gap: 12px;

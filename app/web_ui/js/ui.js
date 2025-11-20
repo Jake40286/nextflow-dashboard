@@ -848,6 +848,21 @@ export class UIController {
       title.textContent = entry.name;
       card.append(title);
 
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "completed-project-actions";
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn btn-danger btn-small";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        const confirmed = window.confirm(`Remove "${entry.name}" from Completed Projects?`);
+        if (confirmed) {
+          this.taskManager.removeCompletedProject(entry.id);
+        }
+      });
+      actionsRow.append(removeButton);
+      card.append(actionsRow);
+
       const meta = document.createElement("div");
       meta.className = "completed-project-meta";
       const metaParts = [`Completed ${formatFriendlyDate(entry.completedAt)}`];
@@ -2203,6 +2218,74 @@ export class UIController {
     closureInput.value = task.closureNotes || "";
     closureGroup.append(closureInput);
 
+    const buildTaskUpdates = () => {
+      const trimmedTitle = titleInput.value.trim();
+      if (!trimmedTitle) {
+        return null;
+      }
+      const updates = {
+        title: trimmedTitle,
+        description: descriptionInput.value.trim(),
+        context: contextInput.value.trim() || null,
+        peopleTag: peopleInput.value.trim() || null,
+        energyLevel: energyInput.value || null,
+        timeRequired: timeInput.value || null,
+        projectId: projectSelect.value || null,
+        dueDate: dueInput.value || null,
+        calendarDate: calendarInput.value || null,
+        waitingFor: waitingInput.value.trim() || null,
+        assignee: assigneeInput.value.trim() || null,
+        closureNotes: closureInput.value.trim() || null,
+      };
+      if (task.status === STATUS.WAITING && !updates.waitingFor) {
+        updates.waitingFor = "Pending assignee";
+      }
+      if (task.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
+        updates.waitingFor = null;
+      }
+      return updates;
+    };
+
+    const applyTaskUpdates = ({ showTitleWarning = false } = {}) => {
+      const updates = buildTaskUpdates();
+      if (!updates) {
+        if (showTitleWarning) {
+          this.taskManager.notify("warn", "Task title cannot be empty.");
+          titleInput.focus();
+        }
+        return false;
+      }
+      this.taskManager.updateTask(task.id, updates);
+      return true;
+    };
+
+    // Keep a lightweight auto-save so sidebar edits persist without clicking Save.
+    let autoSaveTimer = null;
+    const scheduleAutoSave = () => {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+      }
+      autoSaveTimer = setTimeout(() => applyTaskUpdates(), 200);
+    };
+
+    const autoSaveFields = [
+      titleInput,
+      descriptionInput,
+      contextInput,
+      peopleInput,
+      energyInput,
+      timeInput,
+      projectSelect,
+      dueInput,
+      calendarInput,
+      waitingInput,
+      assigneeInput,
+      closureInput,
+    ];
+    autoSaveFields.forEach((field) => {
+      field.addEventListener("change", scheduleAutoSave);
+    });
+
     const actions = document.createElement("div");
     actions.className = "task-edit-actions";
 
@@ -2254,34 +2337,7 @@ export class UIController {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const trimmedTitle = titleInput.value.trim();
-      if (!trimmedTitle) {
-        this.taskManager.notify("warn", "Task title cannot be empty.");
-        return;
-      }
-      const updates = {
-        title: trimmedTitle,
-        description: descriptionInput.value.trim(),
-        context: contextInput.value.trim() || null,
-        peopleTag: peopleInput.value.trim() || null,
-        energyLevel: energyInput.value || null,
-        timeRequired: timeInput.value || null,
-        projectId: projectSelect.value || null,
-        dueDate: dueInput.value || null,
-        calendarDate: calendarInput.value || null,
-        waitingFor: waitingInput.value.trim() || null,
-        assignee: assigneeInput.value.trim() || null,
-        closureNotes: closureInput.value.trim() || null,
-      };
-
-      if (task.status === STATUS.WAITING && !updates.waitingFor) {
-        updates.waitingFor = "Pending assignee";
-      }
-      if (task.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
-        updates.waitingFor = null;
-      }
-
-      this.taskManager.updateTask(task.id, updates);
+      applyTaskUpdates({ showTitleWarning: true });
     });
 
     return form;

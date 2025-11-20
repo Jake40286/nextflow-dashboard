@@ -705,6 +705,22 @@ export class TaskManager extends EventTarget {
     });
   }
 
+  removeCompletedProject(projectId) {
+    if (!this.state.completedProjects || !this.state.completedProjects.length) {
+      this.notify("error", "No completed projects to remove.");
+      return false;
+    }
+    const before = this.state.completedProjects.length;
+    this.state.completedProjects = this.state.completedProjects.filter((project) => project.id !== projectId);
+    if (this.state.completedProjects.length === before) {
+      this.notify("error", "Completed project not found.");
+      return false;
+    }
+    this.emitChange();
+    this.notify("info", "Removed project from Completed Projects.");
+    return true;
+  }
+
   getContexts() {
     const contexts = new Set();
     const addContext = (value) => {

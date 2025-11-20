@@ -98,11 +98,12 @@ export class UIController {
       integrationsCard,
       reportGrouping,
       reportYear,
-      randomContext,
-      pickRandomTask,
-      calendarPrevMonth,
-      calendarNextMonth,
-    } = this.elements;
+    randomContext,
+    pickRandomTask,
+    projectAreaFilter,
+    calendarPrevMonth,
+    calendarNextMonth,
+  } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
       const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
@@ -145,6 +146,11 @@ export class UIController {
       const projects = this.getProjectCache();
       const nextExpandedState = projects.some((project) => !project.isExpanded);
       projects.forEach((project) => this.taskManager.toggleProjectExpansion(project.id, nextExpandedState));
+    });
+
+    projectAreaFilter?.addEventListener("change", () => {
+      this.filters.projectArea = projectAreaFilter.value;
+      this.renderProjects();
     });
 
     calendarDate.addEventListener("change", () => {
@@ -693,7 +699,27 @@ export class UIController {
   renderProjects() {
     const container = this.elements.projectList;
     container.innerHTML = "";
-    const projects = this.projectCache || [];
+    const filterArea = this.elements.projectAreaFilter?.value || "all";
+    const projects = (this.projectCache || []).filter((project) => {
+      if (!filterArea || filterArea === "all") return true;
+      return (project.areaOfFocus || "").toLowerCase() === filterArea.toLowerCase();
+    });
+
+    if (this.elements.projectAreaFilter) {
+      const select = this.elements.projectAreaFilter;
+      const areas = new Set([...PROJECT_AREAS]);
+      (this.projectCache || []).forEach((project) => {
+        if (project.areaOfFocus) areas.add(project.areaOfFocus);
+      });
+      const existing = new Set(Array.from(select.options).map((opt) => opt.value));
+      Array.from(areas).forEach((area) => {
+        if (existing.has(area)) return;
+        const option = document.createElement("option");
+        option.value = area;
+        option.textContent = area;
+        select.append(option);
+      });
+    }
 
     projects.forEach((project) => {
       const details = document.createElement("details");
@@ -3066,7 +3092,8 @@ function mapElements() {
     activePanelCount: byId("activePanelCount"),
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
     contextBoard: document.querySelector("[data-context-board]"),
-    projectList: document.querySelector("[data-projects]"),
+      projectList: document.querySelector("[data-projects]"),
+    projectAreaFilter: document.getElementById("projectAreaFilter"),
     completedProjectsList: document.querySelector("[data-completed-projects]"),
     waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
     somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),

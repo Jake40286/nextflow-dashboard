@@ -222,6 +222,12 @@
 
       <section class="workspace-view" data-panel="projects" role="tabpanel" aria-labelledby="summary-tab-projects" id="panel-projects" hidden>
         <div class="panel-content">
+        <div class="project-filters">
+          <label class="filter-control" for="projectAreaFilter">Area of focus</label>
+          <select id="projectAreaFilter">
+            <option value="all">All areas</option>
+          </select>
+        </div>
         <form id="newProjectForm" class="project-create" aria-label="Create project">
           <label class="visually-hidden" for="projectName">Project name</label>
           <input id="projectName" name="projectName" type="text" placeholder="Project name" autocomplete="off" required />

@@ -640,11 +640,6 @@ body {
   font-size: 0.95rem;
 }
 
-.report-row span {
-  font-weight: 600;
-  color: var(--accent);
-}
-
 .report-range {
   font-weight: 500;
   color: var(--text-muted);
@@ -1338,6 +1333,17 @@ textarea:focus-visible {
   background: var(--bg-muted);
   padding: 12px 16px;
   margin-bottom: 12px;
+}
+
+.project-filters {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.project-filters select {
+  min-width: 180px;
 }
 
 .project summary {

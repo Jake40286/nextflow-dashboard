@@ -706,6 +706,10 @@ body {
   font-style: italic;
 }
 
+.report-detail-actions {
+  margin-top: 6px;
+}
+
 .contexts {
   display: grid;
   gap: 12px;

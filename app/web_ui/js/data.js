@@ -587,6 +587,55 @@ export class TaskManager extends EventTarget {
     return snapshot;
   }
 
+  restoreCompletedTask(id) {
+    const sourceIndex = this.state.reference.findIndex((entry) => entry.id === id || entry.sourceId === id);
+    const logIndex = this.state.completionLog.findIndex((entry) => entry.id === id || entry.sourceId === id);
+    let entry = null;
+    let archiveType = "reference";
+    if (sourceIndex !== -1) {
+      [entry] = this.state.reference.splice(sourceIndex, 1);
+      archiveType = "reference";
+    } else if (logIndex !== -1) {
+      [entry] = this.state.completionLog.splice(logIndex, 1);
+      archiveType = "deleted";
+    }
+    if (!entry) {
+      this.notify("error", "Completed task not found.");
+      return null;
+    }
+    const restored = {
+      id: entry.sourceId || entry.id || generateId("task"),
+      title: entry.title,
+      description: entry.description || "",
+      status: entry.status || STATUS.NEXT,
+      context: entry.context || null,
+      peopleTag: entry.peopleTag || null,
+      energyLevel: entry.energyLevel || null,
+      timeRequired: entry.timeRequired || null,
+      projectId: entry.projectId || null,
+      assignee: entry.assignee || null,
+      waitingFor: entry.waitingFor || null,
+      dueDate: entry.dueDate || null,
+      calendarDate: entry.calendarDate || null,
+      createdAt: entry.createdAt || new Date().toISOString(),
+      completedAt: null,
+      closureNotes: entry.closureNotes || null,
+      updatedAt: nowIso(),
+      archiveType: archiveType,
+    };
+    normalizeTaskTags(restored, { enforceContext: restored.status !== STATUS.INBOX });
+    this.state.tasks.unshift(restored);
+    if (restored.projectId) {
+      const project = this.state.projects.find((p) => p.id === restored.projectId);
+      if (project && !project.tasks.includes(restored.id)) {
+        project.tasks.push(restored.id);
+      }
+    }
+    this.emitChange();
+    this.notify("info", `Restored "${restored.title}" to Next Actions.`);
+    return restored;
+  }
+
   refreshFromStorage() {
     const previousTheme = this.getTheme();
     this.load();

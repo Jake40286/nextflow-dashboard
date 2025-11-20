@@ -1527,6 +1527,20 @@ export class UIController {
         const meta = document.createElement("span");
         meta.className = "report-detail-meta";
         meta.textContent = this.formatReportTaskMeta(task);
+        const actions = document.createElement("div");
+        actions.className = "report-detail-actions";
+        const restoreBtn = document.createElement("button");
+        restoreBtn.type = "button";
+        restoreBtn.className = "btn btn-light";
+        restoreBtn.textContent = "Restore";
+        restoreBtn.addEventListener("click", () => {
+          const restored = this.taskManager.restoreCompletedTask(task.id || task.sourceId);
+          if (restored) {
+            this.renderReports();
+            this.setActivePanel("next");
+          }
+        });
+        actions.append(restoreBtn);
         item.append(title, meta);
         if (task.closureNotes) {
           const notes = document.createElement("p");
@@ -1534,6 +1548,7 @@ export class UIController {
           notes.textContent = `Notes: ${task.closureNotes}`;
           item.append(notes);
         }
+        item.append(actions);
         reportDetailsList.append(item);
       });
   }

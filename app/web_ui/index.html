@@ -392,6 +392,15 @@
   <script src="lib/chart.min.js"></script>
   <script src="lib/dragdrop.js"></script>
   <script type="module" src="js/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch((error) => {
+          console.warn("Service worker registration failed:", error);
+        });
+      });
+    }
+  </script>
 
   <datalist id="contextSuggestions"></datalist>
   <datalist id="peopleSuggestions"></datalist>

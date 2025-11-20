@@ -279,6 +279,14 @@ body {
   height: 16px;
 }
 
+.clarify-followup {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  background: var(--bg-muted);
+}
+
 .clarify-context-control {
   display: flex;
   gap: 8px;
@@ -295,6 +303,12 @@ body {
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--bg-muted);
+}
+
+.clarify-date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .clarify-step h3 {

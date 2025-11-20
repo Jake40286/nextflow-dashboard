@@ -980,7 +980,8 @@ function normalizeTask(task) {
     timeRequired: task.timeRequired ?? null,
     closureNotes: task.closureNotes ?? null,
   };
-  return normalizeTaskTags(normalized);
+  const enforceContext = normalized.status && normalized.status !== STATUS.INBOX;
+  return normalizeTaskTags(normalized, { enforceContext });
 }
 
 function normalizeCompletionEntry(entry) {

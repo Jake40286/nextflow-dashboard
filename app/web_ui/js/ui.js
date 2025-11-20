@@ -1531,13 +1531,14 @@ export class UIController {
         actions.className = "report-detail-actions";
         const restoreBtn = document.createElement("button");
         restoreBtn.type = "button";
-        restoreBtn.className = "btn btn-light";
-        restoreBtn.textContent = "Restore";
+        restoreBtn.className = "btn btn-light btn-small report-restore-btn";
+        restoreBtn.textContent = "Restore task";
         restoreBtn.addEventListener("click", () => {
           const restored = this.taskManager.restoreCompletedTask(task.id || task.sourceId);
           if (restored) {
             this.renderReports();
             this.setActivePanel("next");
+            this.openTaskFlyout(restored.id);
           }
         });
         actions.append(restoreBtn);

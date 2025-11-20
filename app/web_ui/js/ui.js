@@ -36,11 +36,11 @@ export class UIController {
   constructor(taskManager) {
     this.taskManager = taskManager;
     this.filters = {
-      context: "all",
-      project: "all",
-      person: "all",
-      energy: "all",
-      time: "all",
+      context: ["all"],
+      project: ["all"],
+      person: ["all"],
+      energy: ["all"],
+      time: ["all"],
       search: "",
       date: "",
     };
@@ -85,11 +85,6 @@ export class UIController {
 
   bindListeners() {
     const {
-      contextFilter,
-      projectFilter,
-      personFilter,
-      energyFilter,
-      timeFilter,
       searchTasks,
       searchToggle,
       searchField,
@@ -102,31 +97,6 @@ export class UIController {
       randomContext,
       pickRandomTask,
     } = this.elements;
-
-    contextFilter.addEventListener("change", () => {
-      this.filters.context = contextFilter.value;
-      this.renderAll();
-    });
-
-    projectFilter.addEventListener("change", () => {
-      this.filters.project = projectFilter.value;
-      this.renderAll();
-    });
-
-    personFilter?.addEventListener("change", () => {
-      this.filters.person = personFilter.value;
-      this.renderAll();
-    });
-
-    energyFilter?.addEventListener("change", () => {
-      this.filters.energy = energyFilter.value;
-      this.renderAll();
-    });
-
-    timeFilter?.addEventListener("change", () => {
-      this.filters.time = timeFilter.value;
-      this.renderAll();
-    });
 
     searchToggle?.addEventListener("click", () => {
       const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
@@ -150,12 +120,15 @@ export class UIController {
     });
 
     clearFilters.addEventListener("click", () => {
-      this.filters = { context: "all", project: "all", person: "all", energy: "all", time: "all", search: "", date: "" };
-      contextFilter.value = "all";
-      projectFilter.value = "all";
-      if (personFilter) personFilter.value = "all";
-      if (energyFilter) energyFilter.value = "all";
-      if (timeFilter) timeFilter.value = "all";
+      this.filters = {
+        context: ["all"],
+        project: ["all"],
+        person: ["all"],
+        energy: ["all"],
+        time: ["all"],
+        search: "",
+        date: "",
+      };
       searchTasks.value = "";
       calendarDate.value = "";
       this.hideSearchField({ focus: false });
@@ -476,13 +449,34 @@ export class UIController {
 
   renderFilters() {
     const contexts = this.taskManager.getContexts();
-    const projects = this.projectCache || [];
-
-    fillSelect(this.elements.contextFilter, contexts, this.filters.context);
+    this.renderFilterPicker("context", {
+      options: contexts.map((context) => ({ label: context, value: context })),
+      toggle: this.elements.contextFilterToggle,
+      container: this.elements.contextFilterOptions,
+      defaultLabel: "All contexts",
+    });
     if (this.elements.randomContext) {
       fillSelect(this.elements.randomContext, contexts, this.randomContext || "all");
     }
-    fillProjectSelect(this.elements.projectFilter, projects, this.filters.project);
+
+    const projects = (this.projectCache || [])
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+    this.renderFilterPicker("project", {
+      options: projects.map((project) => ({
+        label: project.name + (project.someday ? " (Someday)" : ""),
+        value: project.id,
+      })),
+      toggle: this.elements.projectFilterToggle,
+      container: this.elements.projectFilterOptions,
+      defaultLabel: "All projects",
+      singleValueLabel: (value) => {
+        const project = this.projectLookup?.get(value);
+        if (!project) return "1 project";
+        return project.name + (project.someday ? " (Someday)" : "");
+      },
+    });
+
     const allTasks = this.taskManager.getTasks({ includeCompleted: true });
     const people = new Set();
     const energyLevels = new Set([...ENERGY_LEVELS]);
@@ -492,15 +486,113 @@ export class UIController {
       if (task.energyLevel) energyLevels.add(task.energyLevel);
       if (task.timeRequired) timeEstimates.add(task.timeRequired);
     });
-    if (this.elements.personFilter) {
-      fillSelect(this.elements.personFilter, Array.from(people).sort((a, b) => a.localeCompare(b)), this.filters.person);
+
+    this.renderFilterPicker("person", {
+      options: Array.from(people)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+        .map((person) => ({ label: person, value: person })),
+      toggle: this.elements.personFilterToggle,
+      container: this.elements.personFilterOptions,
+      defaultLabel: "All people",
+    });
+
+    this.renderFilterPicker("energy", {
+      options: Array.from(energyLevels)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+        .map((value) => ({ label: value, value })),
+      toggle: this.elements.energyFilterToggle,
+      container: this.elements.energyFilterOptions,
+      defaultLabel: "All energy levels",
+    });
+
+    this.renderFilterPicker("time", {
+      options: Array.from(timeEstimates)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+        .map((value) => ({ label: value, value })),
+      toggle: this.elements.timeFilterToggle,
+      container: this.elements.timeFilterOptions,
+      defaultLabel: "All durations",
+    });
+  }
+
+  renderFilterPicker(key, { options, toggle, container, defaultLabel, singleValueLabel }) {
+    if (!container) return;
+    const entries = [{ label: defaultLabel, value: "all" }, ...options];
+    container.innerHTML = "";
+    entries.forEach((option) => {
+      const safeValue = option.value?.toString().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "all";
+      const id = `${key}-filter-${safeValue}`;
+      const label = document.createElement("label");
+      label.setAttribute("for", id);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = id;
+      checkbox.value = option.value;
+      checkbox.checked = this.isFilterValueSelected(key, option.value);
+      checkbox.addEventListener("change", () => {
+        this.updateFilterSelection(key, option.value, checkbox.checked);
+        this.renderAll();
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      container.append(label);
+    });
+    this.updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel);
+  }
+
+  updateFilterSelection(key, value, checked) {
+    const current = Array.isArray(this.filters[key]) ? [...this.filters[key]] : [this.filters[key]];
+    const selections = new Set(current);
+    if (value === "all") {
+      if (checked || selections.size === 0 || selections.has("all")) {
+        this.filters[key] = ["all"];
+      }
+      return;
     }
-    if (this.elements.energyFilter) {
-      fillSelect(this.elements.energyFilter, Array.from(energyLevels).sort((a, b) => a.localeCompare(b)), this.filters.energy);
+    selections.delete("all");
+    if (checked) {
+      selections.add(value);
+    } else {
+      selections.delete(value);
     }
-    if (this.elements.timeFilter) {
-      fillSelect(this.elements.timeFilter, Array.from(timeEstimates).sort((a, b) => a.localeCompare(b)), this.filters.time);
+    if (!selections.size) {
+      selections.add("all");
     }
+    this.filters[key] = Array.from(selections);
+  }
+
+  isFilterValueSelected(key, value) {
+    const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
+    if (value === "all") {
+      return selections.includes("all") || !selections.length;
+    }
+    if (selections.includes("all")) {
+      return false;
+    }
+    return selections.includes(value);
+  }
+
+  updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel) {
+    if (!toggle) return;
+    const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
+    if (!selections.length || selections.includes("all")) {
+      toggle.textContent = defaultLabel;
+      return;
+    }
+    if (selections.length === 1) {
+      const value = selections[0];
+      if (typeof singleValueLabel === "function") {
+        toggle.textContent = singleValueLabel(value);
+      } else {
+        toggle.textContent = value;
+      }
+      return;
+    }
+    toggle.textContent = `${selections.length} selected`;
   }
 
   renderInbox() {
@@ -1049,10 +1141,11 @@ export class UIController {
   renderReportProjectPicker(projects) {
     const menu = this.elements.reportProjectOptions;
     if (!menu) return;
+    const sortedProjects = [...projects].sort((a, b) => a.name.localeCompare(b.name));
     const options = [
       { label: "All projects", value: "all" },
       { label: "No project", value: "none" },
-      ...projects.map((project) => ({ label: project.name, value: project.id })),
+      ...sortedProjects.map((project) => ({ label: project.name, value: project.id })),
     ];
     menu.innerHTML = "";
     options.forEach((option) => {
@@ -1309,6 +1402,9 @@ export class UIController {
     const meta = document.createElement("div");
     meta.className = "task-row-meta";
     const metaItems = [];
+    if (this.isTaskOverdue(task)) {
+      metaItems.push(this.createMetaSpan("OVERDUE", "task-meta-pill task-meta-overdue"));
+    }
     metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
     if (task.context) metaItems.push(this.createMetaSpan(task.context));
     const projectName = this.getProjectName(task.projectId);
@@ -1319,7 +1415,8 @@ export class UIController {
     if (task.energyLevel) metaItems.push(this.createMetaSpan(`Energy: ${task.energyLevel}`));
     if (task.timeRequired) metaItems.push(this.createMetaSpan(`Time: ${task.timeRequired}`));
     if (task.dueDate) {
-      metaItems.push(this.createMetaSpan(`Due ${formatFriendlyDate(task.dueDate)}`));
+      const dueClass = this.getDueUrgencyClass(task.dueDate);
+      metaItems.push(this.createMetaSpan(`Due ${formatFriendlyDate(task.dueDate)}`, dueClass));
     } else if (task.calendarDate) {
       metaItems.push(this.createMetaSpan(`📅 ${formatFriendlyDate(task.calendarDate)}`));
     }
@@ -1624,7 +1721,10 @@ export class UIController {
     placeholder.value = "none";
     placeholder.textContent = "No project";
     select.append(placeholder);
-    const projects = this.taskManager.getProjects({ includeSomeday: true });
+    const projects = this.taskManager
+      .getProjects({ includeSomeday: true })
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
     projects.forEach((project) => {
       const option = document.createElement("option");
       option.value = project.id;
@@ -2212,9 +2312,12 @@ export class UIController {
     return row;
   }
 
-  createMetaSpan(text) {
+  createMetaSpan(text, className) {
     const span = document.createElement("span");
     span.textContent = text;
+    if (className) {
+      span.className = className;
+    }
     return span;
   }
 
@@ -2227,6 +2330,39 @@ export class UIController {
   getProjectName(projectId) {
     if (!projectId) return null;
     return this.projectLookup?.get(projectId)?.name || null;
+  }
+
+  isTaskOverdue(task) {
+    if (!task?.dueDate || task.completedAt) return false;
+    const due = new Date(task.dueDate);
+    if (Number.isNaN(due.getTime())) return false;
+    return due < this.getTodayStart();
+  }
+
+  getDueUrgencyClass(dueDate) {
+    if (!dueDate) return "";
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return "";
+    const now = new Date();
+    const diffMs = due.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    if (diffHours <= 72) {
+      return "task-meta-due-critical";
+    }
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays <= 7) {
+      return "task-meta-due-warning";
+    }
+    return "";
+  }
+
+  getTodayStart() {
+    if (!this.todayStart || Date.now() - this.todayStart.getTime() > 1000 * 60 * 60) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      this.todayStart = now;
+    }
+    return this.todayStart;
   }
 
   getProjectCache() {
@@ -2441,11 +2577,21 @@ function mapElements() {
   return {
     appRoot: document.querySelector(".app"),
     alerts: document.querySelector(".alerts"),
-    contextFilter: byId("contextFilter"),
-    projectFilter: byId("projectFilter"),
-    personFilter: byId("personFilter"),
-    energyFilter: byId("energyFilter"),
-    timeFilter: byId("timeFilter"),
+    contextFilterPicker: byId("contextFilterPicker"),
+    contextFilterToggle: byId("contextFilterToggle"),
+    contextFilterOptions: byId("contextFilterOptions"),
+    projectFilterPicker: byId("projectFilterPicker"),
+    projectFilterToggle: byId("projectFilterToggle"),
+    projectFilterOptions: byId("projectFilterOptions"),
+    personFilterPicker: byId("personFilterPicker"),
+    personFilterToggle: byId("personFilterToggle"),
+    personFilterOptions: byId("personFilterOptions"),
+    energyFilterPicker: byId("energyFilterPicker"),
+    energyFilterToggle: byId("energyFilterToggle"),
+    energyFilterOptions: byId("energyFilterOptions"),
+    timeFilterPicker: byId("timeFilterPicker"),
+    timeFilterToggle: byId("timeFilterToggle"),
+    timeFilterOptions: byId("timeFilterOptions"),
     searchTasks: byId("searchTasks"),
     searchToggle: byId("toggleSearch"),
     searchField: byId("searchTasksContainer"),
@@ -2588,23 +2734,6 @@ function fillSelect(select, options, current) {
   }
 }
 
-function fillProjectSelect(select, projects, current) {
-  while (select.options.length > 1) {
-    select.remove(1);
-  }
-  projects.forEach((project) => {
-    const opt = document.createElement("option");
-    opt.value = project.id;
-    opt.textContent = project.name + (project.someday ? " (Someday)" : "");
-    select.append(opt);
-  });
-  if (select.querySelector(`option[value="${current}"]`)) {
-    select.value = current;
-  } else {
-    select.value = "all";
-  }
-}
-
 function loadStoredPanel() {
   try {
     return localStorage.getItem(TAB_STORAGE_KEY) || null;
@@ -2637,6 +2766,7 @@ function fillDatalist(element, values) {
   element.innerHTML = "";
   Array.from(new Set(values))
     .filter((value) => typeof value === "string" && value.trim())
+    .sort((a, b) => a.localeCompare(b))
     .forEach((value) => {
       const option = document.createElement("option");
       option.value = value;

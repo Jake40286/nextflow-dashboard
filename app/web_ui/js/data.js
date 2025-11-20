@@ -384,23 +384,30 @@ export class TaskManager extends EventTarget {
     }
   }
 
-  getTasks({ status, context, projectId, searchTerm, person, energy, time, includeCompleted = false } = {}) {
-    const matchesValue = (value, filter) => {
-      if (!filter || filter === "all") return true;
-      const normalizedFilter = String(filter).trim();
-      if (!normalizedFilter) return true;
-      return value === normalizedFilter;
-    };
-
+  getTasks({
+    status,
+    context,
+    contexts,
+    projectId,
+    projectIds,
+    searchTerm,
+    person,
+    people,
+    energy,
+    energies,
+    time,
+    times,
+    includeCompleted = false,
+  } = {}) {
     return this.state.tasks.filter((task) => {
       if (!includeCompleted && task.completedAt) return false;
       if (status && task.status !== status) return false;
-      if (context && context !== "all" && task.context !== context) return false;
-      if (projectId && projectId !== "all" && task.projectId !== projectId) return false;
+      if (!matchesFilterValue(task.context, contexts ?? context)) return false;
+      if (!matchesFilterValue(task.projectId, projectIds ?? projectId)) return false;
       if (searchTerm && !matchesSearch(task, searchTerm)) return false;
-      if (!matchesValue(task.peopleTag, person)) return false;
-      if (!matchesValue(task.energyLevel, energy)) return false;
-      if (!matchesValue(task.timeRequired, time)) return false;
+      if (!matchesFilterValue(task.peopleTag, people ?? person)) return false;
+      if (!matchesFilterValue(task.energyLevel, energies ?? energy)) return false;
+      if (!matchesFilterValue(task.timeRequired, times ?? time)) return false;
       return true;
     });
   }
@@ -711,7 +718,7 @@ export class TaskManager extends EventTarget {
     if (!contexts.size) {
       PHYSICAL_CONTEXTS.forEach((context) => contexts.add(context));
     }
-    return Array.from(contexts);
+    return Array.from(contexts).sort((a, b) => a.localeCompare(b));
   }
 
   getSummary() {

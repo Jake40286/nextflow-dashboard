@@ -92,34 +92,39 @@
           <header class="card-header">
             <h2 id="filterHeading">Filters</h2>
           </header>
-          <label class="filter-control" for="contextFilter">Context</label>
-          <select id="contextFilter" aria-describedby="contextHelp">
-            <option value="all">All Contexts</option>
-          </select>
+          <label class="filter-control" for="contextFilterToggle">Context</label>
+          <details class="multi-select" id="contextFilterPicker">
+            <summary id="contextFilterToggle">All contexts</summary>
+            <div class="multi-select-options" id="contextFilterOptions"></div>
+          </details>
           <small id="contextHelp" class="muted">See tasks matching specific contexts.</small>
 
-          <label class="filter-control" for="projectFilter">Project</label>
-          <select id="projectFilter" aria-describedby="projectHelp">
-            <option value="all">All Projects</option>
-          </select>
+          <label class="filter-control" for="projectFilterToggle">Project</label>
+          <details class="multi-select" id="projectFilterPicker">
+            <summary id="projectFilterToggle">All projects</summary>
+            <div class="multi-select-options" id="projectFilterOptions"></div>
+          </details>
           <small id="projectHelp" class="muted">View tasks tied to a project.</small>
 
-          <label class="filter-control" for="personFilter">Person</label>
-          <select id="personFilter" aria-describedby="personHelp">
-            <option value="all">All People</option>
-          </select>
+          <label class="filter-control" for="personFilterToggle">Person</label>
+          <details class="multi-select" id="personFilterPicker">
+            <summary id="personFilterToggle">All people</summary>
+            <div class="multi-select-options" id="personFilterOptions"></div>
+          </details>
           <small id="personHelp" class="muted">Limit to tasks assigned to a person.</small>
 
-          <label class="filter-control" for="energyFilter">Energy</label>
-          <select id="energyFilter" aria-describedby="energyHelp">
-            <option value="all">All Energy levels</option>
-          </select>
+          <label class="filter-control" for="energyFilterToggle">Energy</label>
+          <details class="multi-select" id="energyFilterPicker">
+            <summary id="energyFilterToggle">All energy levels</summary>
+            <div class="multi-select-options" id="energyFilterOptions"></div>
+          </details>
           <small id="energyHelp" class="muted">Filter tasks by tracked energy.</small>
 
-          <label class="filter-control" for="timeFilter">Time</label>
-          <select id="timeFilter" aria-describedby="timeHelp">
-            <option value="all">All Durations</option>
-          </select>
+          <label class="filter-control" for="timeFilterToggle">Time</label>
+          <details class="multi-select" id="timeFilterPicker">
+            <summary id="timeFilterToggle">All durations</summary>
+            <div class="multi-select-options" id="timeFilterOptions"></div>
+          </details>
           <small id="timeHelp" class="muted">Choose tasks based on estimated duration.</small>
         </section>
 
@@ -271,14 +276,14 @@
             <label class="filter-control" for="reportYear">Year</label>
             <select id="reportYear"></select>
             <label class="filter-control" for="reportContextToggle">Context</label>
-            <details class="report-multiselect" id="reportContextPicker">
+            <details class="multi-select" id="reportContextPicker">
               <summary id="reportContextToggle">All contexts</summary>
-              <div class="report-multiselect-options" id="reportContextOptions"></div>
+              <div class="multi-select-options" id="reportContextOptions"></div>
             </details>
             <label class="filter-control" for="reportProjectToggle">Project</label>
-            <details class="report-multiselect" id="reportProjectPicker">
+            <details class="multi-select" id="reportProjectPicker">
               <summary id="reportProjectToggle">All projects</summary>
-              <div class="report-multiselect-options" id="reportProjectOptions"></div>
+              <div class="multi-select-options" id="reportProjectOptions"></div>
             </details>
           </div>
           <div class="panel-body report-body">

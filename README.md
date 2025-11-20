@@ -2,6 +2,12 @@
 
 Static GTD dashboard bundled with a tiny Python HTTP server so it can run anywhere via Docker. Launch the stack to serve the files from `app/web_ui` and persist optional data under `data/`.
 
+Key behaviors:
+- Clarification is a guided, nine-step flow that always removes items from Inbox (identify → actionable → next action → 2‑minute rule → who → date → project → metadata → final route).
+- Flyout edits auto-save on change (no need to click Save).
+- Completed projects can be removed from the Completed list.
+- Quick add never assigns a context; context is only set during clarification.
+
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in the values (including `KEYRING_SERVICE` and `KEYRING_USERNAME`). `STATE_FILE` controls where the dashboard writes the shared JSON state inside the container (defaults to `/data/state.json`).
@@ -32,3 +38,4 @@ docker compose up --build -d
 - [ ] Credential retrieval/storage flow tested.
 - [ ] `docker compose up --build` completes successfully.
 - [ ] Service responds on the exposed port without errors.
+- [ ] Clarify flow runs end-to-end and routes items out of Inbox as expected.

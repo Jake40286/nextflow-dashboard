@@ -339,7 +339,8 @@ export class TaskManager extends EventTarget {
   async loadRemoteState() {
     try {
       const remoteState = await readServerState();
-      this.state = hydrateState(remoteState || {});
+      const merged = mergeStates(remoteState || {}, this.state || {});
+      this.state = hydrateState(merged);
       this.remoteSignature = hashState(this.state);
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });

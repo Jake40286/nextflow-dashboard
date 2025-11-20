@@ -130,6 +130,25 @@ body {
   background: var(--bg-muted);
 }
 
+.meta-item.status-indicator {
+  align-items: center;
+  gap: 2px;
+}
+
+.status-dot {
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #9aa5b8;
+}
+
+.status-dot.is-online {
+  color: #22c55e;
+}
+
+.status-dot.is-offline {
+  color: #9aa5b8;
+}
+
 .app[data-theme="dark"] .meta-item {
   background: var(--accent-soft);
 }

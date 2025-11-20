@@ -70,6 +70,8 @@ export class UIController {
     this.clarifyDestinationButtons = [];
     this.pendingClosure = null;
     this.projectCompletionState = { projectId: null };
+    this.connectionStatus = "online";
+    this.connectionCheckTimer = null;
   }
 
   init() {
@@ -82,6 +84,7 @@ export class UIController {
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
+    this.startConnectionChecks();
   }
 
   bindListeners() {
@@ -2930,6 +2933,33 @@ export class UIController {
     }, 3200);
   }
 
+  startConnectionChecks() {
+    const updateIndicator = (status) => {
+    const dot = this.elements.connectionStatusDot;
+    if (!dot) return;
+    dot.classList.toggle("is-online", status === "online");
+    dot.classList.toggle("is-offline", status === "offline");
+    dot.setAttribute("aria-label", status === "online" ? "Online" : "Offline");
+  };
+    const check = async () => {
+      try {
+        await readServerState();
+        if (this.connectionStatus !== "online") {
+          this.connectionStatus = "online";
+          updateIndicator("online");
+        }
+      } catch (error) {
+        if (this.connectionStatus !== "offline") {
+          this.connectionStatus = "offline";
+          updateIndicator("offline");
+        }
+      }
+      this.connectionCheckTimer = setTimeout(check, 60000);
+    };
+    updateIndicator(this.connectionStatus);
+    check();
+  }
+
   syncTheme(theme) {
     const appRoot = this.elements.appRoot;
     appRoot.dataset.theme = theme;
@@ -3009,6 +3039,7 @@ function mapElements() {
     reportDetailsTitle: byId("reportDetailsTitle"),
     reportDetailsMeta: byId("reportDetailsMeta"),
     reportDetailsPlaceholder: byId("reportDetailsPlaceholder"),
+    connectionStatusDot: byId("connectionStatusDot"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),

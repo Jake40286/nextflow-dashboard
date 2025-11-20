@@ -395,12 +395,11 @@ export class TaskManager extends EventTarget {
       }
     } catch (error) {
       console.error("Failed to sync remote state", error);
-      this.notify("warn", "Offline detected. Changes will sync when back online.");
-      if (this.remoteRetryTimer) return;
+    if (this.remoteRetryTimer) return;
       this.remoteRetryTimer = setTimeout(() => {
         this.remoteRetryTimer = null;
         this.flushRemoteQueue();
-      }, 5000);
+      }, 60000);
     }
   }
 

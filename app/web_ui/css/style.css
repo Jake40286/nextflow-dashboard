@@ -1181,6 +1181,88 @@ textarea:focus-visible {
   padding: 0;
 }
 
+.calendar-grid-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  background: var(--bg-elevated);
+  margin: 12px 0;
+}
+
+.calendar-grid-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.calendar-month-label {
+  font-weight: 700;
+}
+
+.calendar-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-grid-head {
+  font-size: 0.85rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.calendar-grid-cell {
+  min-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  background: var(--bg-muted);
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.calendar-grid-cell.is-drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: var(--bg-elevated);
+}
+
+.calendar-grid-cell--muted {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.calendar-grid-day {
+  font-weight: 700;
+}
+
+.calendar-grid-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-grid-item {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  border: 1px solid var(--border);
+}
+
+.calendar-grid-item.is-due {
+  background: #ffeaea;
+  border-color: #f86a6a;
+  color: #9b1b1b;
+}
+
 .calendar-list {
   display: grid;
   gap: 12px;
@@ -1194,6 +1276,11 @@ textarea:focus-visible {
   border-radius: var(--radius-md);
   display: grid;
   gap: 4px;
+}
+
+.calendar-item.is-due {
+  background: #ffeaea;
+  border-color: #f86a6a;
 }
 
 .calendar-item strong {

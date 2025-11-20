@@ -263,6 +263,14 @@
             <input id="calendarDate" type="date" aria-describedby="calendarHelp" />
             <small id="calendarHelp" class="muted">Select a date or browse upcoming events.</small>
           </div>
+          <div class="calendar-grid-card">
+            <div class="calendar-grid-header">
+              <button id="calendarPrevMonth" class="btn btn-light" type="button" aria-label="Previous month">‹</button>
+              <div id="calendarMonthLabel" class="calendar-month-label" role="heading" aria-level="3">Month</div>
+              <button id="calendarNextMonth" class="btn btn-light" type="button" aria-label="Next month">›</button>
+            </div>
+            <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Monthly calendar"></div>
+          </div>
           <div class="panel-body calendar-body">
             <ul id="calendarList" class="calendar-list" role="list"></ul>
           </div>

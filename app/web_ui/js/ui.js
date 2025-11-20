@@ -61,6 +61,7 @@ export class UIController {
     this.currentFlyoutTaskId = null;
     this.isFlyoutOpen = false;
     this.handleFlyoutKeydown = null;
+    this.calendarCursor = new Date();
     this.projectCache = null;
     this.projectLookup = new Map();
     this.clarifyState = { taskId: null, actionable: null, currentStep: "describe", actionPlanInitialized: false };
@@ -96,6 +97,8 @@ export class UIController {
       reportYear,
       randomContext,
       pickRandomTask,
+      calendarPrevMonth,
+      calendarNextMonth,
     } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
@@ -143,6 +146,17 @@ export class UIController {
 
     calendarDate.addEventListener("change", () => {
       this.filters.date = calendarDate.value;
+      if (calendarDate.value) {
+        this.calendarCursor = new Date(calendarDate.value);
+      }
+      this.renderCalendar();
+    });
+    calendarPrevMonth?.addEventListener("click", () => {
+      this.shiftCalendarMonth(-1);
+      this.renderCalendar();
+    });
+    calendarNextMonth?.addEventListener("click", () => {
+      this.shiftCalendarMonth(1);
       this.renderCalendar();
     });
 
@@ -1015,6 +1029,7 @@ export class UIController {
   renderCalendar() {
     const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
     const list = this.elements.calendarList;
+    this.renderCalendarGrid(entries);
     if (!list) return;
     list.innerHTML = "";
 
@@ -1030,6 +1045,7 @@ export class UIController {
       const li = document.createElement("li");
       li.className = "calendar-item";
       const friendly = formatFriendlyDate(entry.date);
+      const isDue = entry.isDue === true;
       li.innerHTML = `
         <strong>${entry.title}</strong>
         <span class="calendar-meta">
@@ -1038,11 +1054,146 @@ export class UIController {
           <span>Status: ${entry.status}</span>
         </span>
       `;
+      if (isDue) {
+        li.classList.add("is-due");
+      }
+      li.dataset.taskId = entry.taskId;
+      li.draggable = true;
+      enableDrag(li, entry.taskId);
+      li.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
       list.append(li);
     });
     if (this.activePanel === "calendar") {
       this.updateActivePanelMeta();
     }
+  }
+
+  shiftCalendarMonth(delta) {
+    const cursor = new Date(this.calendarCursor);
+    cursor.setDate(1);
+    cursor.setMonth(cursor.getMonth() + delta);
+    this.calendarCursor = cursor;
+    const iso = cursor.toISOString().slice(0, 10);
+    if (this.elements.calendarDate) {
+      this.elements.calendarDate.value = iso;
+    }
+  }
+
+  renderCalendarGrid(entries = []) {
+    const grid = this.elements.calendarGrid;
+    const label = this.elements.calendarMonthLabel;
+    if (!grid || !label) return;
+    const cursor = new Date(this.calendarCursor);
+    if (Number.isNaN(cursor.getTime())) {
+      this.calendarCursor = new Date();
+    }
+    const year = this.calendarCursor.getFullYear();
+    const month = this.calendarCursor.getMonth();
+    label.textContent = this.calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0);
+    const startWeekday = startOfMonth.getDay(); // 0-6
+    const daysInMonth = endOfMonth.getDate();
+
+    const entryMap = new Map();
+    entries.forEach((entry) => {
+      if (!entry?.date) return;
+      const dateKey = String(entry.date).slice(0, 10);
+      if (!entryMap.has(dateKey)) entryMap.set(dateKey, []);
+      entryMap.get(dateKey).push(entry);
+    });
+
+    grid.innerHTML = "";
+    const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    weekdayNames.forEach((day) => {
+      const cell = document.createElement("div");
+      cell.className = "calendar-grid-cell calendar-grid-head";
+      cell.textContent = day;
+      grid.append(cell);
+    });
+
+    const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+    for (let cellIndex = 0; cellIndex < totalCells; cellIndex += 1) {
+      const dayContainer = document.createElement("div");
+      dayContainer.className = "calendar-grid-cell";
+      const dayNumber = cellIndex - startWeekday + 1;
+      const isCurrentMonth = dayNumber >= 1 && dayNumber <= daysInMonth;
+      if (!isCurrentMonth) {
+        dayContainer.classList.add("calendar-grid-cell--muted");
+        grid.append(dayContainer);
+        continue;
+      }
+      const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNumber).padStart(2, "0")}`;
+      const header = document.createElement("div");
+      header.className = "calendar-grid-day";
+      header.textContent = dayNumber;
+      dayContainer.append(header);
+      const dayEntries = entryMap.get(dateKey) || [];
+      if (dayEntries.length) {
+        const list = document.createElement("ul");
+        list.className = "calendar-grid-list";
+        dayEntries.forEach((entry) => {
+          const item = document.createElement("li");
+          item.className = "calendar-grid-item";
+          if (entry.isDue) {
+            item.classList.add("is-due");
+          }
+          const hasTime = typeof entry.date === "string" && entry.date.includes("T");
+          const timeLabel = hasTime ? new Date(entry.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+          item.textContent = `${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
+          item.dataset.taskId = entry.taskId;
+          item.draggable = true;
+          enableDrag(item, entry.taskId);
+          item.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
+          list.append(item);
+        });
+        dayContainer.append(list);
+      }
+      this.attachCalendarDropzone(dayContainer, dateKey);
+      grid.append(dayContainer);
+    }
+  }
+
+  attachCalendarDropzone(element, dateKey) {
+    if (!element) return;
+    const helper = window.DragDropHelper;
+    if (helper) {
+      helper.setupDropzone(element, {
+        onDrop: (taskId) => this.handleCalendarDrop(taskId, dateKey),
+      });
+      return;
+    }
+    element.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      element.classList.add("is-drag-over");
+    });
+    element.addEventListener("dragleave", () => {
+      element.classList.remove("is-drag-over");
+    });
+    element.addEventListener("drop", (event) => {
+      event.preventDefault();
+      element.classList.remove("is-drag-over");
+      const taskId = event.dataTransfer?.getData("text/task-id");
+      if (taskId) {
+        this.handleCalendarDrop(taskId, dateKey);
+      }
+    });
+  }
+
+  handleCalendarDrop(taskId, dateKey) {
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) {
+      this.taskManager.notify("error", "Cannot move missing task.");
+      return;
+    }
+    const timePart =
+      typeof task.calendarDate === "string" && task.calendarDate.includes("T")
+        ? task.calendarDate.split("T")[1]
+        : "";
+    const nextCalendarValue = timePart ? `${dateKey}T${timePart}` : dateKey;
+    this.taskManager.updateTask(taskId, { calendarDate: nextCalendarValue });
+    this.taskManager.notify("info", `Scheduled "${task.title}" for ${formatFriendlyDate(dateKey)}.`);
   }
 
   renderReports() {
@@ -2494,18 +2645,13 @@ export class UIController {
     const actionButtons = document.createElement("div");
     actionButtons.className = "task-edit-actions-group";
 
-    const cancelButton = document.createElement("button");
-    cancelButton.type = "button";
-    cancelButton.className = "btn btn-light";
-    cancelButton.textContent = "Close";
-    cancelButton.addEventListener("click", () => this.closeTaskFlyout());
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "btn btn-light";
+    closeButton.textContent = "Close";
+    closeButton.addEventListener("click", () => this.closeTaskFlyout());
 
-    const saveButton = document.createElement("button");
-    saveButton.type = "submit";
-    saveButton.className = "btn btn-primary";
-    saveButton.textContent = "Save changes";
-
-    actionButtons.append(cancelButton, saveButton);
+    actionButtons.append(closeButton);
     actions.append(deleteButton, actionButtons);
 
     form.append(
@@ -2527,7 +2673,6 @@ export class UIController {
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      applyTaskUpdates({ showTitleWarning: true });
     });
 
     return form;
@@ -2844,6 +2989,10 @@ function mapElements() {
     clearFilters: byId("clearFilters"),
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),
+    calendarGrid: byId("calendarGrid"),
+    calendarMonthLabel: byId("calendarMonthLabel"),
+    calendarPrevMonth: byId("calendarPrevMonth"),
+    calendarNextMonth: byId("calendarNextMonth"),
     calendarList: byId("calendarList"),
     reportGrouping: byId("reportGrouping"),
     reportYear: byId("reportYear"),

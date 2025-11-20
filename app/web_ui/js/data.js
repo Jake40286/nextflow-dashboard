@@ -777,6 +777,7 @@ export class TaskManager extends EventTarget {
         status: task.status,
         projectId: task.projectId,
         taskId: task.id,
+        isDue: Boolean(task.dueDate && !task.calendarDate),
       };
     });
 

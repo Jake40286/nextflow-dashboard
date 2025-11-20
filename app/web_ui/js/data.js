@@ -310,6 +310,10 @@ function generateId(prefix) {
   return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now()}`;
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 export class TaskManager extends EventTarget {
   constructor(storageKey = STORAGE_KEY) {
     super();
@@ -317,6 +321,10 @@ export class TaskManager extends EventTarget {
     this.storage = safeLocalStorage();
     this.state = hydrateState();
     this.remoteSyncEnabled = typeof fetch !== "undefined";
+    this.remoteSignature = null;
+    this.pendingRemoteState = null;
+    this.remoteRetryTimer = null;
+    this.lastLocalSignature = hashState(this.state);
     this.loadFromLocal();
     if (this.remoteSyncEnabled) {
       this.loadRemoteState();
@@ -327,6 +335,7 @@ export class TaskManager extends EventTarget {
     try {
       const remoteState = await readServerState();
       this.state = hydrateState(remoteState || {});
+      this.remoteSignature = hashState(this.state);
       this.emitChange({ persist: false });
     } catch (error) {
       console.error("Failed to load remote state", error);
@@ -361,10 +370,38 @@ export class TaskManager extends EventTarget {
 
   persistRemotely() {
     if (!this.remoteSyncEnabled) return;
-    writeServerState(this.state).catch((error) => {
-      console.error("Failed to save remote state", error);
-      this.notify("error", "Unable to save changes to server storage.");
-    });
+    this.flushRemoteQueue();
+  }
+
+  async flushRemoteQueue() {
+    const payload = hydrateState(this.state);
+    this.pendingRemoteState = payload;
+    try {
+      const serverState = await readServerState();
+      const serverSig = hashState(serverState || {});
+      if (this.remoteSignature && serverSig && serverSig !== this.remoteSignature) {
+        // Merge conflicts: prefer most recently updated entities.
+        const merged = mergeStates(serverState || {}, payload);
+        this.state = hydrateState(merged);
+        this.pendingRemoteState = merged;
+        this.emitChange({ persist: false });
+      }
+      await writeServerState(this.pendingRemoteState);
+      this.remoteSignature = hashState(this.pendingRemoteState);
+      this.pendingRemoteState = null;
+      if (this.remoteRetryTimer) {
+        clearTimeout(this.remoteRetryTimer);
+        this.remoteRetryTimer = null;
+      }
+    } catch (error) {
+      console.error("Failed to sync remote state", error);
+      this.notify("warn", "Offline detected. Changes will sync when back online.");
+      if (this.remoteRetryTimer) return;
+      this.remoteRetryTimer = setTimeout(() => {
+        this.remoteRetryTimer = null;
+        this.flushRemoteQueue();
+      }, 5000);
+    }
   }
 
   save() {
@@ -380,6 +417,7 @@ export class TaskManager extends EventTarget {
     const { persist = true } = options;
     this.dispatchEvent(new CustomEvent("statechange", { detail: this.state }));
     if (persist) {
+      this.lastLocalSignature = hashState(this.state);
       this.save();
     }
   }
@@ -434,6 +472,7 @@ export class TaskManager extends EventTarget {
       calendarDate: payload.calendarDate || null,
       completedAt: payload.completedAt || null,
       closureNotes: payload.closureNotes?.trim() || null,
+      updatedAt: nowIso(),
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -469,6 +508,7 @@ export class TaskManager extends EventTarget {
       return null;
     }
     Object.assign(task, draft);
+    task.updatedAt = nowIso();
     this.emitChange();
     return task;
   }
@@ -488,6 +528,7 @@ export class TaskManager extends EventTarget {
     if (nextStatus !== STATUS.WAITING) {
       task.waitingFor = task.waitingFor && task.waitingFor.startsWith("Pending") ? null : task.waitingFor;
     }
+    task.updatedAt = nowIso();
     this.emitChange();
   }
 
@@ -604,6 +645,7 @@ export class TaskManager extends EventTarget {
       this.notify("error", projectError);
       return null;
     }
+    project.updatedAt = nowIso();
     this.state.projects.push(project);
     this.emitChange();
     this.notify("info", `Created project "${project.name}".`);
@@ -635,6 +677,7 @@ export class TaskManager extends EventTarget {
       return null;
     }
     Object.assign(project, draft);
+    project.updatedAt = nowIso();
     this.emitChange();
     return project;
   }
@@ -675,6 +718,7 @@ export class TaskManager extends EventTarget {
       completedAt: new Date().toISOString(),
       snapshot: project,
       closureNotes,
+      updatedAt: nowIso(),
     });
     this.state.completedProjects = this.state.completedProjects || [];
     this.state.completedProjects.unshift(entry);
@@ -692,6 +736,7 @@ export class TaskManager extends EventTarget {
     if (updates.closureNotes) {
       entry.closureNotes = normalizeClosureNotes(updates.closureNotes, entry.closureNotes || {});
     }
+    entry.updatedAt = nowIso();
     this.emitChange();
     this.notify("info", `Updated closure notes for "${entry.name}".`);
     return entry;
@@ -967,6 +1012,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     archivedAt: new Date().toISOString(),
     archiveType,
     closureNotes: task.closureNotes || null,
+    updatedAt: completedAt || nowIso(),
   };
 }
 
@@ -980,6 +1026,7 @@ function normalizeTask(task) {
     energyLevel: task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
     closureNotes: task.closureNotes ?? null,
+    updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
   const enforceContext = normalized.status && normalized.status !== STATUS.INBOX;
   return normalizeTaskTags(normalized, { enforceContext });
@@ -1033,6 +1080,7 @@ function normalizeCompletedProject(entry) {
     completedAt: entry.completedAt || new Date().toISOString(),
     snapshot,
     closureNotes: normalizeClosureNotes(entry.closureNotes || {}),
+    updatedAt: entry.updatedAt || entry.completedAt || nowIso(),
   };
 }
 
@@ -1067,6 +1115,7 @@ function normalizeProjectTags(project) {
   project.statusTag = sanitizeChoice(project.statusTag, PROJECT_STATUSES, { allowCustom: true, allowEmpty: false }) || PROJECT_STATUSES[0];
   project.deadline = sanitizeIsoDate(project.deadline);
   project.tags = buildProjectTagList(project);
+  project.updatedAt = project.updatedAt || nowIso();
   return project;
 }
 
@@ -1118,6 +1167,53 @@ function sanitizeIsoDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
+}
+
+function hashState(state) {
+  try {
+    const json = JSON.stringify(state || {});
+    let hash = 0;
+    for (let i = 0; i < json.length; i += 1) {
+      hash = (hash << 5) - hash + json.charCodeAt(i);
+      hash |= 0;
+    }
+    return `h${Math.abs(hash)}`;
+  } catch (error) {
+    console.error("Failed to hash state", error);
+    return null;
+  }
+}
+
+function mergeStates(remoteState = {}, localState = {}) {
+  const merged = {
+    ...remoteState,
+    ...localState,
+  };
+  const mergeCollections = (localArr = [], remoteArr = []) => {
+    const map = new Map();
+    [...remoteArr, ...localArr].forEach((item) => {
+      if (!item?.id) return;
+      const existing = map.get(item.id);
+      if (!existing) {
+        map.set(item.id, item);
+        return;
+      }
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const nextTime = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+      if (nextTime >= existingTime) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values());
+  };
+  merged.tasks = mergeCollections(localState.tasks, remoteState.tasks);
+  merged.projects = mergeCollections(localState.projects, remoteState.projects);
+  merged.reference = mergeCollections(localState.reference, remoteState.reference);
+  merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
+  merged.completedProjects = mergeCollections(localState.completedProjects, remoteState.completedProjects);
+  merged.analytics = localState.analytics || remoteState.analytics || {};
+  merged.settings = localState.settings || remoteState.settings || {};
+  return merged;
 }
 
 function getCompletionFormatter(grouping) {

@@ -622,6 +622,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 10px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -642,6 +643,12 @@ body {
 .report-row span {
   font-weight: 600;
   color: var(--accent);
+}
+
+.report-range {
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: auto;
 }
 
 .report-row.is-active {
@@ -1282,6 +1289,12 @@ textarea:focus-visible {
   color: #9b1b1b;
 }
 
+.calendar-grid-item.is-completed {
+  background: #e6f6ec;
+  border-color: #3abf7d;
+  color: #11693c;
+}
+
 .calendar-list {
   display: grid;
   gap: 12px;
@@ -1300,6 +1313,11 @@ textarea:focus-visible {
 .calendar-item.is-due {
   background: #ffeaea;
   border-color: #f86a6a;
+}
+
+.calendar-item.is-completed {
+  background: #e6f6ec;
+  border-color: #3abf7d;
 }
 
 .calendar-item strong {

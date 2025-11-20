@@ -1053,6 +1053,7 @@ export class UIController {
       li.className = "calendar-item";
       const friendly = formatFriendlyDate(entry.date);
       const isDue = entry.isDue === true;
+      const isCompleted = entry.isCompleted === true;
       li.innerHTML = `
         <strong>${entry.title}</strong>
         <span class="calendar-meta">
@@ -1061,12 +1062,16 @@ export class UIController {
           <span>Status: ${entry.status}</span>
         </span>
       `;
-      if (isDue) {
+      if (isCompleted) {
+        li.classList.add("is-completed");
+      } else if (isDue) {
         li.classList.add("is-due");
       }
       li.dataset.taskId = entry.taskId;
-      li.draggable = true;
-      enableDrag(li, entry.taskId);
+      if (!isCompleted) {
+        li.draggable = true;
+        enableDrag(li, entry.taskId);
+      }
       li.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
       list.append(li);
     });
@@ -1143,15 +1148,19 @@ export class UIController {
         dayEntries.forEach((entry) => {
           const item = document.createElement("li");
           item.className = "calendar-grid-item";
-          if (entry.isDue) {
+          if (entry.isCompleted) {
+            item.classList.add("is-completed");
+          } else if (entry.isDue) {
             item.classList.add("is-due");
           }
           const hasTime = typeof entry.date === "string" && entry.date.includes("T");
           const timeLabel = hasTime ? new Date(entry.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
           item.textContent = `${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
           item.dataset.taskId = entry.taskId;
-          item.draggable = true;
-          enableDrag(item, entry.taskId);
+          if (!entry.isCompleted) {
+            item.draggable = true;
+            enableDrag(item, entry.taskId);
+          }
           item.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
           list.append(item);
         });
@@ -1265,7 +1274,14 @@ export class UIController {
       label.textContent = entry.label;
       const count = document.createElement("span");
       count.textContent = `${entry.count} done`;
-      button.append(label, count);
+      button.append(label);
+      if (entry.range) {
+        const range = document.createElement("span");
+        range.className = "report-range";
+        range.textContent = entry.range;
+        button.append(range);
+      }
+      button.append(count);
       button.addEventListener("click", () => {
         this.activeReportKey = this.activeReportKey === entry.key ? null : entry.key;
         this.renderReports();

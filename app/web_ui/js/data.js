@@ -848,7 +848,22 @@ export class TaskManager extends EventTarget {
         projectId: task.projectId,
         taskId: task.id,
         isDue: Boolean(task.dueDate && !task.calendarDate),
+        isCompleted: false,
       };
+    });
+
+    const completions = this.getCompletionEntries().filter((entry) => entry.completedAt);
+    completions.forEach((entry) => {
+      entries.push({
+        date: entry.completedAt,
+        title: entry.title || "Completed task",
+        context: entry.context,
+        status: entry.status || "completed",
+        projectId: entry.projectId || null,
+        taskId: entry.sourceId || entry.id,
+        isDue: false,
+        isCompleted: true,
+      });
     });
 
     entries.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -899,6 +914,7 @@ export class TaskManager extends EventTarget {
         {
           key,
           label: formatter.label(date),
+          range: formatter.range ? formatter.range(date) : null,
           count: 0,
           sortValue: formatter.sortValue(date),
           tasks: [],
@@ -1247,6 +1263,7 @@ function getCompletionFormatter(grouping) {
       key: (date) => `${date.getFullYear()}-W${String(getIsoWeek(date)).padStart(2, "0")}`,
       label: (date) => `Week ${getIsoWeek(date)}, ${date.getFullYear()}`,
       sortValue: (date) => date.getFullYear() * 100 + getIsoWeek(date),
+      range: (date) => getWeekRange(date),
     };
   }
   if (grouping === "month") {
@@ -1273,6 +1290,21 @@ function getIsoWeek(date) {
   tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
   return Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+}
+
+function getWeekRange(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const start = new Date(d);
+  start.setDate(d.getDate() - day);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const fmt = (dt) =>
+    dt.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 function matchesSearch(task, rawTerm) {

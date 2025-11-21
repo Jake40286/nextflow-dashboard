@@ -970,8 +970,8 @@ export class UIController {
       const achievedInput = makeField("What was achieved", entry.closureNotes?.achieved || "");
       const lessonsInput = makeField("Lessons learned", entry.closureNotes?.lessons || "");
       const followUpInput = makeField("Follow-up items", entry.closureNotes?.followUp || "");
-      const actionsRow = document.createElement("div");
-      actionsRow.className = "completed-project-actions";
+      const formActionsRow = document.createElement("div");
+      formActionsRow.className = "completed-project-actions";
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.className = "btn btn-primary";
@@ -980,8 +980,8 @@ export class UIController {
       cancelButton.type = "button";
       cancelButton.className = "btn btn-light";
       cancelButton.textContent = "Cancel";
-      actionsRow.append(cancelButton, saveButton);
-      notesForm.append(actionsRow);
+      formActionsRow.append(cancelButton, saveButton);
+      notesForm.append(formActionsRow);
       notesForm.addEventListener("submit", (event) => {
         event.preventDefault();
         this.taskManager.updateCompletedProject(entry.id, {

@@ -31,6 +31,26 @@ docker compose up --build -d
 - Do **not** commit `.env` or anything inside `data/`.
 - Follow your credential-handling policy when managing secrets.
 
+## Google Calendar Sync (one-way)
+
+The server can optionally push tasks with `calendarDate`/`dueDate` to a Google Calendar using a service account:
+
+1. Create a Google Cloud project, enable the Calendar API, and generate a JSON service-account key.
+2. Share the destination Google Calendar with the service account email so it can create events.
+3. Provide these environment variables (for example in `.env`):
+   - `GOOGLE_CALENDAR_ID`: the calendar ID (found in Google Calendar settings).
+   - `GOOGLE_CREDENTIALS_FILE`: path to the JSON key inside the container (defaults to `/secrets/google-service-account.json`).
+   - `GOOGLE_CALENDAR_EVENT_STORE`: optional path where the server stores task→event mappings (defaults to `/data/google-events.json`).
+4. Mount the credentials file into the container (e.g., bind `/secrets`).
+
+When configured, every call to `/state` automatically mirrors active tasks that have a `calendarDate` or `dueDate` into the configured Google Calendar. Clearing those dates (or deleting the task) removes the corresponding event. Future improvements can build on this for two-way sync.
+
+## Automated Backups
+
+Every time the dashboard saves `/state`, the server writes a compressed JSON snapshot to `STATE_BACKUP_DIR` (defaults to `/data/backups/full`). Configure retention with `STATE_BACKUP_RETENTION` (defaults to 30 snapshots). Each file is named `state-YYYYMMDD-HHMMSS.json.gz` and contains the full payload (tasks, references, etc.).
+
+To restore, pick a snapshot, decompress it, and POST the JSON back to `/state` (or copy the contents into `data/state.json` / `data/completed.json`). Keep the backup directory on persistent storage.
+
 ## Verification Checklist
 
 - [ ] `.env` created with all required vars (`HOST`, `PORT`, `KEYRING_SERVICE`, `KEYRING_USERNAME`).

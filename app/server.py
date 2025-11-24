@@ -8,12 +8,22 @@ import os
 import sys
 import threading
 
+try:
+    from google_calendar import GoogleCalendarSync
+except Exception:  # noqa: BLE001
+    GoogleCalendarSync = None
+try:
+    from backup import StateBackupManager
+except Exception:  # noqa: BLE001
+    StateBackupManager = None
+
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "/data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "/data/completed.json"))
-BACKUP_DIR = Path(os.getenv("STATE_BACKUP_DIR", STATE_FILE.parent / "backups"))
 STATE_LOCK = threading.Lock()
+CALENDAR_SYNC = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
+BACKUP_MANAGER = StateBackupManager.from_env() if StateBackupManager else None
 
 
 def get_server_address():
@@ -109,14 +119,17 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             }
             STATE_FILE.write_text(json.dumps(core_payload, indent=2), encoding="utf-8")
             COMPLETED_FILE.write_text(json.dumps(completed_payload, indent=2), encoding="utf-8")
-            try:
-                BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.utcnow().strftime("%Y-%m-%d")
-                backup_file = BACKUP_DIR / f"state-{stamp}.json"
-                backup_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            except Exception as error:  # noqa: BLE001
-                print(f"Failed to write state backup: {error}", file=sys.stderr)
         self._send_json({"status": "ok"})
+        if CALENDAR_SYNC:
+            try:
+                CALENDAR_SYNC.sync_async(core_payload.get("tasks", []))
+            except Exception as error:  # noqa: BLE001
+                print(f"Google Calendar sync skipped: {error}", file=sys.stderr)
+        if BACKUP_MANAGER:
+            try:
+                BACKUP_MANAGER.write_backup(payload)
+            except Exception as error:  # noqa: BLE001
+                print(f"Failed to write backup snapshot: {error}", file=sys.stderr)
 
 
 def start_server():

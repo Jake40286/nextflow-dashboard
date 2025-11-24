@@ -1356,6 +1356,12 @@ function collectRemovalMarkers(...states) {
   return markers;
 }
 
+export const __testing = {
+  mergeStates,
+  collectRemovalMarkers,
+  toTimestamp,
+};
+
 function getCompletionFormatter(grouping) {
   if (grouping === "week") {
     return {

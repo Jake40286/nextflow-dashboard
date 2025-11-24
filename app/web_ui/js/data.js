@@ -40,6 +40,14 @@ const SECTION_STATUS_MAP = new Map([
   ["maybe", STATUS.SOMEDAY],
 ]);
 
+const EMPTY_STATE = {
+  tasks: [],
+  reference: [],
+  completionLog: [],
+  projects: [],
+  completedProjects: [],
+};
+
 const defaultState = () => ({
   tasks: [
     {
@@ -323,7 +331,7 @@ export class TaskManager extends EventTarget {
     super();
     this.storageKey = storageKey;
     this.storage = safeLocalStorage();
-    this.state = hydrateState();
+    this.state = hydrateState(EMPTY_STATE);
     this.remoteSyncEnabled = typeof fetch !== "undefined";
     this.remoteSignature = null;
     this.pendingRemoteState = null;
@@ -362,8 +370,8 @@ export class TaskManager extends EventTarget {
       }
     } catch (error) {
       console.error("Failed to load state", error);
-      this.notify("error", "Could not load saved data. Reverting to defaults.");
-      this.state = hydrateState();
+      this.notify("error", "Could not load saved data. Starting from an empty dashboard.");
+      this.state = hydrateState(EMPTY_STATE);
     }
   }
 
@@ -1284,6 +1292,7 @@ function mergeStates(remoteState = {}, localState = {}) {
     ...remoteState,
     ...localState,
   };
+  const removalMarkers = collectRemovalMarkers(remoteState, localState);
   const mergeCollections = (localArr = [], remoteArr = []) => {
     const map = new Map();
     [...remoteArr, ...localArr].forEach((item) => {
@@ -1301,7 +1310,13 @@ function mergeStates(remoteState = {}, localState = {}) {
     });
     return Array.from(map.values());
   };
-  merged.tasks = mergeCollections(localState.tasks, remoteState.tasks);
+  merged.tasks = mergeCollections(localState.tasks, remoteState.tasks).filter((task) => {
+    if (!task?.id) return false;
+    const removedAt = removalMarkers.get(task.id);
+    if (!removedAt) return true;
+    const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
+    return updatedAt > removedAt;
+  });
   merged.projects = mergeCollections(localState.projects, remoteState.projects);
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
@@ -1309,6 +1324,36 @@ function mergeStates(remoteState = {}, localState = {}) {
   merged.analytics = localState.analytics || remoteState.analytics || {};
   merged.settings = localState.settings || remoteState.settings || {};
   return merged;
+}
+
+function toTimestamp(value) {
+  if (!value) return 0;
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function collectRemovalMarkers(...states) {
+  const markers = new Map();
+  const ingest = (entries) => {
+    (entries || []).forEach((entry) => {
+      if (!entry) return;
+      const id = entry.sourceId || entry.id;
+      if (!id) return;
+      const removedAt = toTimestamp(entry.archivedAt || entry.completedAt || entry.updatedAt || entry.createdAt);
+      if (!removedAt) return;
+      const current = markers.get(id) || 0;
+      if (removedAt > current) {
+        markers.set(id, removedAt);
+      }
+    });
+  };
+  states.forEach((state) => {
+    if (!state) return;
+    ingest(state.reference);
+    ingest(state.completionLog);
+  });
+  return markers;
 }
 
 function getCompletionFormatter(grouping) {

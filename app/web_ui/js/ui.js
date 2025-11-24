@@ -2457,6 +2457,7 @@ export class UIController {
     meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
     meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
+    meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
 
     if (task.status === STATUS.INBOX) {
       const inboxPanel = document.createElement("div");
@@ -2670,6 +2671,45 @@ export class UIController {
     closureInput.value = task.closureNotes || "";
     closureGroup.append(closureInput);
 
+    const recurrenceGroup = document.createElement("label");
+    recurrenceGroup.className = "task-edit-field";
+    recurrenceGroup.textContent = "Recurring";
+    const recurrenceControls = document.createElement("div");
+    recurrenceControls.className = "task-recurrence-controls";
+    const recurrenceSelect = document.createElement("select");
+    const recurrenceNone = document.createElement("option");
+    recurrenceNone.value = "";
+    recurrenceNone.textContent = "Does not repeat";
+    recurrenceSelect.append(recurrenceNone);
+    [
+      { value: "daily", label: "Daily" },
+      { value: "weekly", label: "Weekly" },
+      { value: "monthly", label: "Monthly" },
+    ].forEach((option) => {
+      const opt = document.createElement("option");
+      opt.value = option.value;
+      opt.textContent = option.label;
+      recurrenceSelect.append(opt);
+    });
+    recurrenceSelect.value = task.recurrenceRule?.type || "";
+    const recurrenceInterval = document.createElement("input");
+    recurrenceInterval.type = "number";
+    recurrenceInterval.min = "1";
+    recurrenceInterval.step = "1";
+    recurrenceInterval.value = task.recurrenceRule?.interval || 1;
+    recurrenceInterval.className = "task-recurrence-interval";
+    recurrenceControls.append(recurrenceSelect, recurrenceInterval);
+    const updateRecurrenceControls = () => {
+      const active = Boolean(recurrenceSelect.value);
+      recurrenceInterval.disabled = !active;
+    };
+    updateRecurrenceControls();
+    recurrenceSelect.addEventListener("change", updateRecurrenceControls);
+    const recurrenceHint = document.createElement("small");
+    recurrenceHint.className = "muted";
+    recurrenceHint.textContent = "Next occurrence appears after you complete the task.";
+    recurrenceGroup.append(recurrenceControls, recurrenceHint);
+
     const buildTaskUpdates = () => {
       const trimmedTitle = titleInput.value.trim();
       if (!trimmedTitle) {
@@ -2687,8 +2727,15 @@ export class UIController {
         calendarDate: calendarInput.value || null,
         waitingFor: waitingInput.value.trim() || null,
         assignee: assigneeInput.value.trim() || null,
-        closureNotes: closureInput.value.trim() || null,
-      };
+      closureNotes: closureInput.value.trim() || null,
+      recurrenceRule:
+        recurrenceSelect.value && recurrenceSelect.value !== ""
+          ? {
+              type: recurrenceSelect.value,
+              interval: Math.max(1, parseInt(recurrenceInterval.value, 10) || 1),
+            }
+          : null,
+    };
       if (task.status === STATUS.WAITING && !updates.waitingFor) {
         updates.waitingFor = "Pending assignee";
       }
@@ -2733,6 +2780,8 @@ export class UIController {
       waitingInput,
       assigneeInput,
       closureInput,
+      recurrenceSelect,
+      recurrenceInterval,
     ];
     autoSaveFields.forEach((field) => {
       field.addEventListener("change", scheduleAutoSave);
@@ -2779,6 +2828,7 @@ export class UIController {
       waitingGroup,
       assigneeGroup,
       closureGroup,
+      recurrenceGroup,
       actions
     );
 
@@ -2827,6 +2877,23 @@ export class UIController {
     const bullet = document.createElement("span");
     bullet.className = "bullet";
     return bullet;
+  }
+
+  describeRecurrence(rule) {
+    if (!rule || !rule.type) return null;
+    const interval = Math.max(1, Number.parseInt(rule.interval, 10) || 1);
+    const labelMap = {
+      daily: "day",
+      weekly: "week",
+      monthly: "month",
+    };
+    const unit = labelMap[rule.type];
+    if (!unit) return null;
+    if (interval === 1) {
+      if (rule.type === "daily") return "Daily";
+      return `Every ${unit}`;
+    }
+    return `Every ${interval} ${unit}${interval > 1 ? "s" : ""}`;
   }
 
   getProjectName(projectId) {

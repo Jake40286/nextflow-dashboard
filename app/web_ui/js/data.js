@@ -15,6 +15,12 @@ export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", "30min+"];
 export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
 export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
+export const RECURRENCE_TYPES = Object.freeze({
+  DAILY: "daily",
+  WEEKLY: "weekly",
+  MONTHLY: "monthly",
+});
+export const RECURRING_OPTIONS = ["daily", "weekly", "monthly"];
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
@@ -511,6 +517,7 @@ export class TaskManager extends EventTarget {
       completedAt: payload.completedAt || null,
       closureNotes: payload.closureNotes?.trim() || null,
       updatedAt: nowIso(),
+      recurrenceRule: normalizeRecurrenceRule(payload.recurrenceRule),
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -595,9 +602,50 @@ export class TaskManager extends EventTarget {
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
+    const scheduled = this.scheduleRecurringTask(task, completedAt);
     this.emitChange();
-    this.notify("info", archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`);
+    const completionMessage =
+      archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`;
+    const suffix = scheduled ? " Next occurrence scheduled." : "";
+    this.notify("info", `${completionMessage}${suffix}`);
     return snapshot;
+  }
+
+  scheduleRecurringTask(template, completedAt) {
+    const rule = normalizeRecurrenceRule(template?.recurrenceRule);
+    if (!rule) return null;
+    const now = nowIso();
+    const clone = {
+      ...template,
+      id: generateId("task"),
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+      archiveType: null,
+      closureNotes: null,
+      waitingFor: null,
+    };
+    const dueDateBase = clone.dueDate ? new Date(clone.dueDate) : null;
+    const calendarBase = clone.calendarDate ? new Date(clone.calendarDate) : null;
+    const completedDate = completedAt ? new Date(completedAt) : new Date();
+    const nextDue = dueDateBase ? advanceRecurrence(dueDateBase, rule) : null;
+    const nextCalendar = calendarBase ? advanceRecurrence(calendarBase, rule) : null;
+    const fallbackNext = !nextDue && !nextCalendar ? advanceRecurrence(completedDate, rule) : null;
+    clone.dueDate = nextDue ? formatIsoDate(nextDue) : null;
+    clone.calendarDate = nextCalendar ? formatIsoDate(nextCalendar) : fallbackNext ? formatIsoDate(fallbackNext) : null;
+    clone.recurrenceRule = rule;
+    const nextTask = normalizeTask(clone);
+    this.state.tasks.unshift(nextTask);
+    if (nextTask.projectId) {
+      const project = this.state.projects.find((p) => p.id === nextTask.projectId);
+      if (project) {
+        project.tasks = project.tasks || [];
+        if (!project.tasks.includes(nextTask.id)) {
+          project.tasks.unshift(nextTask.id);
+        }
+      }
+    }
+    return nextTask;
   }
 
   restoreCompletedTask(id) {
@@ -635,6 +683,7 @@ export class TaskManager extends EventTarget {
       closureNotes: entry.closureNotes || null,
       updatedAt: nowIso(),
       archiveType: archiveType,
+      recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
     };
     normalizeTaskTags(restored, { enforceContext: restored.status !== STATUS.INBOX });
     this.state.tasks.unshift(restored);
@@ -1116,6 +1165,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     archiveType,
     closureNotes: task.closureNotes || null,
     updatedAt: completedAt || nowIso(),
+    recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
   };
 }
 
@@ -1124,6 +1174,7 @@ function normalizeTask(task) {
     ...task,
     completedAt: task.completedAt || null,
     archiveType: task.archiveType || null,
+    recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
     context: task.context ?? task.physicalContext ?? null,
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
@@ -1155,6 +1206,7 @@ function normalizeCompletionEntry(entry) {
     archivedAt: entry.archivedAt || entry.completedAt || null,
     archiveType: entry.archiveType || "reference",
     closureNotes: entry.closureNotes || null,
+    recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
   };
 }
 
@@ -1272,6 +1324,24 @@ function sanitizeIsoDate(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeRecurrenceRule(rule) {
+  if (!rule) return null;
+  const base = typeof rule === "string" ? { type: rule } : rule;
+  if (!base || typeof base !== "object") return null;
+  const type = typeof base.type === "string" ? base.type.toLowerCase() : "";
+  if (!RECURRING_OPTIONS.includes(type)) {
+    return null;
+  }
+  let interval = parseInt(base.interval, 10);
+  if (!Number.isFinite(interval) || interval < 1) {
+    interval = 1;
+  }
+  return {
+    type,
+    interval,
+  };
+}
+
 function hashState(state) {
   try {
     const json = JSON.stringify(state || {});
@@ -1356,10 +1426,40 @@ function collectRemovalMarkers(...states) {
   return markers;
 }
 
+function advanceRecurrence(date, rule) {
+  if (!date || !rule) return null;
+  const next = new Date(date);
+  if (Number.isNaN(next.getTime())) return null;
+  const interval = Math.max(1, rule.interval || 1);
+  switch (rule.type) {
+    case RECURRENCE_TYPES.DAILY:
+      next.setDate(next.getDate() + interval);
+      break;
+    case RECURRENCE_TYPES.WEEKLY:
+      next.setDate(next.getDate() + interval * 7);
+      break;
+    case RECURRENCE_TYPES.MONTHLY:
+      next.setMonth(next.getMonth() + interval);
+      break;
+    default:
+      return null;
+  }
+  return next;
+}
+
+function formatIsoDate(date) {
+  if (!date) return null;
+  const clone = new Date(date);
+  if (Number.isNaN(clone.getTime())) return null;
+  return clone.toISOString().slice(0, 10);
+}
+
 export const __testing = {
   mergeStates,
   collectRemovalMarkers,
   toTimestamp,
+  advanceRecurrence,
+  normalizeRecurrenceRule,
 };
 
 function getCompletionFormatter(grouping) {

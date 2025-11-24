@@ -170,6 +170,43 @@ test("mergeStates leaves tasks untouched when no removal markers exist", () => {
   assert.deepEqual(taskIds, ["t-4", "t-5"]);
 });
 
+test("completing a recurring task schedules the next occurrence with shifted due date", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "Daily check-in",
+    status: STATUS.NEXT,
+    context: "@Work",
+    dueDate: "2024-03-01",
+    recurrenceRule: { type: "daily", interval: 1 },
+  });
+
+  manager.completeTask(task.id, { archive: "reference" });
+
+  assert.equal(manager.state.tasks.length, 1);
+  const next = manager.state.tasks[0];
+  assert.notEqual(next.id, task.id);
+  assert.equal(next.title, "Daily check-in");
+  assert.equal(next.dueDate, "2024-03-02");
+  assert.equal(next.recurrenceRule.type, "daily");
+});
+
+test("recurring tasks without a due date still gain a future calendar date after completion", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "Monthly review",
+    status: STATUS.NEXT,
+    context: "@Home",
+    recurrenceRule: { type: "monthly", interval: 1 },
+  });
+
+  manager.completeTask(task.id, { archive: "reference" });
+
+  assert.equal(manager.state.tasks.length, 1);
+  const next = manager.state.tasks[0];
+  assert.ok(next.calendarDate, "calendar date should be scheduled");
+  assert.equal(next.recurrenceRule.type, "monthly");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

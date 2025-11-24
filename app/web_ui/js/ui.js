@@ -2447,6 +2447,7 @@ export class UIController {
 
     const meta = document.createElement("div");
     meta.className = "task-flyout-meta";
+    meta.append(this.buildMetaRow("Task ID", task.slug || task.id));
     meta.append(this.buildMetaRow("Context", task.context || "—"));
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
     meta.append(this.buildMetaRow("People tag", task.peopleTag || "—"));
@@ -2540,6 +2541,16 @@ export class UIController {
     descriptionInput.rows = 3;
     descriptionInput.value = task.description || "";
     descriptionGroup.append(descriptionInput);
+
+    const slugGroup = document.createElement("label");
+    slugGroup.className = "task-edit-field";
+    slugGroup.textContent = "Short ID";
+    const slugInput = document.createElement("input");
+    slugInput.type = "text";
+    slugInput.value = task.slug || task.id;
+    slugInput.readOnly = true;
+    slugInput.className = "task-slug-input";
+    slugGroup.append(slugInput);
 
     const contextGroup = document.createElement("label");
     contextGroup.className = "task-edit-field";
@@ -2817,6 +2828,7 @@ export class UIController {
     form.append(
       titleGroup,
       descriptionGroup,
+      slugGroup,
       contextGroup,
       peopleGroup,
       energyGroup,

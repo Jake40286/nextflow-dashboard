@@ -170,6 +170,18 @@ test("mergeStates leaves tasks untouched when no removal markers exist", () => {
   assert.deepEqual(taskIds, ["t-4", "t-5"]);
 });
 
+test("tasks receive short slug identifiers and keep them through completion", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Slug test" });
+
+  assert.ok(task.slug, "slug assigned");
+  assert.ok(task.slug.length <= 8, "slug is short");
+
+  manager.completeTask(task.id, { archive: "reference" });
+  const restored = manager.restoreCompletedTask(task.id);
+  assert.equal(restored.slug, task.slug, "slug stays consistent");
+});
+
 test("completing a recurring task schedules the next occurrence with shifted due date", () => {
   const manager = createManager();
   const task = manager.addTask({
@@ -188,6 +200,7 @@ test("completing a recurring task schedules the next occurrence with shifted due
   assert.equal(next.title, "Daily check-in");
   assert.equal(next.dueDate, "2024-03-02");
   assert.equal(next.recurrenceRule.type, "daily");
+  assert.notEqual(next.slug, task.slug, "next occurrence gets its own slug");
 });
 
 test("recurring tasks without a due date still gain a future calendar date after completion", () => {

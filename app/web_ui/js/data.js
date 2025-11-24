@@ -15,6 +15,7 @@ export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", "30min+"];
 export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
 export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
+const SLUG_MIN_LENGTH = 5;
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
@@ -332,6 +333,27 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function createSlug(seed = "") {
+  const input = seed || `${Math.random()}-${Date.now()}`;
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  const slug = Math.abs(hash).toString(36).toUpperCase();
+  if (slug.length >= SLUG_MIN_LENGTH) {
+    return slug.slice(0, 8);
+  }
+  return slug.padStart(SLUG_MIN_LENGTH, "0");
+}
+
+function normalizeSlug(value, seed) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim().toUpperCase();
+  }
+  return createSlug(seed);
+}
+
 export class TaskManager extends EventTarget {
   constructor(storageKey = STORAGE_KEY) {
     super();
@@ -499,8 +521,9 @@ export class TaskManager extends EventTarget {
   }
 
   addTask(payload) {
+    const id = generateId("task");
     const task = {
-      id: generateId("task"),
+      id,
       title: payload.title.trim(),
       description: payload.description?.trim() || "",
       status: payload.status || STATUS.INBOX,
@@ -518,6 +541,7 @@ export class TaskManager extends EventTarget {
       closureNotes: payload.closureNotes?.trim() || null,
       updatedAt: nowIso(),
       recurrenceRule: normalizeRecurrenceRule(payload.recurrenceRule),
+      slug: normalizeSlug(payload.slug, id),
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -624,6 +648,7 @@ export class TaskManager extends EventTarget {
       archiveType: null,
       closureNotes: null,
       waitingFor: null,
+      slug: null,
     };
     const dueDateBase = clone.dueDate ? new Date(clone.dueDate) : null;
     const calendarBase = clone.calendarDate ? new Date(clone.calendarDate) : null;
@@ -684,6 +709,7 @@ export class TaskManager extends EventTarget {
       updatedAt: nowIso(),
       archiveType: archiveType,
       recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
+      slug: normalizeSlug(entry.slug, entry.id || entry.sourceId),
     };
     normalizeTaskTags(restored, { enforceContext: restored.status !== STATUS.INBOX });
     this.state.tasks.unshift(restored);
@@ -1166,6 +1192,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     closureNotes: task.closureNotes || null,
     updatedAt: completedAt || nowIso(),
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
+    slug: task.slug || normalizeSlug(null, task.id),
   };
 }
 
@@ -1175,6 +1202,7 @@ function normalizeTask(task) {
     completedAt: task.completedAt || null,
     archiveType: task.archiveType || null,
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
+    slug: normalizeSlug(task.slug, task.id || task.sourceId || task.title || nowIso()),
     context: task.context ?? task.physicalContext ?? null,
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
@@ -1207,6 +1235,7 @@ function normalizeCompletionEntry(entry) {
     archiveType: entry.archiveType || "reference",
     closureNotes: entry.closureNotes || null,
     recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
+    slug: normalizeSlug(entry.slug, entry.id || entry.sourceId),
   };
 }
 

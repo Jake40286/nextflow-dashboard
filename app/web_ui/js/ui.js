@@ -60,6 +60,7 @@ export class UIController {
     this.activeReportKey = null;
     this.currentFlyoutTaskId = null;
     this.isFlyoutOpen = false;
+    this.flyoutContext = { readOnly: false, entry: null };
     this.handleFlyoutKeydown = null;
     this.calendarCursor = new Date();
     this.projectCache = null;
@@ -193,13 +194,20 @@ export class UIController {
 
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
-      if (this.isFlyoutOpen && this.currentFlyoutTaskId) {
-        const latest = this.taskManager.getTaskById(this.currentFlyoutTaskId);
-        if (latest) {
-          this.renderTaskFlyout(latest);
+      if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
+      if (this.flyoutContext?.readOnly) {
+        if (this.flyoutContext.entry) {
+          this.renderTaskFlyout(this.flyoutContext.entry, { readOnly: true, entry: this.flyoutContext.entry });
         } else {
           this.closeTaskFlyout();
         }
+        return;
+      }
+      const latest = this.taskManager.getTaskById(this.currentFlyoutTaskId);
+      if (latest) {
+        this.renderTaskFlyout(latest);
+      } else {
+        this.closeTaskFlyout();
       }
     });
 
@@ -1529,6 +1537,13 @@ export class UIController {
         meta.textContent = this.formatReportTaskMeta(task);
         const actions = document.createElement("div");
         actions.className = "report-detail-actions";
+        const viewBtn = document.createElement("button");
+        viewBtn.type = "button";
+        viewBtn.className = "btn btn-light btn-small";
+        viewBtn.textContent = "View details";
+        viewBtn.addEventListener("click", () => {
+          this.openTaskFlyout(task, { readOnly: true, entry: task });
+        });
         const restoreBtn = document.createElement("button");
         restoreBtn.type = "button";
         restoreBtn.className = "btn btn-light btn-small report-restore-btn";
@@ -1541,7 +1556,7 @@ export class UIController {
             this.openTaskFlyout(restored.id);
           }
         });
-        actions.append(restoreBtn);
+        actions.append(viewBtn, restoreBtn);
         item.append(title, meta);
         if (task.closureNotes) {
           const notes = document.createElement("p");
@@ -2401,14 +2416,19 @@ export class UIController {
     this.setActivePanel("inbox");
   }
 
-  openTaskFlyout(taskId) {
+  openTaskFlyout(taskInput, options = {}) {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
-    const task = typeof taskId === "string" ? this.taskManager.getTaskById(taskId) : taskId;
+    const { readOnly = false, entry = null } = options;
+    let task = typeof taskInput === "string" ? this.taskManager.getTaskById(taskInput) : taskInput;
+    if (!task && entry) {
+      task = entry;
+    }
     if (!task) return;
     const wasOpen = this.isFlyoutOpen;
     this.currentFlyoutTaskId = task.id;
-    this.renderTaskFlyout(task);
+    this.flyoutContext = { readOnly, entry };
+    this.renderTaskFlyout(task, { readOnly, entry });
     flyout.classList.add("is-open");
     flyout.setAttribute("aria-hidden", "false");
     this.isFlyoutOpen = true;
@@ -2427,12 +2447,14 @@ export class UIController {
     flyout.setAttribute("aria-hidden", "true");
     this.isFlyoutOpen = false;
     this.currentFlyoutTaskId = null;
+    this.flyoutContext = { readOnly: false, entry: null };
     if (this.handleFlyoutKeydown) {
       document.removeEventListener("keydown", this.handleFlyoutKeydown);
     }
   }
 
-  renderTaskFlyout(task) {
+  renderTaskFlyout(task, options = {}) {
+    const { readOnly = false, entry = null } = options;
     const content = this.elements.taskFlyoutContent;
     if (!content) return;
     const titleEl = this.elements.taskFlyoutTitle;
@@ -2487,6 +2509,32 @@ export class UIController {
     actionToolbar.setAttribute("aria-label", "Task actions");
     const isCompleted = Boolean(task.completedAt);
     const transitions = TRANSITIONS[task.status] || [];
+
+    if (readOnly) {
+      const restoreButton = document.createElement("button");
+      restoreButton.type = "button";
+      restoreButton.className = "btn btn-primary";
+      restoreButton.textContent = "Restore task";
+      restoreButton.addEventListener("click", () => {
+        const restored = this.taskManager.restoreCompletedTask(entry?.id || entry?.sourceId || task.id);
+        if (restored) {
+          this.flyoutContext = { readOnly: false, entry: null };
+          this.setActivePanel("next");
+          this.openTaskFlyout(restored.id);
+        }
+      });
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "btn btn-light";
+      closeButton.textContent = "Close";
+      closeButton.addEventListener("click", () => this.closeTaskFlyout());
+      actionToolbar.append(restoreButton, closeButton);
+      const readOnlyNote = document.createElement("p");
+      readOnlyNote.className = "muted";
+      readOnlyNote.textContent = "Completed tasks are read-only. Restore to make changes.";
+      content.append(description, meta, readOnlyNote, actionToolbar);
+      return;
+    }
 
     if (!isCompleted) {
       transitions.forEach((transition) => {

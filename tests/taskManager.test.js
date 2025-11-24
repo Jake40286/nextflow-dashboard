@@ -182,6 +182,20 @@ test("tasks receive short slug identifiers and keep them through completion", ()
   assert.equal(restored.slug, task.slug, "slug stays consistent");
 });
 
+test("slug and ID are searchable", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Find me" });
+  const slugTerm = task.slug.slice(0, 4);
+
+  const slugMatches = manager.getTasks({ searchTerm: slugTerm });
+  assert.equal(slugMatches.length, 1);
+  assert.equal(slugMatches[0].id, task.id);
+
+  const idMatches = manager.getTasks({ searchTerm: task.id.slice(-6) });
+  assert.equal(idMatches.length, 1);
+  assert.equal(idMatches[0].id, task.id);
+});
+
 test("completing a recurring task schedules the next occurrence with shifted due date", () => {
   const manager = createManager();
   const task = manager.addTask({

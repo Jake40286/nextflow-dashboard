@@ -1544,16 +1544,19 @@ function getWeekRange(date) {
 function matchesSearch(task, rawTerm) {
   const term = rawTerm.trim().toLowerCase();
   if (!term) return true;
-  return (
-    task.title.toLowerCase().includes(term) ||
-    task.description?.toLowerCase().includes(term) ||
-    task.context?.toLowerCase().includes(term) ||
-    task.peopleTag?.toLowerCase().includes(term) ||
-    task.energyLevel?.toLowerCase().includes(term) ||
-    task.timeRequired?.toLowerCase().includes(term) ||
-    task.assignee?.toLowerCase().includes(term) ||
-    task.waitingFor?.toLowerCase().includes(term)
-  );
+  const fields = [
+    task.title,
+    task.description,
+    task.context,
+    task.peopleTag,
+    task.energyLevel,
+    task.timeRequired,
+    task.assignee,
+    task.waitingFor,
+    task.slug,
+    task.id,
+  ];
+  return fields.some((value) => typeof value === "string" && value.toLowerCase().includes(term));
 }
 
 function matchesFilterValue(value, filter) {

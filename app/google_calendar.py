@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
+from zoneinfo import ZoneInfo
 
 try:
     from google.oauth2 import service_account
@@ -23,7 +24,7 @@ class GoogleCalendarSync:
 
     SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-    def __init__(self, calendar_id: str, credentials_file: Path, state_file: Path):
+    def __init__(self, calendar_id: str, credentials_file: Path, state_file: Path, timezone: str, default_duration: int):
         if not service_account or not build:
             raise RuntimeError("Google libraries are unavailable. Did you install requirements?")
         self.calendar_id = calendar_id
@@ -31,12 +32,20 @@ class GoogleCalendarSync:
         self.state_file = Path(state_file)
         self.lock = threading.Lock()
         self._service = None
+        self.timezone = timezone or "UTC"
+        self.default_duration = max(5, default_duration)
+        try:
+            self.zoneinfo = ZoneInfo(self.timezone)
+        except Exception:
+            self.zoneinfo = ZoneInfo("UTC")
 
     @classmethod
     def from_env(cls) -> Optional["GoogleCalendarSync"]:
         calendar_id = os.getenv("GOOGLE_CALENDAR_ID")
         credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json")
         state_file = os.getenv("GOOGLE_CALENDAR_EVENT_STORE", "/data/google-events.json")
+        timezone = os.getenv("GOOGLE_CALENDAR_TIMEZONE", "UTC")
+        duration = int(os.getenv("GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES", "60"))
         if not calendar_id:
             return None
         cred_path = Path(credentials_file)
@@ -44,7 +53,7 @@ class GoogleCalendarSync:
             print("Google Calendar sync disabled: credentials file missing.")
             return None
         try:
-            return cls(calendar_id=calendar_id, credentials_file=cred_path, state_file=Path(state_file))
+            return cls(calendar_id=calendar_id, credentials_file=cred_path, state_file=Path(state_file), timezone=timezone, default_duration=duration)
         except Exception as error:  # noqa: BLE001
             print(f"Failed to initialize Google Calendar sync: {error}")
             return None
@@ -102,7 +111,23 @@ class GoogleCalendarSync:
             start_date = date.fromisoformat(date_value)
         except ValueError:
             return None
-        end_date = start_date + timedelta(days=1)
+        time_value = task.get("calendarTime")
+        start_payload = None
+        end_payload = None
+        if time_value:
+            try:
+                hour, minute = map(int, time_value.split(":"))
+                local_start = datetime.combine(start_date, time(hour, minute), tzinfo=self.zoneinfo)
+                minutes = self._duration_for_task(task)
+                local_end = local_start + timedelta(minutes=minutes)
+                start_payload = {"dateTime": local_start.isoformat()}
+                end_payload = {"dateTime": local_end.isoformat()}
+            except ValueError:
+                start_payload = None
+        if not start_payload:
+            end_date = start_date + timedelta(days=1)
+            start_payload = {"date": start_date.isoformat()}
+            end_payload = {"date": end_date.isoformat()}
         description = task.get("description") or ""
         context = task.get("context")
         project = task.get("projectId")
@@ -119,8 +144,8 @@ class GoogleCalendarSync:
         return {
             "summary": task.get("title", "GTD Task"),
             "description": description or "Synced from GTD Dashboard",
-            "start": {"date": start_date.isoformat()},
-            "end": {"date": end_date.isoformat()},
+            "start": start_payload,
+            "end": end_payload,
             "extendedProperties": {
                 "private": {"taskId": task.get("id", ""), "source": "gtd-dashboard"}
             },
@@ -138,6 +163,10 @@ class GoogleCalendarSync:
             return created.get("id")
         except HttpError as error:
             print(f"Google Calendar sync error for task {task.get('id')}: {error}")
+            try:
+                print("Request payload:", json.dumps(body))
+            except Exception:
+                pass
             return event_id
 
     def _delete_event(self, event_id: str) -> bool:
@@ -159,3 +188,15 @@ class GoogleCalendarSync:
     def _save_mapping(self, mapping: Dict[str, str]) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(json.dumps(mapping, indent=2), encoding="utf-8")
+
+    def _duration_for_task(self, task: Dict[str, Any]) -> int:
+        mapping = {
+            "<5min": 5,
+            "<15min": 15,
+            "<30min": 30,
+            "30min+": 60,
+        }
+        hint = task.get("timeRequired")
+        if isinstance(hint, str) and hint in mapping:
+            return mapping[hint]
+        return self.default_duration

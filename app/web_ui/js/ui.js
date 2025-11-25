@@ -2476,7 +2476,7 @@ export class UIController {
     meta.append(this.buildMetaRow("Energy level", task.energyLevel || "—"));
     meta.append(this.buildMetaRow("Time required", task.timeRequired || "—"));
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
-    meta.append(this.buildMetaRow("Calendar", task.calendarDate ? formatFriendlyDate(task.calendarDate) : "—"));
+    meta.append(this.buildMetaRow("Calendar", this.formatCalendarMeta(task)));
     meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
     meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
@@ -2698,10 +2698,16 @@ export class UIController {
     const calendarGroup = document.createElement("label");
     calendarGroup.className = "task-edit-field";
     calendarGroup.textContent = "Calendar date";
+    const calendarControls = document.createElement("div");
+    calendarControls.className = "task-calendar-controls";
     const calendarInput = document.createElement("input");
     calendarInput.type = "date";
     calendarInput.value = task.calendarDate || "";
-    calendarGroup.append(calendarInput);
+    const calendarTimeInput = document.createElement("input");
+    calendarTimeInput.type = "time";
+    calendarTimeInput.value = task.calendarTime || "";
+    calendarControls.append(calendarInput, calendarTimeInput);
+    calendarGroup.append(calendarControls);
 
     const waitingGroup = document.createElement("label");
     waitingGroup.className = "task-edit-field";
@@ -2784,6 +2790,7 @@ export class UIController {
         projectId: projectSelect.value || null,
         dueDate: dueInput.value || null,
         calendarDate: calendarInput.value || null,
+        calendarTime: calendarTimeInput.value || null,
         waitingFor: waitingInput.value.trim() || null,
         assignee: assigneeInput.value.trim() || null,
       closureNotes: closureInput.value.trim() || null,
@@ -2836,6 +2843,7 @@ export class UIController {
       projectSelect,
       dueInput,
       calendarInput,
+      calendarTimeInput,
       waitingInput,
       assigneeInput,
       closureInput,
@@ -2954,6 +2962,24 @@ export class UIController {
       return `Every ${unit}`;
     }
     return `Every ${interval} ${unit}${interval > 1 ? "s" : ""}`;
+  }
+
+  formatCalendarMeta(task) {
+    if (!task?.calendarDate) return "—";
+    const dateText = formatFriendlyDate(task.calendarDate);
+    if (!task.calendarTime) return dateText;
+    return `${dateText} at ${this.formatTimeDisplay(task.calendarTime)}`;
+  }
+
+  formatTimeDisplay(value) {
+    if (!value) return "";
+    const [rawHours, rawMinutes] = value.split(":");
+    const hours = Number.parseInt(rawHours, 10);
+    if (!Number.isFinite(hours)) return value;
+    const minutes = rawMinutes ?? "00";
+    const period = hours >= 12 ? "PM" : "AM";
+    const displayHour = hours % 12 || 12;
+    return `${displayHour}:${minutes} ${period}`;
   }
 
   getProjectName(projectId) {

@@ -2,7 +2,6 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
-from datetime import datetime
 import json
 import os
 import sys

@@ -33,17 +33,33 @@ docker compose up --build -d
 
 ## Google Calendar Sync (one-way)
 
-The server can optionally push tasks with `calendarDate`/`dueDate` to a Google Calendar using a service account:
+The server can optionally push tasks with `calendarDate`/`dueDate` to a Google Calendar using a service account. Summary:
 
-1. Create a Google Cloud project, enable the Calendar API, and generate a JSON service-account key.
-2. Share the destination Google Calendar with the service account email so it can create events.
-3. Provide these environment variables (for example in `.env`):
-   - `GOOGLE_CALENDAR_ID`: the calendar ID (found in Google Calendar settings).
-   - `GOOGLE_CREDENTIALS_FILE`: path to the JSON key inside the container (defaults to `/secrets/google-service-account.json`).
-   - `GOOGLE_CALENDAR_EVENT_STORE`: optional path where the server stores task→event mappings (defaults to `/data/google-events.json`).
-4. Mount the credentials file into the container (e.g., bind `/secrets`).
+1. **Create a Google Cloud project & enable the Calendar API.**
+   - Visit [Google Cloud Console](https://console.cloud.google.com/), create/select a project, open “APIs & Services → Library,” search for “Google Calendar API,” and click “Enable.”
+2. **Generate a service-account key.**
+   - In “APIs & Services → Credentials,” create a service account and download the JSON key. Store it somewhere safe (e.g., `./secrets/google-service-account.json`).
+3. **Share the destination Google Calendar with the service account.**
+   - In Google Calendar, open the calendar settings, find “Share with specific people,” and add the service account email with “Make changes to events.”
+4. **Wire the credentials into Docker.**
+   - Update `docker-compose.yml` to mount the secrets directory, e.g.:
+     ```yaml
+     services:
+       app:
+         volumes:
+           - ./secrets:/secrets:ro
+     ```
+   - Keep a `.gitkeep` in `secrets/` and add the directory to `.gitignore` so keys never hit version control.
+5. **Configure environment variables (e.g., in `.env`).**
+   - `GOOGLE_CALENDAR_ID`: calendar ID (available at the bottom of the calendar’s settings page, often an email).
+   - `GOOGLE_CREDENTIALS_FILE`: path inside the container (defaults to `/secrets/google-service-account.json`).
+   - `GOOGLE_CALENDAR_EVENT_STORE`: optional path for the task→event mapping cache (defaults to `/data/google-events.json`).
+   - `GOOGLE_CALENDAR_TIMEZONE`: IANA timezone for timed events (defaults to `UTC`).
+   - `GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES`: fallback meeting length (defaults to `60`).
+6. **Redeploy.**
+   - Run `docker compose down && docker compose up --build -d` so the new env vars and dependencies take effect.
 
-When configured, every call to `/state` automatically mirrors active tasks that have a `calendarDate` or `dueDate` into the configured Google Calendar. Clearing those dates (or deleting the task) removes the corresponding event. Future improvements can build on this for two-way sync.
+After those steps, open the dashboard and give tasks a `calendarDate` (and optionally `calendarTime`). Each `/state` save mirrors the tasks into Google Calendar; removing the dates deletes the events. If the logs show API errors (credentials missing, API disabled, etc.), address them in Google Cloud, then trigger another save.
 
 ## Automated Backups
 

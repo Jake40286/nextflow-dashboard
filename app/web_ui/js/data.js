@@ -537,6 +537,7 @@ export class TaskManager extends EventTarget {
       waitingFor: payload.waitingFor || null,
       assignee: payload.assignee || null,
       calendarDate: payload.calendarDate || null,
+      calendarTime: sanitizeTime(payload.calendarTime) || null,
       completedAt: payload.completedAt || null,
       closureNotes: payload.closureNotes?.trim() || null,
       updatedAt: nowIso(),
@@ -650,6 +651,7 @@ export class TaskManager extends EventTarget {
       waitingFor: null,
       slug: null,
     };
+    clone.calendarTime = sanitizeTime(template.calendarTime) || null;
     const dueDateBase = clone.dueDate ? new Date(clone.dueDate) : null;
     const calendarBase = clone.calendarDate ? new Date(clone.calendarDate) : null;
     const completedDate = completedAt ? new Date(completedAt) : new Date();
@@ -703,6 +705,7 @@ export class TaskManager extends EventTarget {
       waitingFor: entry.waitingFor || null,
       dueDate: entry.dueDate || null,
       calendarDate: entry.calendarDate || null,
+      calendarTime: sanitizeTime(entry.calendarTime) || null,
       createdAt: entry.createdAt || new Date().toISOString(),
       completedAt: null,
       closureNotes: entry.closureNotes || null,
@@ -1185,6 +1188,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     waitingFor: task.waitingFor,
     dueDate: task.dueDate,
     calendarDate: task.calendarDate,
+    calendarTime: task.calendarTime,
     createdAt: task.createdAt,
     completedAt,
     archivedAt: new Date().toISOString(),
@@ -1203,6 +1207,7 @@ function normalizeTask(task) {
     archiveType: task.archiveType || null,
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
     slug: normalizeSlug(task.slug, task.id || task.sourceId || task.title || nowIso()),
+    calendarTime: sanitizeTime(task.calendarTime) || null,
     context: task.context ?? task.physicalContext ?? null,
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
@@ -1229,6 +1234,7 @@ function normalizeCompletionEntry(entry) {
     waitingFor: entry.waitingFor || null,
     dueDate: entry.dueDate || null,
     calendarDate: entry.calendarDate || null,
+    calendarTime: sanitizeTime(entry.calendarTime) || null,
     createdAt: entry.createdAt || null,
     completedAt: entry.completedAt || entry.archivedAt || null,
     archivedAt: entry.archivedAt || entry.completedAt || null,
@@ -1351,6 +1357,17 @@ function sanitizeIsoDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
+}
+
+function sanitizeTime(value) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+  if (!match) return null;
+  const hours = match[1].padStart(2, "0");
+  const minutes = match[2];
+  return `${hours}:${minutes}`;
 }
 
 function normalizeRecurrenceRule(rule) {

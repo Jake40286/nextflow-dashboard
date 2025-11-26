@@ -16,6 +16,7 @@ export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
 export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
 const SLUG_MIN_LENGTH = 5;
+const DEVICE_INFO_KEY = "gtd-dashboard-device-info";
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
@@ -56,169 +57,10 @@ const EMPTY_STATE = {
 };
 
 const defaultState = () => ({
-  tasks: [
-    {
-      id: "t-101",
-      title: "Clarify project handoff notes",
-      description: "Process notes from the strategy sync and capture follow-up items.",
-      status: STATUS.INBOX,
-      context: "@Work",
-      dueDate: null,
-      projectId: null,
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: null,
-      calendarDate: null,
-      completedAt: null,
-    },
-    {
-      id: "t-102",
-      title: "Schedule annual physical",
-      description: "Call primary care office to book appointment.",
-      status: STATUS.NEXT,
-      context: "@Errands",
-      dueDate: addDaysIso(3),
-      projectId: null,
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: null,
-      calendarDate: addDaysIso(3),
-      completedAt: null,
-    },
-    {
-      id: "t-103",
-      title: "Outline Q3 roadmap",
-      description: "Draft initial roadmap structure before Thursday leadership review.",
-      status: STATUS.NEXT,
-      context: "@Work",
-      dueDate: addDaysIso(2),
-      projectId: "p-301",
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: "Avery",
-      calendarDate: addDaysIso(2),
-      completedAt: null,
-    },
-    {
-      id: "t-104",
-      title: "Follow up with vendor on invoice",
-      description: "Waiting on updated invoice from Apex Supplies.",
-      status: STATUS.WAITING,
-      context: "@Work",
-      dueDate: addDaysIso(1),
-      projectId: null,
-      createdAt: new Date().toISOString(),
-      waitingFor: "Jordan @ Apex Supplies",
-      assignee: null,
-      calendarDate: null,
-      completedAt: null,
-    },
-    {
-      id: "t-105",
-      title: "Plan weekend hiking trip",
-      description: "Research trails and reserve campsite if needed.",
-      status: STATUS.SOMEDAY,
-      context: "@Home",
-      dueDate: null,
-      projectId: null,
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: null,
-      calendarDate: null,
-      completedAt: null,
-    },
-    {
-      id: "t-106",
-      title: "Record onboarding walkthrough video",
-      description: "Screen capture the updated dashboard onboarding flow.",
-      status: STATUS.NEXT,
-      context: "@Desk",
-      dueDate: addDaysIso(1),
-      projectId: "p-302",
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: "Jamie",
-      calendarDate: addDaysIso(1),
-      completedAt: null,
-    },
-    {
-      id: "t-107",
-      title: "Send proposal draft for review",
-      description: "Waiting on Casey to provide annotated feedback.",
-      status: STATUS.WAITING,
-      context: "@Work",
-      dueDate: addDaysIso(-1),
-      projectId: "p-301",
-      createdAt: new Date().toISOString(),
-      waitingFor: "Casey",
-      assignee: null,
-      calendarDate: null,
-      completedAt: null,
-    },
-    {
-      id: "t-108",
-      title: "Prototype focus timer widget",
-      description: "Low fidelity draft to explore layout options.",
-      status: STATUS.SOMEDAY,
-      context: "@Team",
-      dueDate: null,
-      projectId: "p-303",
-      createdAt: new Date().toISOString(),
-      waitingFor: null,
-      assignee: "Taylor",
-      calendarDate: null,
-      completedAt: null,
-    },
-  ],
+  tasks: [],
   reference: [],
   completionLog: [],
-  projects: [
-    {
-      id: "p-301",
-      name: "Launch GTD dashboard beta",
-      vision: "Deliver a shareable GTD dashboard prototype with actionable insights.",
-      status: "active",
-      owner: "Avery",
-      tags: ["Product", "Team"],
-      tasks: ["t-103", "t-107"],
-      isExpanded: true,
-      someday: false,
-      areaOfFocus: "Work",
-      themeTag: "Networking",
-      statusTag: "Active",
-      deadline: addDaysIso(30),
-    },
-    {
-      id: "p-302",
-      name: "Revamp onboarding guide",
-      vision: "Update the onboarding flow to incorporate recent UI changes.",
-      status: "active",
-      owner: "Jamie",
-      tags: ["Enablement"],
-      tasks: ["t-106"],
-      isExpanded: false,
-      someday: false,
-      areaOfFocus: "Work",
-      themeTag: "Automations",
-      statusTag: "Active",
-      deadline: null,
-    },
-    {
-      id: "p-303",
-      name: "Explore focus tools",
-      vision: "Research timers and habit integrations to extend the engage view.",
-      status: "incubating",
-      owner: "Taylor",
-      tags: ["Research"],
-      tasks: ["t-108"],
-      isExpanded: false,
-      someday: true,
-      areaOfFocus: "Personal",
-      themeTag: "Research",
-      statusTag: "OnHold",
-      deadline: null,
-    },
-  ],
+  projects: [],
   completedProjects: [],
   checklist: [
     { id: "c-1", label: "Get inbox to zero", done: false },
@@ -247,10 +89,6 @@ function hydrateState(raw = {}) {
     ...raw,
   };
   nextState.tasks = (nextState.tasks || []).map((task) => normalizeTask(task));
-  if ((!raw || raw.tasks === undefined) && nextState.tasks.length === 0) {
-    // If no saved tasks exist (e.g., first load, bad state read), fall back to starter data.
-    nextState.tasks = defaultState().tasks.map((task) => normalizeTask(task));
-  }
   nextState.reference = (nextState.reference || []).map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
   nextState.completionLog = (nextState.completionLog || [])
     .map((entry) => normalizeCompletionEntry(entry))
@@ -260,12 +98,6 @@ function hydrateState(raw = {}) {
     .map((project) => normalizeCompletedProject(project))
     .filter(Boolean);
   return nextState;
-}
-
-function addDaysIso(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 async function readServerState() {
@@ -354,12 +186,52 @@ function normalizeSlug(value, seed) {
   return createSlug(seed);
 }
 
+function getDeviceIdentity(storage) {
+  const fallback = { id: "device-unknown", label: "Unknown device" };
+  if (!storage) {
+    return fallback;
+  }
+  try {
+    const cached = storage.getItem(DEVICE_INFO_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.id && parsed?.label) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.error("Failed to read device identity", error);
+  }
+  const id = generateId("device");
+  let platformLabel = "This device";
+  try {
+    if (typeof navigator !== "undefined") {
+      platformLabel =
+        navigator.userAgentData?.platform ||
+        navigator.platform ||
+        navigator.userAgent ||
+        platformLabel;
+    }
+  } catch (error) {
+    platformLabel = "This device";
+  }
+  const label = `${platformLabel} (${id.slice(-4)})`;
+  const info = { id, label };
+  try {
+    storage.setItem(DEVICE_INFO_KEY, JSON.stringify(info));
+  } catch (error) {
+    console.error("Failed to persist device identity", error);
+  }
+  return info;
+}
+
 export class TaskManager extends EventTarget {
   constructor(storageKey = STORAGE_KEY) {
     super();
     this.storageKey = storageKey;
     this.storage = safeLocalStorage();
     this.state = hydrateState(EMPTY_STATE);
+    this.deviceInfo = getDeviceIdentity(this.storage);
     this.remoteSyncEnabled = typeof fetch !== "undefined";
     this.remoteSignature = null;
     this.pendingRemoteState = null;
@@ -372,7 +244,7 @@ export class TaskManager extends EventTarget {
     }
   }
 
-  async loadRemoteState() {
+  async loadRemoteState(options = {}) {
     try {
       const remoteState = await readServerState();
       const merged = mergeStates(remoteState || {}, this.state || {});
@@ -384,6 +256,9 @@ export class TaskManager extends EventTarget {
       console.error("Failed to load remote state", error);
       this.setConnectionStatus("offline");
       this.notify("warn", "Server storage unavailable. Showing local data until it returns.");
+      if (options?.rethrow) {
+        throw error;
+      }
     }
   }
 
@@ -417,7 +292,7 @@ export class TaskManager extends EventTarget {
     this.flushRemoteQueue();
   }
 
-  async flushRemoteQueue() {
+  async flushRemoteQueue(options = {}) {
     const payload = hydrateState(this.state);
     this.pendingRemoteState = payload;
     try {
@@ -441,11 +316,15 @@ export class TaskManager extends EventTarget {
     } catch (error) {
       console.error("Failed to sync remote state", error);
       this.setConnectionStatus("offline");
-      if (this.remoteRetryTimer) return;
-      this.remoteRetryTimer = setTimeout(() => {
-        this.remoteRetryTimer = null;
-        this.flushRemoteQueue();
-      }, 60000);
+      if (!this.remoteRetryTimer) {
+        this.remoteRetryTimer = setTimeout(() => {
+          this.remoteRetryTimer = null;
+          this.flushRemoteQueue();
+        }, 60000);
+      }
+      if (options?.rethrow) {
+        throw error;
+      }
     }
   }
 
@@ -468,6 +347,16 @@ export class TaskManager extends EventTarget {
     if (this.connectionStatus === status) return;
     this.connectionStatus = status;
     this.dispatchEvent(new CustomEvent("connection", { detail: { status } }));
+  }
+
+  async manualSync() {
+    if (!this.remoteSyncEnabled) {
+      throw new Error("Remote sync unavailable.");
+    }
+    this.persistLocally();
+    await this.flushRemoteQueue({ rethrow: true });
+    await this.loadRemoteState({ rethrow: true });
+    this.persistLocally();
   }
 
   save() {
@@ -543,6 +432,8 @@ export class TaskManager extends EventTarget {
       updatedAt: nowIso(),
       recurrenceRule: normalizeRecurrenceRule(payload.recurrenceRule),
       slug: normalizeSlug(payload.slug, id),
+      originDevice: this.deviceInfo?.label || "Unknown device",
+      originDeviceId: this.deviceInfo?.id || null,
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -713,6 +604,8 @@ export class TaskManager extends EventTarget {
       archiveType: archiveType,
       recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
       slug: normalizeSlug(entry.slug, entry.id || entry.sourceId),
+      originDevice: entry.originDevice || null,
+      originDeviceId: entry.originDeviceId || null,
     };
     normalizeTaskTags(restored, { enforceContext: restored.status !== STATUS.INBOX });
     this.state.tasks.unshift(restored);
@@ -753,11 +646,20 @@ export class TaskManager extends EventTarget {
   }
 
   deleteTask(id) {
-    this.state.tasks = this.state.tasks.filter((task) => task.id !== id);
+    const taskIndex = this.state.tasks.findIndex((task) => task.id === id);
+    if (taskIndex === -1) {
+      this.notify("error", "Task not found.");
+      return;
+    }
+    const [task] = this.state.tasks.splice(taskIndex, 1);
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
+    const snapshot = createCompletionSnapshot(task, nowIso(), "deleted");
+    this.state.completionLog = this.state.completionLog || [];
+    this.state.completionLog.unshift(snapshot);
     this.emitChange();
+    this.notify("info", `"${task.title}" deleted.`);
   }
 
   getProjects({ includeSomeday = true } = {}) {
@@ -979,7 +881,8 @@ export class TaskManager extends EventTarget {
       (task) => !task.completedAt && Boolean(task.calendarDate || task.dueDate)
     );
     const entries = tasks.map((task) => {
-      const date = task.calendarDate || task.dueDate;
+      const hasCalendarTime = Boolean(task.calendarDate && task.calendarTime);
+      const date = hasCalendarTime ? `${task.calendarDate}T${task.calendarTime}` : task.calendarDate || task.dueDate;
       return {
         date,
         title: task.title,
@@ -987,12 +890,15 @@ export class TaskManager extends EventTarget {
         status: task.status,
         projectId: task.projectId,
         taskId: task.id,
+        calendarDate: task.calendarDate || null,
+        calendarTime: task.calendarTime || null,
         isDue: Boolean(task.dueDate && !task.calendarDate),
         isCompleted: false,
+        raw: task,
       };
     });
 
-    const completions = this.getCompletionEntries().filter((entry) => entry.completedAt);
+    const completions = this.getCompletionEntries().filter((entry) => entry.completedAt && entry.archiveType !== "deleted");
     completions.forEach((entry) => {
       entries.push({
         date: entry.completedAt,
@@ -1001,8 +907,11 @@ export class TaskManager extends EventTarget {
         status: entry.status || "completed",
         projectId: entry.projectId || null,
         taskId: entry.sourceId || entry.id,
+        calendarDate: null,
+        calendarTime: null,
         isDue: false,
         isCompleted: true,
+        raw: entry,
       });
     });
 
@@ -1016,7 +925,9 @@ export class TaskManager extends EventTarget {
   getCompletionEntries() {
     const reference = Array.isArray(this.state.reference) ? this.state.reference : [];
     const logged = Array.isArray(this.state.completionLog) ? this.state.completionLog : [];
-    return [...reference, ...logged].map((entry) => normalizeCompletionEntry(entry)).filter(Boolean);
+    return [...reference, ...logged]
+      .map((entry) => normalizeCompletionEntry(entry))
+      .filter((entry) => entry && entry.archiveType !== "deleted");
   }
 
   getCompletedTasks({ year, context, contexts, projectId, projectIds } = {}) {
@@ -1197,6 +1108,8 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     updatedAt: completedAt || nowIso(),
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
     slug: task.slug || normalizeSlug(null, task.id),
+    originDevice: task.originDevice || null,
+    originDeviceId: task.originDeviceId || null,
   };
 }
 
@@ -1207,6 +1120,8 @@ function normalizeTask(task) {
     archiveType: task.archiveType || null,
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
     slug: normalizeSlug(task.slug, task.id || task.sourceId || task.title || nowIso()),
+    originDevice: task.originDevice || null,
+    originDeviceId: task.originDeviceId || null,
     calendarTime: sanitizeTime(task.calendarTime) || null,
     context: task.context ?? task.physicalContext ?? null,
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
@@ -1242,6 +1157,8 @@ function normalizeCompletionEntry(entry) {
     closureNotes: entry.closureNotes || null,
     recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
     slug: normalizeSlug(entry.slug, entry.id || entry.sourceId),
+    originDevice: entry.originDevice || null,
+    originDeviceId: entry.originDeviceId || null,
   };
 }
 
@@ -1426,13 +1343,7 @@ function mergeStates(remoteState = {}, localState = {}) {
     });
     return Array.from(map.values());
   };
-  merged.tasks = mergeCollections(localState.tasks, remoteState.tasks).filter((task) => {
-    if (!task?.id) return false;
-    const removedAt = removalMarkers.get(task.id);
-    if (!removedAt) return true;
-    const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
-    return updatedAt > removedAt;
-  });
+  merged.tasks = mergeTasks(localState.tasks, remoteState.tasks, removalMarkers);
   merged.projects = mergeCollections(localState.projects, remoteState.projects);
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
@@ -1470,6 +1381,26 @@ function collectRemovalMarkers(...states) {
     ingest(state.completionLog);
   });
   return markers;
+}
+
+function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map()) {
+  const localList = Array.isArray(localTasks) ? localTasks.filter(Boolean) : [];
+  const remoteList = Array.isArray(remoteTasks) ? remoteTasks.filter(Boolean) : [];
+  const localIds = new Set(localList.map((task) => task.id).filter(Boolean));
+  const merged = localList.slice();
+  remoteList.forEach((task) => {
+    if (!task?.id) return;
+    if (localIds.has(task.id)) return;
+    const removedAt = removalMarkers.get(task.id);
+    if (removedAt) {
+      const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
+      if (updatedAt <= removedAt) {
+        return;
+      }
+    }
+    merged.push(task);
+  });
+  return merged;
 }
 
 function advanceRecurrence(date, rule) {

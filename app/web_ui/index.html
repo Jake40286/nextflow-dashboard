@@ -45,10 +45,10 @@
           <span class="meta-label">Overdue</span>
           <span id="overdueCount" class="meta-value">0</span>
         </div>
-        <div class="meta-item status-indicator" title="Connection status">
+        <button id="manualSyncButton" class="meta-item status-indicator" type="button" title="Manual sync">
           <span class="meta-label">Sync</span>
           <span id="connectionStatusDot" class="status-dot" aria-live="polite" role="status">●</span>
-        </div>
+        </button>
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Toggle light or dark theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
         </button>
@@ -280,9 +280,6 @@
               <button id="calendarNextMonth" class="btn btn-light" type="button" aria-label="Next month">›</button>
             </div>
             <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Monthly calendar"></div>
-          </div>
-          <div class="panel-body calendar-body">
-            <ul id="calendarList" class="calendar-list" role="list"></ul>
           </div>
         </div>
       </section>

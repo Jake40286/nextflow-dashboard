@@ -73,6 +73,7 @@ export class UIController {
     this.projectCompletionState = { projectId: null };
     this.connectionStatus = "online";
     this.connectionCheckTimer = null;
+    this.manualSyncInFlight = false;
   }
 
   init() {
@@ -99,12 +100,13 @@ export class UIController {
       integrationsCard,
       reportGrouping,
       reportYear,
-    randomContext,
-    pickRandomTask,
-    projectAreaFilter,
-    calendarPrevMonth,
-    calendarNextMonth,
-  } = this.elements;
+      randomContext,
+      pickRandomTask,
+      projectAreaFilter,
+      calendarPrevMonth,
+      calendarNextMonth,
+      manualSyncButton,
+    } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
       const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
@@ -190,6 +192,10 @@ export class UIController {
       button.addEventListener("click", () => {
         this.taskManager.notify("info", "Integration is coming soon. Stay tuned!");
       });
+    });
+
+    manualSyncButton?.addEventListener("click", () => {
+      this.triggerManualSync();
     });
 
     this.taskManager.addEventListener("statechange", () => {
@@ -1115,46 +1121,7 @@ export class UIController {
 
   renderCalendar() {
     const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
-    const list = this.elements.calendarList;
     this.renderCalendarGrid(entries);
-    if (!list) return;
-    list.innerHTML = "";
-
-    if (!entries.length) {
-      const empty = document.createElement("li");
-      empty.className = "calendar-item muted";
-      empty.textContent = "No scheduled items.";
-      list.append(empty);
-      return;
-    }
-
-    entries.forEach((entry) => {
-      const li = document.createElement("li");
-      li.className = "calendar-item";
-      const friendly = formatFriendlyDate(entry.date);
-      const isDue = entry.isDue === true;
-      const isCompleted = entry.isCompleted === true;
-      li.innerHTML = `
-        <strong>${entry.title}</strong>
-        <span class="calendar-meta">
-          <span>${friendly}</span>
-          <span>${entry.context || "No context"}</span>
-          <span>Status: ${entry.status}</span>
-        </span>
-      `;
-      if (isCompleted) {
-        li.classList.add("is-completed");
-      } else if (isDue) {
-        li.classList.add("is-due");
-      }
-      li.dataset.taskId = entry.taskId;
-      if (!isCompleted) {
-        li.draggable = true;
-        enableDrag(li, entry.taskId);
-      }
-      li.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
-      list.append(li);
-    });
     if (this.activePanel === "calendar") {
       this.updateActivePanelMeta();
     }
@@ -1233,15 +1200,14 @@ export class UIController {
           } else if (entry.isDue) {
             item.classList.add("is-due");
           }
-          const hasTime = typeof entry.date === "string" && entry.date.includes("T");
-          const timeLabel = hasTime ? new Date(entry.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+          const timeLabel = this.getCalendarEntryTime(entry);
           item.textContent = `${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
           item.dataset.taskId = entry.taskId;
           if (!entry.isCompleted) {
             item.draggable = true;
             enableDrag(item, entry.taskId);
           }
-          item.addEventListener("click", () => this.openTaskFlyout(entry.taskId));
+          item.addEventListener("click", () => this.handleCalendarItemClick(entry));
           list.append(item);
         });
         dayContainer.append(list);
@@ -2481,6 +2447,7 @@ export class UIController {
     meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
     meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
+    meta.append(this.buildMetaRow("Created on", task.originDevice || "Unknown device"));
 
     if (task.status === STATUS.INBOX) {
       const inboxPanel = document.createElement("div");
@@ -3217,6 +3184,61 @@ export class UIController {
     dot.setAttribute("aria-label", status === "online" ? "Online" : "Offline");
   }
 
+  async triggerManualSync() {
+    if (this.manualSyncInFlight) return;
+    this.manualSyncInFlight = true;
+    this.updateManualSyncButton(true);
+    try {
+      await this.taskManager.manualSync();
+      this.showToast("info", "Synced with server.");
+    } catch (error) {
+      console.error("Manual sync failed", error);
+      this.showToast("error", "Sync failed. Check connection and try again.");
+    } finally {
+      this.manualSyncInFlight = false;
+      this.updateManualSyncButton(false);
+    }
+  }
+
+  updateManualSyncButton(isSyncing) {
+    const button = this.elements.manualSyncButton;
+    if (!button) return;
+    button.disabled = isSyncing;
+    button.classList.toggle("is-syncing", isSyncing);
+    const label = button.querySelector(".meta-label");
+    if (label) {
+      label.textContent = isSyncing ? "Syncing…" : "Sync";
+    }
+  }
+
+  getCalendarEntryTime(entry) {
+    if (!entry) return "";
+    if (entry.calendarTime) {
+      return this.formatTimeDisplay(entry.calendarTime);
+    }
+    if (typeof entry.date === "string" && entry.date.includes("T")) {
+      const date = new Date(entry.date);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      }
+    }
+    return "";
+  }
+
+  handleCalendarItemClick(entry) {
+    if (!entry) return;
+    const liveTask = this.taskManager.getTaskById(entry.taskId);
+    if (liveTask) {
+      this.openTaskFlyout(liveTask.id);
+      return;
+    }
+    if (entry.isCompleted && entry.raw) {
+      this.openTaskFlyout(entry.raw, { readOnly: true, entry: entry.raw });
+      return;
+    }
+    this.taskManager.notify("warn", "Task not found.");
+  }
+
   syncTheme(theme) {
     const appRoot = this.elements.appRoot;
     appRoot.dataset.theme = theme;
@@ -3280,7 +3302,6 @@ function mapElements() {
     calendarMonthLabel: byId("calendarMonthLabel"),
     calendarPrevMonth: byId("calendarPrevMonth"),
     calendarNextMonth: byId("calendarNextMonth"),
-    calendarList: byId("calendarList"),
     reportGrouping: byId("reportGrouping"),
     reportYear: byId("reportYear"),
     reportContextPicker: byId("reportContextPicker"),
@@ -3296,6 +3317,7 @@ function mapElements() {
     reportDetailsTitle: byId("reportDetailsTitle"),
     reportDetailsMeta: byId("reportDetailsMeta"),
     reportDetailsPlaceholder: byId("reportDetailsPlaceholder"),
+    manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),

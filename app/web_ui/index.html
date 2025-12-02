@@ -91,7 +91,7 @@
               <span class="summary-value" id="summaryCalendar">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-reports" data-panel-target="reports" aria-controls="panel-reports" aria-selected="false">
-              <span class="summary-label">Review</span>
+              <span class="summary-label">Complete</span>
               <span class="summary-value" id="summaryCompleted">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
@@ -213,6 +213,10 @@
           </div>
         </div>
         <div class="toolbar-actions">
+          <label class="toolbar-toggle" for="toggleNextProjectFanout">
+            <input id="toggleNextProjectFanout" type="checkbox" />
+            <span>Show all next actions per project</span>
+          </label>
           <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
           <button id="expandProjects" class="btn btn-light" type="button">Expand projects</button>
         </div>
@@ -255,13 +259,6 @@
           <button type="submit" class="btn btn-primary">Add project</button>
         </form>
         <div class="panel-body" data-projects></div>
-        <section class="completed-projects-card" aria-labelledby="completedProjectsHeading">
-          <header class="completed-projects-header">
-            <h3 id="completedProjectsHeading">Completed Projects</h3>
-            <p class="muted small-text">Archive of finished work. Edit closure notes anytime.</p>
-          </header>
-          <div class="completed-projects-body" data-completed-projects></div>
-        </section>
       </div>
     </section>
 
@@ -303,6 +300,13 @@
 
       <section class="workspace-view" data-panel="reports" role="tabpanel" aria-labelledby="summary-tab-reports" id="panel-reports" hidden>
         <div class="panel-content">
+          <section class="completed-projects-card" aria-labelledby="completedProjectsHeading">
+            <header class="completed-projects-header">
+              <h3 id="completedProjectsHeading">Completed Projects</h3>
+              <p class="muted small-text">Archive of finished work. Edit closure notes anytime.</p>
+            </header>
+            <div class="completed-projects-body" data-completed-projects></div>
+          </section>
           <div class="report-controls">
             <label class="filter-control" for="reportGrouping">View by</label>
             <select id="reportGrouping">
@@ -474,6 +478,13 @@
             <p class="muted small-text">You did it. Do you expect a response?</p>
             <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
             <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
+            <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
+            <select id="clarifyFollowupTiming">
+              <option value="24h">Follow up in 24 hours</option>
+              <option value="7d">Follow up in 7 days</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
             <div class="clarify-option-buttons">
               <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — Create Waiting For</button>
               <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — Complete</button>

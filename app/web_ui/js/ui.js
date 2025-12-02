@@ -11,6 +11,7 @@ import {
 } from "./data.js";
 
 const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
+const NEXT_FANOUT_KEY = "gtd-dashboard-next-fanout";
 
 const TRANSITIONS = {
   [STATUS.INBOX]: [
@@ -51,6 +52,7 @@ export class UIController {
     this.panelButtons = [];
     this.panels = [];
     this.activePanel = loadStoredPanel() || "inbox";
+    this.allowMultipleNextPerProject = loadNextFanoutPreference();
     this.summaryCache = null;
     this.reportFilters = {
       grouping: "week",
@@ -110,6 +112,7 @@ export class UIController {
       waitingFilterToggle,
       waitingFilterOptions,
       summaryAllActive,
+      toggleNextProjectFanout,
     } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
@@ -155,6 +158,18 @@ export class UIController {
       const nextExpandedState = projects.some((project) => !project.isExpanded);
       projects.forEach((project) => this.taskManager.toggleProjectExpansion(project.id, nextExpandedState));
     });
+
+    if (toggleNextProjectFanout) {
+      toggleNextProjectFanout.checked = this.allowMultipleNextPerProject;
+      toggleNextProjectFanout.addEventListener("change", () => {
+        this.allowMultipleNextPerProject = toggleNextProjectFanout.checked;
+        storeNextFanoutPreference(this.allowMultipleNextPerProject);
+        this.renderNextActions();
+        if (this.activePanel === "next") {
+          this.updateActivePanelMeta();
+        }
+      });
+    }
 
     projectAreaFilter?.addEventListener("change", () => {
       this.filters.projectArea = projectAreaFilter.value;
@@ -308,7 +323,7 @@ export class UIController {
     if (STATUS_LABELS[panel]) return STATUS_LABELS[panel];
     if (panel === "projects") return "Projects";
     if (panel === "calendar") return "Calendar";
-     if (panel === "reports") return "Reports";
+    if (panel === "reports") return "Complete";
     return "Overview";
   }
 
@@ -695,7 +710,7 @@ export class UIController {
       status: STATUS.NEXT,
       includeFutureScheduled: false,
     });
-    const tasks = this.filterNextTasksByProject(allNextTasks);
+    const tasks = this.allowMultipleNextPerProject ? allNextTasks : this.filterNextTasksByProject(allNextTasks);
     const board = this.elements.contextBoard;
     board.innerHTML = "";
 
@@ -908,8 +923,6 @@ export class UIController {
       details.append(summary, body);
       container.append(details);
     });
-
-    this.renderCompletedProjects();
   }
 
   renderCompletedProjects() {
@@ -1277,6 +1290,7 @@ export class UIController {
 
   renderReports() {
     const { reportList, reportEmpty, reportGrouping, reportYear } = this.elements;
+    this.renderCompletedProjects();
     if (!reportList) return;
     const grouping = this.reportFilters.grouping;
     if (reportGrouping) {
@@ -1780,6 +1794,8 @@ export class UIController {
       clarifyTwoMinuteYes,
       clarifyTwoMinuteNo,
       clarifyTwoMinuteFollowup,
+      clarifyFollowupTiming,
+      clarifyFollowupCustomDate,
       clarifyTwoMinuteExpectYes,
       clarifyTwoMinuteExpectNo,
       clarifyTwoMinuteResponseInput,
@@ -1833,6 +1849,7 @@ export class UIController {
     clarifyTwoMinuteNo?.addEventListener("click", () => this.showClarifyStep("who"));
     clarifyTwoMinuteExpectYes?.addEventListener("click", () => this.handleTwoMinuteFollowup(true));
     clarifyTwoMinuteExpectNo?.addEventListener("click", () => this.handleTwoMinuteFollowup(false));
+    clarifyFollowupTiming?.addEventListener("change", () => this.toggleCustomFollowupDate());
     clarifyWhoSelf?.addEventListener("click", () => this.showClarifyStep("dates"));
     clarifyWhoDelegate?.addEventListener("click", () => this.handleClarifyDelegation(clarifyDelegateNameInput?.value));
     clarifyDateContinue?.addEventListener("click", () => this.handleClarifyDateDecision());
@@ -1856,6 +1873,7 @@ export class UIController {
       if (clarifyTwoMinuteResponseInput) {
         clarifyTwoMinuteResponseInput.value = "";
       }
+      this.resetFollowupTiming();
     };
     clarifyTwoMinuteStep?.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -2281,6 +2299,7 @@ export class UIController {
   handleClarifyTwoMinuteYes() {
     if (!this.clarifyState.taskId) return;
     const followup = this.elements.clarifyTwoMinuteFollowup;
+    this.resetFollowupTiming();
     if (followup) {
       followup.hidden = false;
     }
@@ -2290,8 +2309,57 @@ export class UIController {
     }
   }
 
+  resolveFollowupDate(choice = "24h", customValue = "") {
+    if (choice === "24h" || choice === "7d") {
+      const days = choice === "24h" ? 1 : 7;
+      const date = new Date();
+      date.setDate(date.getDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+    if (choice === "custom") {
+      const value = (customValue || "").trim();
+      return value || null;
+    }
+    return null;
+  }
+
+  toggleCustomFollowupDate() {
+    const timingSelect = this.elements.clarifyFollowupTiming;
+    const customInput = this.elements.clarifyFollowupCustomDate;
+    const isCustom = timingSelect?.value === "custom";
+    if (!customInput) return;
+    customInput.hidden = !isCustom;
+    if (!isCustom) {
+      customInput.value = "";
+    } else {
+      customInput.focus();
+    }
+  }
+
+  resetFollowupTiming() {
+    const timingSelect = this.elements.clarifyFollowupTiming;
+    const customInput = this.elements.clarifyFollowupCustomDate;
+    if (timingSelect) {
+      timingSelect.value = "24h";
+    }
+    if (customInput) {
+      customInput.value = "";
+      customInput.hidden = true;
+    }
+  }
+
   handleTwoMinuteFollowup(expectResponse) {
     if (!this.clarifyState.taskId) return;
+    let followUpDueDate = null;
+    if (expectResponse) {
+      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
+      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
+      followUpDueDate = this.resolveFollowupDate(choice, customValue);
+      if (!followUpDueDate) {
+        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
+        return;
+      }
+    }
     this.clarifyState.expectResponse = expectResponse;
     const waitingFor = expectResponse
       ? this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response"
@@ -2308,6 +2376,7 @@ export class UIController {
         waitingFor,
         context: this.clarifyState.context || task.context || PHYSICAL_CONTEXTS[0],
         projectId: this.clarifyState.projectId || task.projectId || null,
+        dueDate: followUpDueDate,
       };
       this.taskManager.updateTask(task.id, updates);
       this.taskManager.notify("info", "Captured as Waiting For.");
@@ -2475,11 +2544,14 @@ export class UIController {
     meta.append(this.buildMetaRow("Time required", task.timeRequired || "—"));
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
     meta.append(this.buildMetaRow("Calendar", this.formatCalendarMeta(task)));
-    meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
+    if (isCompleted) {
+      meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
+    }
     meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
     meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
     meta.append(this.buildMetaRow("Created on", task.originDevice || "Unknown device"));
+    const isCompleted = Boolean(task.completedAt);
 
     if (task.status === STATUS.INBOX) {
       const inboxPanel = document.createElement("div");
@@ -2506,7 +2578,6 @@ export class UIController {
     actionToolbar.className = "task-flyout-actions";
     actionToolbar.setAttribute("role", "group");
     actionToolbar.setAttribute("aria-label", "Task actions");
-    const isCompleted = Boolean(task.completedAt);
     const transitions = TRANSITIONS[task.status] || [];
 
     if (readOnly) {
@@ -2563,8 +2634,94 @@ export class UIController {
       actionToolbar.append(completeButton, completeDeleteButton);
     }
 
-    content.append(description, meta, actionToolbar);
+    if (!isCompleted) {
+      content.append(description, meta, this.createFollowupSection(task), actionToolbar);
+    } else {
+      content.append(description, meta, actionToolbar);
+    }
     content.append(this.createTaskForm(task));
+  }
+
+  createFollowupSection(task) {
+    const section = document.createElement("div");
+    section.className = "task-edit";
+    const heading = document.createElement("h3");
+    heading.textContent = "Follow up";
+    const helper = document.createElement("p");
+    helper.className = "muted small-text";
+    helper.textContent = "Move to Waiting For and set a follow-up date.";
+    const waitingField = document.createElement("label");
+    waitingField.className = "task-edit-field";
+    waitingField.textContent = "Waiting on";
+    const waitingInput = document.createElement("input");
+    waitingInput.type = "text";
+    waitingInput.placeholder = "Person or response";
+    waitingInput.value = task.waitingFor || "";
+    waitingField.append(waitingInput);
+
+    const timingField = document.createElement("label");
+    timingField.className = "task-edit-field";
+    timingField.textContent = "Follow-up timing";
+    const timingSelect = document.createElement("select");
+    const timingOptions = [
+      { label: "Follow up in 24 hours", value: "24h" },
+      { label: "Follow up in 7 days", value: "7d" },
+      { label: "Custom date", value: "custom" },
+    ];
+    timingOptions.forEach((option) => {
+      const node = document.createElement("option");
+      node.value = option.value;
+      node.textContent = option.label;
+      timingSelect.append(node);
+    });
+    timingField.append(timingSelect);
+
+    const customField = document.createElement("label");
+    customField.className = "task-edit-field";
+    customField.textContent = "Custom follow-up date";
+    const customDate = document.createElement("input");
+    customDate.type = "date";
+    customField.append(customDate);
+    customField.hidden = true;
+    if (task.dueDate) {
+      timingSelect.value = "custom";
+      customField.hidden = false;
+      customDate.value = task.dueDate;
+    }
+    timingSelect.addEventListener("change", () => {
+      const isCustom = timingSelect.value === "custom";
+      customField.hidden = !isCustom;
+      if (!isCustom) customDate.value = "";
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "task-edit-actions-group";
+    const setButton = document.createElement("button");
+    setButton.type = "button";
+    setButton.className = "btn btn-primary";
+    setButton.textContent = "Set follow-up";
+    setButton.addEventListener("click", () => {
+      const waitingFor = waitingInput.value.trim() || "Pending response";
+      const dueDate = this.resolveFollowupDate(timingSelect.value, customDate.value);
+      if (!dueDate) {
+        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
+        return;
+      }
+      const updates = {
+        status: STATUS.WAITING,
+        waitingFor,
+        dueDate,
+      };
+      if (!task.context) {
+        updates.context = PHYSICAL_CONTEXTS[0];
+      }
+      this.taskManager.updateTask(task.id, updates);
+      this.taskManager.notify("info", `Follow-up set for ${formatFriendlyDate(dueDate)}.`);
+    });
+    actions.append(setButton);
+
+    section.append(heading, helper, waitingField, timingField, customField, actions);
+    return section;
   }
 
   createTaskForm(task) {
@@ -3396,6 +3553,7 @@ function mapElements() {
     projectStatusSuggestions: document.getElementById("projectStatusSuggestions"),
     randomContext: byId("randomContext"),
     pickRandomTask: byId("pickRandomTask"),
+    toggleNextProjectFanout: document.getElementById("toggleNextProjectFanout"),
     clarifyModal: document.getElementById("clarifyModal"),
     clarifyBackdrop: document.querySelector("#clarifyModal .modal-backdrop"),
     closeClarifyModal: byId("closeClarifyModal"),
@@ -3415,6 +3573,8 @@ function mapElements() {
     clarifyTwoMinuteYes: byId("clarifyTwoMinuteYes"),
     clarifyTwoMinuteNo: byId("clarifyTwoMinuteNo"),
     clarifyTwoMinuteFollowup: byId("clarifyTwoMinuteFollowup"),
+    clarifyFollowupTiming: byId("clarifyFollowupTiming"),
+    clarifyFollowupCustomDate: byId("clarifyFollowupCustomDate"),
     clarifyTwoMinuteExpectYes: byId("clarifyTwoMinuteExpectYes"),
     clarifyTwoMinuteExpectNo: byId("clarifyTwoMinuteExpectNo"),
     clarifyTwoMinuteResponseInput: byId("clarifyTwoMinuteResponseInput"),
@@ -3501,6 +3661,24 @@ function loadStoredPanel() {
 function storeActivePanel(panel) {
   try {
     localStorage.setItem(TAB_STORAGE_KEY, panel);
+  } catch (error) {
+    /* noop */
+  }
+}
+
+function loadNextFanoutPreference() {
+  try {
+    const stored = localStorage.getItem(NEXT_FANOUT_KEY);
+    if (stored === null) return false;
+    return stored === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
+function storeNextFanoutPreference(value) {
+  try {
+    localStorage.setItem(NEXT_FANOUT_KEY, String(Boolean(value)));
   } catch (error) {
     /* noop */
   }

@@ -94,6 +94,10 @@
               <span class="summary-label">Review</span>
               <span class="summary-value" id="summaryCompleted">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
+              <span class="summary-label">All Active</span>
+              <span class="summary-value" id="summaryAllActive">0</span>
+            </button>
           </div>
         </section>
 
@@ -288,6 +292,12 @@
             </div>
             <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="Monthly calendar"></div>
           </div>
+        </div>
+      </section>
+
+      <section class="workspace-view" data-panel="all-active" role="tabpanel" aria-labelledby="summary-tab-all-active" id="panel-all-active" hidden>
+        <div class="panel-content">
+          <div class="panel-body" id="allActiveList"></div>
         </div>
       </section>
 

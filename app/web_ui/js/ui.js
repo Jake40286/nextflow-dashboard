@@ -109,6 +109,7 @@ export class UIController {
       manualSyncButton,
       waitingFilterToggle,
       waitingFilterOptions,
+      summaryAllActive,
     } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
@@ -351,6 +352,7 @@ export class UIController {
     this.renderSomeday();
     this.renderCalendar();
     this.renderReports();
+    this.renderAllActive();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
@@ -489,6 +491,10 @@ export class UIController {
     summaryCalendar.textContent = calendarTotal;
     if (summaryCompleted) {
       summaryCompleted.textContent = completedThisYear;
+    }
+    if (summaryAllActive) {
+      const activeCount = this.taskManager.getTasks(this.buildTaskFilters()).length;
+      summaryAllActive.textContent = activeCount;
     }
   }
 
@@ -1352,6 +1358,23 @@ export class UIController {
     } else {
       this.clearReportDetails();
     }
+  }
+
+  renderAllActive() {
+    const container = this.elements.allActiveList;
+    if (!container) return;
+    const tasks = this.taskManager.getTasks(this.buildTaskFilters());
+    container.innerHTML = "";
+    if (!tasks.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text";
+      empty.textContent = "No active work right now.";
+      container.append(empty);
+      return;
+    }
+    tasks.forEach((task) => {
+      container.append(this.createTaskCard(task));
+    });
   }
 
   renderReportContextPicker(contexts) {
@@ -3359,6 +3382,8 @@ function mapElements() {
     summaryProjects: byId("summaryProjects"),
     summaryCalendar: byId("summaryCalendar"),
     summaryCompleted: byId("summaryCompleted"),
+    summaryAllActive: byId("summaryAllActive"),
+    allActiveList: byId("allActiveList"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     integrationsCard: document.querySelector(".integrations-card"),

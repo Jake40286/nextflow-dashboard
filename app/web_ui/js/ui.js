@@ -39,6 +39,7 @@ export class UIController {
       context: ["all"],
       project: ["all"],
       person: ["all"],
+      waiting: ["all"],
       energy: ["all"],
       time: ["all"],
       search: "",
@@ -106,6 +107,8 @@ export class UIController {
       calendarPrevMonth,
       calendarNextMonth,
       manualSyncButton,
+      waitingFilterToggle,
+      waitingFilterOptions,
     } = this.elements;
 
     searchToggle?.addEventListener("click", () => {
@@ -134,6 +137,7 @@ export class UIController {
         context: ["all"],
         project: ["all"],
         person: ["all"],
+        waiting: ["all"],
         energy: ["all"],
         time: ["all"],
         search: "",
@@ -520,10 +524,12 @@ export class UIController {
 
     const allTasks = this.taskManager.getTasks({ includeCompleted: true });
     const people = new Set();
+    const waitingOn = new Set();
     const energyLevels = new Set([...ENERGY_LEVELS]);
     const timeEstimates = new Set([...TIME_REQUIREMENTS]);
     allTasks.forEach((task) => {
       if (task.peopleTag) people.add(task.peopleTag);
+      if (task.waitingFor) waitingOn.add(task.waitingFor);
       if (task.energyLevel) energyLevels.add(task.energyLevel);
       if (task.timeRequired) timeEstimates.add(task.timeRequired);
     });
@@ -536,6 +542,16 @@ export class UIController {
       toggle: this.elements.personFilterToggle,
       container: this.elements.personFilterOptions,
       defaultLabel: "All people",
+    });
+
+    this.renderFilterPicker("waiting", {
+      options: Array.from(waitingOn)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+        .map((value) => ({ label: value, value })),
+      toggle: this.elements.waitingFilterToggle,
+      container: this.elements.waitingFilterOptions,
+      defaultLabel: "All waiting",
     });
 
     this.renderFilterPicker("energy", {
@@ -667,6 +683,7 @@ export class UIController {
       projectId: this.filters.project,
       searchTerm: this.filters.search,
       person: this.filters.person,
+      waitingFor: this.filters.waiting,
       energy: this.filters.energy,
       time: this.filters.time,
       includeFutureScheduled: false,
@@ -3281,6 +3298,9 @@ function mapElements() {
     personFilterPicker: byId("personFilterPicker"),
     personFilterToggle: byId("personFilterToggle"),
     personFilterOptions: byId("personFilterOptions"),
+    waitingFilterPicker: byId("waitingFilterPicker"),
+    waitingFilterToggle: byId("waitingFilterToggle"),
+    waitingFilterOptions: byId("waitingFilterOptions"),
     energyFilterPicker: byId("energyFilterPicker"),
     energyFilterToggle: byId("energyFilterToggle"),
     energyFilterOptions: byId("energyFilterOptions"),

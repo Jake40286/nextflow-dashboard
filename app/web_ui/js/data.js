@@ -386,6 +386,8 @@ export class TaskManager extends EventTarget {
     searchTerm,
     person,
     people,
+    waitingFor,
+    waitingFors,
     energy,
     energies,
     time,
@@ -400,6 +402,7 @@ export class TaskManager extends EventTarget {
       if (!matchesFilterValue(task.projectId, projectIds ?? projectId)) return false;
       if (searchTerm && !matchesSearch(task, searchTerm)) return false;
       if (!matchesFilterValue(task.peopleTag, people ?? person)) return false;
+      if (!matchesFilterValue(task.waitingFor, waitingFors ?? waitingFor)) return false;
       if (!matchesFilterValue(task.energyLevel, energies ?? energy)) return false;
       if (!matchesFilterValue(task.timeRequired, times ?? time)) return false;
       if (!includeFutureScheduled && task.calendarDate) {

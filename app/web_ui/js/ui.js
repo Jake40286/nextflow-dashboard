@@ -469,7 +469,7 @@ export class UIController {
 
   renderSummary() {
     const summary = this.taskManager.getSummary();
-    const calendarTotal = this.taskManager.getCalendarEntries().length;
+    const calendarTotal = this.taskManager.getCalendarEntries({ filters: this.buildTaskFilters() }).length;
     const currentYear = new Date().getFullYear();
     const completedThisYear = this.taskManager.getCompletedTasks({ year: currentYear }).length;
     const {
@@ -652,15 +652,22 @@ export class UIController {
     toggle.textContent = `${selections.length} selected`;
   }
 
+  buildTaskFilters(overrides = {}) {
+    return {
+      context: overrides.context ?? this.filters.context,
+      projectId: overrides.projectId ?? this.filters.project,
+      person: overrides.person ?? this.filters.person,
+      waitingFor: overrides.waitingFor ?? this.filters.waiting,
+      energy: overrides.energy ?? this.filters.energy,
+      time: overrides.time ?? this.filters.time,
+      searchTerm: overrides.searchTerm ?? this.filters.search,
+    };
+  }
+
   renderInbox() {
     const tasks = this.taskManager.getTasks({
+      ...this.buildTaskFilters(),
       status: STATUS.INBOX,
-      context: this.filters.context,
-      projectId: this.filters.project,
-      searchTerm: this.filters.search,
-      person: this.filters.person,
-      energy: this.filters.energy,
-      time: this.filters.time,
     });
     const container = this.elements.inboxList;
     container.innerHTML = "";
@@ -678,14 +685,8 @@ export class UIController {
 
   renderNextActions() {
     const allNextTasks = this.taskManager.getTasks({
+      ...this.buildTaskFilters(),
       status: STATUS.NEXT,
-      context: this.filters.context,
-      projectId: this.filters.project,
-      searchTerm: this.filters.search,
-      person: this.filters.person,
-      waitingFor: this.filters.waiting,
-      energy: this.filters.energy,
-      time: this.filters.time,
       includeFutureScheduled: false,
     });
     const tasks = this.filterNextTasksByProject(allNextTasks);
@@ -752,6 +753,8 @@ export class UIController {
         select.append(option);
       });
     }
+
+    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters());
 
     projects.forEach((project) => {
       const details = document.createElement("details");
@@ -836,16 +839,13 @@ export class UIController {
       });
       actions.append(deleteButton);
 
-      const projectTasks = this.taskManager
-        .getTasks({
-          projectId: project.id,
-          searchTerm: this.filters.search,
-          context: this.filters.context,
-          person: this.filters.person,
-          energy: this.filters.energy,
-          time: this.filters.time,
-        })
+      const projectTasks = filteredTasks
+        .filter((task) => task.projectId === project.id)
         .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
+
+      if (!projectTasks.length) {
+        return;
+      }
 
       const grouped = {
         [STATUS.NEXT]: [],
@@ -1109,13 +1109,8 @@ export class UIController {
 
   renderWaitingFor() {
     const tasks = this.taskManager.getTasks({
+      ...this.buildTaskFilters(),
       status: STATUS.WAITING,
-      context: this.filters.context,
-      projectId: this.filters.project,
-      searchTerm: this.filters.search,
-      person: this.filters.person,
-      energy: this.filters.energy,
-      time: this.filters.time,
     });
     const container = this.elements.waitingList;
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
@@ -1124,13 +1119,8 @@ export class UIController {
 
   renderSomeday() {
     const tasks = this.taskManager.getTasks({
+      ...this.buildTaskFilters(),
       status: STATUS.SOMEDAY,
-      context: this.filters.context,
-      projectId: this.filters.project,
-      searchTerm: this.filters.search,
-      person: this.filters.person,
-      energy: this.filters.energy,
-      time: this.filters.time,
     });
     const container = this.elements.somedayList;
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
@@ -1138,7 +1128,10 @@ export class UIController {
   }
 
   renderCalendar() {
-    const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
+    const entries = this.taskManager.getCalendarEntries({
+      exactDate: this.filters.date || undefined,
+      filters: this.buildTaskFilters(),
+    });
     this.renderCalendarGrid(entries);
     if (this.activePanel === "calendar") {
       this.updateActivePanelMeta();
@@ -1619,10 +1612,14 @@ export class UIController {
   }
 
   pickRandomTask(contextValue = "all") {
+    const filters = this.buildTaskFilters({
+      context: contextValue === "all" ? this.filters.context : [contextValue],
+    });
     const tasks = this.taskManager.getTasks({
+      ...filters,
       status: STATUS.NEXT,
-      context: contextValue === "all" ? undefined : contextValue,
       includeCompleted: false,
+      includeFutureScheduled: false,
     });
     if (!tasks.length) {
       this.taskManager.notify("warn", contextValue === "all" ? "No next actions available." : `No next actions found for ${contextValue}.`);

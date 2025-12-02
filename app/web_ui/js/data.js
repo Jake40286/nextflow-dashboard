@@ -395,16 +395,19 @@ export class TaskManager extends EventTarget {
     includeCompleted = false,
     includeFutureScheduled = true,
   } = {}) {
+    const filterRules = {
+      context: contexts ?? context,
+      projectId: projectIds ?? projectId,
+      person: people ?? person,
+      waitingFor: waitingFors ?? waitingFor,
+      energy: energies ?? energy,
+      time: times ?? time,
+      searchTerm,
+    };
     return this.state.tasks.filter((task) => {
       if (!includeCompleted && task.completedAt) return false;
       if (status && task.status !== status) return false;
-      if (!matchesFilterValue(task.context, contexts ?? context)) return false;
-      if (!matchesFilterValue(task.projectId, projectIds ?? projectId)) return false;
-      if (searchTerm && !matchesSearch(task, searchTerm)) return false;
-      if (!matchesFilterValue(task.peopleTag, people ?? person)) return false;
-      if (!matchesFilterValue(task.waitingFor, waitingFors ?? waitingFor)) return false;
-      if (!matchesFilterValue(task.energyLevel, energies ?? energy)) return false;
-      if (!matchesFilterValue(task.timeRequired, times ?? time)) return false;
+      if (!matchesTaskFilters(task, filterRules)) return false;
       if (!includeFutureScheduled && task.calendarDate) {
         const today = new Date();
         const y = today.getUTCFullYear();
@@ -891,9 +894,12 @@ export class TaskManager extends EventTarget {
     return summary;
   }
 
-  getCalendarEntries({ exactDate } = {}) {
+  getCalendarEntries({ exactDate, filters } = {}) {
     const tasks = this.state.tasks.filter(
-      (task) => !task.completedAt && Boolean(task.calendarDate || task.dueDate)
+      (task) =>
+        !task.completedAt &&
+        Boolean(task.calendarDate || task.dueDate) &&
+        matchesTaskFilters(task, filters)
     );
     const entries = tasks.map((task) => {
       const hasCalendarTime = Boolean(task.calendarDate && task.calendarTime);
@@ -913,7 +919,9 @@ export class TaskManager extends EventTarget {
       };
     });
 
-    const completions = this.getCompletionEntries().filter((entry) => entry.completedAt && entry.archiveType !== "deleted");
+    const completions = this.getCompletionEntries().filter(
+      (entry) => entry.completedAt && entry.archiveType !== "deleted" && matchesTaskFilters(entry, filters)
+    );
     completions.forEach((entry) => {
       entries.push({
         date: entry.completedAt,
@@ -1532,6 +1540,32 @@ function matchesFilterValue(value, filter) {
     }
     return value === item;
   });
+}
+
+function matchesTaskFilters(task, filters = {}) {
+  if (!filters) return true;
+  if (!matchesFilterValue(task.context, filters.contexts ?? filters.context)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.projectId, filters.projectIds ?? filters.projectId)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.peopleTag, filters.people ?? filters.person)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.waitingFor, filters.waitingFors ?? filters.waitingFor)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.energyLevel, filters.energies ?? filters.energy)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.timeRequired, filters.times ?? filters.time)) {
+    return false;
+  }
+  if (filters.searchTerm && !matchesSearch(task, filters.searchTerm)) {
+    return false;
+  }
+  return true;
 }
 
 export function formatFriendlyDate(isoDate) {

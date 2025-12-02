@@ -391,6 +391,7 @@ export class TaskManager extends EventTarget {
     time,
     times,
     includeCompleted = false,
+    includeFutureScheduled = true,
   } = {}) {
     return this.state.tasks.filter((task) => {
       if (!includeCompleted && task.completedAt) return false;
@@ -401,6 +402,17 @@ export class TaskManager extends EventTarget {
       if (!matchesFilterValue(task.peopleTag, people ?? person)) return false;
       if (!matchesFilterValue(task.energyLevel, energies ?? energy)) return false;
       if (!matchesFilterValue(task.timeRequired, times ?? time)) return false;
+      if (!includeFutureScheduled && task.calendarDate) {
+        const today = new Date();
+        const y = today.getUTCFullYear();
+        const m = today.getUTCMonth();
+        const d = today.getUTCDate();
+        const cutoff = new Date(Date.UTC(y, m, d));
+        const when = new Date(task.calendarDate);
+        if (!Number.isNaN(when.getTime()) && when >= cutoff) {
+          return false;
+        }
+      }
       return true;
     });
   }

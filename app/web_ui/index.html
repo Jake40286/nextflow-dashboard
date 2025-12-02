@@ -421,24 +421,15 @@
         <button id="closeClarifyModal" class="btn btn-light" type="button" aria-label="Close clarify dialog">Close</button>
       </header>
       <div class="modal-body clarify-modal-body">
-        <section id="clarifyStepIdentify" class="clarify-step" data-clarify-step="identify">
-          <p class="muted small-text">Item</p>
-          <blockquote id="clarifyPreviewText"></blockquote>
-          <h3>What is this?</h3>
-          <div class="clarify-option-buttons">
-            <button id="clarifyIdentifyContinue" class="btn btn-primary" type="button">Continue</button>
-          </div>
-        </section>
-
         <section id="clarifyStepActionable" class="clarify-step" data-clarify-step="actionable" hidden>
           <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
+          <blockquote id="clarifyPreviewText"></blockquote>
           <h3>Is this actionable?</h3>
           <div class="clarify-option-buttons">
             <button id="clarifyActionableYes" class="btn btn-primary" type="button">Yes</button>
-            <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">No → Trash</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="reference">No → Reference</button>
             <button class="btn btn-light" type="button" data-clarify-nonaction="someday">No → Someday/Maybe</button>
+            <button class="btn btn-light" type="button" data-clarify-nonaction="reference">No → Reference</button>
+            <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">No → Trash</button>
           </div>
         </section>
 
@@ -459,8 +450,8 @@
           <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
           <h3>Will this take less than 2 minutes?</h3>
           <div class="clarify-option-buttons">
-            <button id="clarifyTwoMinuteYes" class="btn btn-primary" type="button">Yes — Do it now</button>
-            <button id="clarifyTwoMinuteNo" class="btn btn-light" type="button">No — Continue</button>
+            <button id="clarifyTwoMinuteNo" class="btn btn-primary" type="button">No — Continue</button>
+            <button id="clarifyTwoMinuteYes" class="btn btn-light" type="button">Yes — Do it now</button>
           </div>
           <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
             <p class="muted small-text">You did it. Do you expect a response?</p>

@@ -669,6 +669,7 @@ export class UIController {
       person: this.filters.person,
       energy: this.filters.energy,
       time: this.filters.time,
+      includeFutureScheduled: false,
     });
     const tasks = this.filterNextTasksByProject(allNextTasks);
     const board = this.elements.contextBoard;
@@ -1735,7 +1736,6 @@ export class UIController {
       clarifyModal,
       closeClarifyModal,
       clarifyBackdrop,
-      clarifyIdentifyContinue,
       clarifyActionableYes,
       clarifyActionInput,
       clarifyActionContinue,
@@ -1769,7 +1769,6 @@ export class UIController {
       clarifyMetadataSkip,
       clarifyAddContext,
       clarifyTwoMinuteStep,
-      clarifyStepIdentify,
       clarifyStepActionable,
       clarifyStepActionPlan,
       clarifyStepDates,
@@ -1787,7 +1786,6 @@ export class UIController {
       }
     };
     this.clarifyDestinationButtons = Array.from(clarifyModal.querySelectorAll("[data-clarify-nonaction]"));
-    clarifyIdentifyContinue?.addEventListener("click", () => this.showClarifyStep("actionable"));
     clarifyActionableYes?.addEventListener("click", () => this.handleClarifyActionableChoice(true));
     this.clarifyDestinationButtons.forEach((button) => {
       button.addEventListener("click", () => this.handleClarifyNonAction(button.dataset.clarifyNonaction));
@@ -1827,7 +1825,6 @@ export class UIController {
         clearFollowup();
       }
     });
-    clarifyStepIdentify?.addEventListener("click", () => clearFollowup());
     clarifyStepActionable?.addEventListener("click", () => clearFollowup());
     clarifyStepActionPlan?.addEventListener("click", () => clearFollowup());
     clarifyStepDates?.addEventListener("click", () => clearFollowup());
@@ -1944,7 +1941,7 @@ export class UIController {
     this.populateClarifyPreview(task);
     this.populateClarifyContexts();
     this.populateProjectSelect();
-    this.showClarifyStep("identify");
+    this.showClarifyStep("actionable");
     this.setClarifyModalOpen(true);
   }
 
@@ -1954,7 +1951,6 @@ export class UIController {
 
   showClarifyStep(step) {
     const sections = [
-      ["identify", this.elements.clarifyStepIdentify],
       ["actionable", this.elements.clarifyStepActionable],
       ["action-plan", this.elements.clarifyStepActionPlan],
       ["two-minute", this.elements.clarifyTwoMinuteStep],
@@ -1971,7 +1967,6 @@ export class UIController {
     });
     this.clarifyState.currentStep = step;
     const focusTargets = {
-      "identify": this.elements.clarifyIdentifyContinue,
       "actionable": this.elements.clarifyActionableYes,
       "action-plan": this.elements.clarifyActionInput,
       "two-minute": this.elements.clarifyTwoMinuteYes,
@@ -3362,7 +3357,6 @@ function mapElements() {
     clarifyModal: document.getElementById("clarifyModal"),
     clarifyBackdrop: document.querySelector("#clarifyModal .modal-backdrop"),
     closeClarifyModal: byId("closeClarifyModal"),
-    clarifyStepIdentify: byId("clarifyStepIdentify"),
     clarifyStepActionable: byId("clarifyStepActionable"),
     clarifyStepActionPlan: byId("clarifyStepActionPlan"),
     clarifyTwoMinuteStep: byId("clarifyStepTwoMinute"),
@@ -3372,7 +3366,6 @@ function mapElements() {
     clarifyStepMetadata: byId("clarifyStepMetadata"),
     clarifyStepFinal: byId("clarifyStepFinal"),
     clarifyPreviewText: byId("clarifyPreviewText"),
-    clarifyIdentifyContinue: byId("clarifyIdentifyContinue"),
     clarifyActionableYes: byId("clarifyActionableYes"),
     clarifyActionInput: byId("clarifyActionInput"),
     clarifyActionContinue: byId("clarifyActionContinue"),

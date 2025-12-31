@@ -438,7 +438,6 @@ export class UIController {
   updateSuggestionLists() {
     const {
       contextSuggestions,
-      peopleSuggestions,
       energySuggestions,
       timeSuggestions,
       projectAreaSuggestions,
@@ -451,23 +450,19 @@ export class UIController {
       ...(this.taskManager.state?.completionLog || []),
     ];
     const contexts = new Set(this.taskManager.getContexts());
-    const people = new Set();
     const energies = new Set([...ENERGY_LEVELS]);
     const times = new Set([...TIME_REQUIREMENTS]);
     allTasks.forEach((task) => {
       if (task.context) contexts.add(task.context);
-      if (task.peopleTag) people.add(task.peopleTag);
       if (task.energyLevel) energies.add(task.energyLevel);
       if (task.timeRequired) times.add(task.timeRequired);
     });
     archiveEntries.forEach((entry) => {
       if (entry.context) contexts.add(entry.context);
-      if (entry.peopleTag) people.add(entry.peopleTag);
       if (entry.energyLevel) energies.add(entry.energyLevel);
       if (entry.timeRequired) times.add(entry.timeRequired);
     });
     fillDatalist(contextSuggestions, Array.from(contexts));
-    fillDatalist(peopleSuggestions, Array.from(people));
     fillDatalist(energySuggestions, Array.from(energies));
     fillDatalist(timeSuggestions, Array.from(times));
 
@@ -544,25 +539,13 @@ export class UIController {
     });
 
     const allTasks = this.taskManager.getTasks({ includeCompleted: true });
-    const people = new Set();
     const waitingOn = new Set();
     const energyLevels = new Set([...ENERGY_LEVELS]);
     const timeEstimates = new Set([...TIME_REQUIREMENTS]);
     allTasks.forEach((task) => {
-      if (task.peopleTag) people.add(task.peopleTag);
       if (task.waitingFor) waitingOn.add(task.waitingFor);
       if (task.energyLevel) energyLevels.add(task.energyLevel);
       if (task.timeRequired) timeEstimates.add(task.timeRequired);
-    });
-
-    this.renderFilterPicker("person", {
-      options: Array.from(people)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((person) => ({ label: person, value: person })),
-      toggle: this.elements.personFilterToggle,
-      container: this.elements.personFilterOptions,
-      defaultLabel: "All people",
     });
 
     this.renderFilterPicker("waiting", {
@@ -882,7 +865,7 @@ export class UIController {
 
       const groups = [
         { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
-        { status: STATUS.WAITING, label: "Waiting For", empty: "Nothing delegated at the moment." },
+        { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
         { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
         { status: STATUS.INBOX, label: "Captured (Inbox)", empty: "No uncategorized work for this project." },
       ];
@@ -1719,9 +1702,7 @@ export class UIController {
     if (task.context) metaItems.push(this.createMetaSpan(task.context));
     const projectName = this.getProjectName(task.projectId);
     if (projectName) metaItems.push(this.createMetaSpan(projectName));
-    if (task.peopleTag) metaItems.push(this.createMetaSpan(`With ${task.peopleTag}`));
-    if (task.assignee) metaItems.push(this.createMetaSpan(`With ${task.assignee}`));
-    if (task.waitingFor) metaItems.push(this.createMetaSpan(`Waiting: ${task.waitingFor}`));
+    if (task.waitingFor) metaItems.push(this.createMetaSpan(`Waiting For: ${task.waitingFor}`));
     if (task.energyLevel) metaItems.push(this.createMetaSpan(`Energy: ${task.energyLevel}`));
     if (task.timeRequired) metaItems.push(this.createMetaSpan(`Time: ${task.timeRequired}`));
     if (task.dueDate) {
@@ -2379,7 +2360,7 @@ export class UIController {
         dueDate: followUpDueDate,
       };
       this.taskManager.updateTask(task.id, updates);
-      this.taskManager.notify("info", "Captured as Waiting For.");
+      this.taskManager.notify("info", "Captured as Waiting.");
     } else {
       this.taskManager.completeTask(task.id, { archive: "reference", closureNotes: task.closureNotes });
       this.taskManager.notify("info", "Completed in under two minutes.");
@@ -2390,9 +2371,9 @@ export class UIController {
 
   handleClarifyDelegation(name) {
     if (!this.clarifyState.taskId) return;
-    const assignee = name?.trim() || this.elements.clarifyDelegateNameInput?.value?.trim();
-    if (!assignee) {
-      this.taskManager.notify("warn", "Provide an assignee to delegate.");
+    const delegateName = name?.trim() || this.elements.clarifyDelegateNameInput?.value?.trim();
+    if (!delegateName) {
+      this.taskManager.notify("warn", "Provide who you're waiting on.");
       this.elements.clarifyDelegateNameInput?.focus();
       return;
     }
@@ -2404,12 +2385,12 @@ export class UIController {
     const updates = {
       title: this.clarifyState.nextActionTitle || task.title,
       status: STATUS.WAITING,
-      waitingFor: assignee,
+      waitingFor: delegateName,
       context: this.clarifyState.context || task.context || PHYSICAL_CONTEXTS[0],
       projectId: this.clarifyState.projectId || task.projectId || null,
     };
     this.taskManager.updateTask(task.id, updates);
-    this.taskManager.notify("info", "Delegated and moved to Waiting For.");
+    this.taskManager.notify("info", "Delegated and moved to Waiting.");
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -2464,7 +2445,7 @@ export class UIController {
     const messageEl = this.elements.clarifyFinalMessage;
     if (!messageEl) return;
     const destinations = [];
-    if (updates.status === STATUS.WAITING) destinations.push("Waiting For");
+    if (updates.status === STATUS.WAITING) destinations.push("Waiting");
     else if (updates.calendarDate) destinations.push("Calendar");
     else if (updates.dueDate) destinations.push("Next Actions (due)");
     else destinations.push("Next Actions");
@@ -2524,6 +2505,7 @@ export class UIController {
     const { readOnly = false, entry = null } = options;
     const content = this.elements.taskFlyoutContent;
     if (!content) return;
+    const isCompleted = Boolean(task.completedAt);
     const titleEl = this.elements.taskFlyoutTitle;
     const statusEl = this.elements.taskFlyoutStatus;
     if (titleEl) titleEl.textContent = task.title || "Untitled task";
@@ -2539,7 +2521,6 @@ export class UIController {
     meta.append(this.buildMetaRow("Task ID", task.slug || task.id));
     meta.append(this.buildMetaRow("Context", task.context || "—"));
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
-    meta.append(this.buildMetaRow("People tag", task.peopleTag || "—"));
     meta.append(this.buildMetaRow("Energy level", task.energyLevel || "—"));
     meta.append(this.buildMetaRow("Time required", task.timeRequired || "—"));
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
@@ -2547,11 +2528,9 @@ export class UIController {
     if (isCompleted) {
       meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
     }
-    meta.append(this.buildMetaRow("Assignee", task.assignee || "—"));
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
     meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
     meta.append(this.buildMetaRow("Created on", task.originDevice || "Unknown device"));
-    const isCompleted = Boolean(task.completedAt);
 
     if (task.status === STATUS.INBOX) {
       const inboxPanel = document.createElement("div");
@@ -2649,7 +2628,7 @@ export class UIController {
     heading.textContent = "Follow up";
     const helper = document.createElement("p");
     helper.className = "muted small-text";
-    helper.textContent = "Move to Waiting For and set a follow-up date.";
+    helper.textContent = "Move to Waiting and set a follow-up date.";
     const waitingField = document.createElement("label");
     waitingField.className = "task-edit-field";
     waitingField.textContent = "Waiting on";
@@ -2766,16 +2745,6 @@ export class UIController {
     contextInput.value = task.context || "";
     contextGroup.append(contextInput);
 
-    const peopleGroup = document.createElement("label");
-    peopleGroup.className = "task-edit-field";
-    peopleGroup.textContent = "People context";
-    const peopleInput = document.createElement("input");
-    peopleInput.type = "text";
-    peopleInput.setAttribute("list", "peopleSuggestions");
-    peopleInput.placeholder = "@Boss";
-    peopleInput.value = task.peopleTag || "";
-    peopleGroup.append(peopleInput);
-
     const energyGroup = document.createElement("label");
     energyGroup.className = "task-edit-field";
     energyGroup.textContent = "Energy level";
@@ -2874,15 +2843,6 @@ export class UIController {
     waitingInput.value = task.waitingFor || "";
     waitingGroup.append(waitingInput);
 
-    const assigneeGroup = document.createElement("label");
-    assigneeGroup.className = "task-edit-field";
-    assigneeGroup.textContent = "Assignee";
-    const assigneeInput = document.createElement("input");
-    assigneeInput.type = "text";
-    assigneeInput.placeholder = "Task owner";
-    assigneeInput.value = task.assignee || "";
-    assigneeGroup.append(assigneeInput);
-
     const closureGroup = document.createElement("label");
     closureGroup.className = "task-edit-field";
     closureGroup.textContent = "Closure notes";
@@ -2940,7 +2900,6 @@ export class UIController {
         title: trimmedTitle,
         description: descriptionInput.value.trim(),
         context: contextInput.value.trim() || null,
-        peopleTag: peopleInput.value.trim() || null,
         energyLevel: energyInput.value || null,
         timeRequired: timeInput.value || null,
         projectId: projectSelect.value || null,
@@ -2948,18 +2907,17 @@ export class UIController {
         calendarDate: calendarInput.value || null,
         calendarTime: calendarTimeInput.value || null,
         waitingFor: waitingInput.value.trim() || null,
-        assignee: assigneeInput.value.trim() || null,
-      closureNotes: closureInput.value.trim() || null,
-      recurrenceRule:
-        recurrenceSelect.value && recurrenceSelect.value !== ""
-          ? {
-              type: recurrenceSelect.value,
-              interval: Math.max(1, parseInt(recurrenceInterval.value, 10) || 1),
-            }
-          : null,
-    };
+        closureNotes: closureInput.value.trim() || null,
+        recurrenceRule:
+          recurrenceSelect.value && recurrenceSelect.value !== ""
+            ? {
+                type: recurrenceSelect.value,
+                interval: Math.max(1, parseInt(recurrenceInterval.value, 10) || 1),
+              }
+            : null,
+      };
       if (task.status === STATUS.WAITING && !updates.waitingFor) {
-        updates.waitingFor = "Pending assignee";
+        updates.waitingFor = "Pending response";
       }
       if (task.status !== STATUS.WAITING && updates.waitingFor && updates.waitingFor.startsWith("Pending")) {
         updates.waitingFor = null;
@@ -2993,7 +2951,6 @@ export class UIController {
       titleInput,
       descriptionInput,
       contextInput,
-      peopleInput,
       energyInput,
       timeInput,
       projectSelect,
@@ -3001,7 +2958,6 @@ export class UIController {
       calendarInput,
       calendarTimeInput,
       waitingInput,
-      assigneeInput,
       closureInput,
       recurrenceSelect,
       recurrenceInterval,
@@ -3042,7 +2998,6 @@ export class UIController {
       descriptionGroup,
       slugGroup,
       contextGroup,
-      peopleGroup,
       energyGroup,
       timeGroup,
       statusGroup,
@@ -3050,7 +3005,6 @@ export class UIController {
       dueGroup,
       calendarGroup,
       waitingGroup,
-      assigneeGroup,
       closureGroup,
       recurrenceGroup,
       actions
@@ -3545,7 +3499,6 @@ function mapElements() {
     themeToggle: document.getElementById("themeToggle"),
     integrationsCard: document.querySelector(".integrations-card"),
     contextSuggestions: document.getElementById("contextSuggestions"),
-    peopleSuggestions: document.getElementById("peopleSuggestions"),
     energySuggestions: document.getElementById("energySuggestions"),
     timeSuggestions: document.getElementById("timeSuggestions"),
     projectAreaSuggestions: document.getElementById("projectAreaSuggestions"),

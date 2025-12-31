@@ -18,8 +18,8 @@ except Exception:  # noqa: BLE001
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web_ui"
-STATE_FILE = Path(os.getenv("STATE_FILE", "/data/state.json"))
-COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "/data/completed.json"))
+STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
+COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
 STATE_LOCK = threading.Lock()
 CALENDAR_SYNC = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
 BACKUP_MANAGER = StateBackupManager.from_env() if StateBackupManager else None

@@ -28,7 +28,7 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
   [STATUS.INBOX]: "Inbox",
   [STATUS.NEXT]: "Next Actions",
-  [STATUS.WAITING]: "Waiting For",
+  [STATUS.WAITING]: "Waiting",
   [STATUS.SOMEDAY]: "Someday / Maybe",
 };
 const STATUS_ORDER = [STATUS.INBOX, STATUS.NEXT, STATUS.WAITING, STATUS.SOMEDAY];
@@ -247,9 +247,11 @@ export class TaskManager extends EventTarget {
   async loadRemoteState(options = {}) {
     try {
       const remoteState = await readServerState();
-      const merged = mergeStates(remoteState || {}, this.state || {});
-      this.state = hydrateState(merged);
-      this.remoteSignature = hashState(this.state);
+      const nextState = options.replaceLocal
+        ? hydrateState(remoteState || EMPTY_STATE)
+        : hydrateState(mergeStates(remoteState || {}, this.state || {}));
+      this.state = nextState;
+      this.remoteSignature = hashState(remoteState || {});
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
     } catch (error) {
@@ -355,7 +357,7 @@ export class TaskManager extends EventTarget {
     }
     this.persistLocally();
     await this.flushRemoteQueue({ rethrow: true });
-    await this.loadRemoteState({ rethrow: true });
+    await this.loadRemoteState({ rethrow: true, replaceLocal: true });
     this.persistLocally();
   }
 
@@ -442,7 +444,6 @@ export class TaskManager extends EventTarget {
       projectId: payload.projectId || null,
       createdAt: new Date().toISOString(),
       waitingFor: payload.waitingFor || null,
-      assignee: payload.assignee || null,
       calendarDate: payload.calendarDate || null,
       calendarTime: sanitizeTime(payload.calendarTime) || null,
       completedAt: payload.completedAt || null,
@@ -502,7 +503,7 @@ export class TaskManager extends EventTarget {
     task.status = nextStatus;
     task.completedAt = null;
     if (nextStatus === STATUS.WAITING && !task.waitingFor) {
-      task.waitingFor = "Pending assignee";
+      task.waitingFor = "Pending response";
     }
     if (nextStatus !== STATUS.WAITING) {
       task.waitingFor = task.waitingFor && task.waitingFor.startsWith("Pending") ? null : task.waitingFor;
@@ -610,7 +611,6 @@ export class TaskManager extends EventTarget {
       energyLevel: entry.energyLevel || null,
       timeRequired: entry.timeRequired || null,
       projectId: entry.projectId || null,
-      assignee: entry.assignee || null,
       waitingFor: entry.waitingFor || null,
       dueDate: entry.dueDate || null,
       calendarDate: entry.calendarDate || null,
@@ -1050,7 +1050,6 @@ export class TaskManager extends EventTarget {
         }
 
         if (task.waitingFor) parts.push(`waiting::${quoteIfNeeded(task.waitingFor)}`);
-        if (task.assignee) parts.push(`owner::${quoteIfNeeded(task.assignee)}`);
 
         const metadata = [];
         if (task.description) {
@@ -1118,7 +1117,6 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     energyLevel: task.energyLevel,
     timeRequired: task.timeRequired,
     projectId: task.projectId,
-    assignee: task.assignee,
     waitingFor: task.waitingFor,
     dueDate: task.dueDate,
     calendarDate: task.calendarDate,
@@ -1168,7 +1166,6 @@ function normalizeCompletionEntry(entry) {
     energyLevel: entry.energyLevel || null,
     timeRequired: entry.timeRequired || null,
     projectId: entry.projectId || null,
-    assignee: entry.assignee || null,
     waitingFor: entry.waitingFor || null,
     dueDate: entry.dueDate || null,
     calendarDate: entry.calendarDate || null,
@@ -1522,7 +1519,6 @@ function matchesSearch(task, rawTerm) {
     task.peopleTag,
     task.energyLevel,
     task.timeRequired,
-    task.assignee,
     task.waitingFor,
     task.slug,
     task.id,
@@ -1760,8 +1756,7 @@ function parseMarkdownDocument(markdown, existingProjects) {
         dueDate: metadata.due || null,
         projectId: projectInstance ? projectInstance.id : null,
         createdAt: new Date().toISOString(),
-        waitingFor: metadata.waiting || metadata["waitingfor"] || null,
-        assignee: metadata.owner || metadata.assignee || null,
+        waitingFor: metadata.waiting || metadata["waitingfor"] || metadata.owner || metadata.assignee || null,
         calendarDate: metadata.calendar || null,
       };
 

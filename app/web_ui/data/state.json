@@ -1,0 +1,63 @@
+{
+  "tasks": [],
+  "projects": [],
+  "checklist": [
+    {
+      "id": "c-1",
+      "label": "Get inbox to zero",
+      "done": false
+    },
+    {
+      "id": "c-2",
+      "label": "Review next actions by context",
+      "done": false
+    },
+    {
+      "id": "c-3",
+      "label": "Update waiting-for list",
+      "done": false
+    },
+    {
+      "id": "c-4",
+      "label": "Review calendar notes and blockers",
+      "done": false
+    },
+    {
+      "id": "c-5",
+      "label": "Look at someday/maybe to activate items",
+      "done": false
+    }
+  ],
+  "analytics": {
+    "history": [
+      {
+        "week": "Week 08",
+        "complete": 12,
+        "remaining": 6
+      },
+      {
+        "week": "Week 09",
+        "complete": 14,
+        "remaining": 5
+      },
+      {
+        "week": "Week 10",
+        "complete": 18,
+        "remaining": 4
+      },
+      {
+        "week": "Week 11",
+        "complete": 13,
+        "remaining": 7
+      },
+      {
+        "week": "Week 12",
+        "complete": 16,
+        "remaining": 5
+      }
+    ]
+  },
+  "settings": {
+    "theme": "light"
+  }
+}

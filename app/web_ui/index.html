@@ -75,7 +75,7 @@
               <span class="summary-value" id="summaryNext">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-waiting" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false">
-              <span class="summary-label">Waiting For</span>
+              <span class="summary-label">Waiting</span>
               <span class="summary-value" id="summaryWaiting">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-someday" data-panel-target="someday" data-status-target="someday" aria-controls="panel-someday" aria-selected="false">
@@ -117,14 +117,12 @@
             <summary id="projectFilterToggle">All projects</summary>
             <div class="multi-select-options" id="projectFilterOptions"></div>
           </details>
-          <small id="projectHelp" class="muted">View tasks tied to a project.</small>
 
           <label class="filter-control" for="personFilterToggle">Person</label>
           <details class="multi-select" id="personFilterPicker">
             <summary id="personFilterToggle">All people</summary>
             <div class="multi-select-options" id="personFilterOptions"></div>
           </details>
-          <small id="personHelp" class="muted">Limit to tasks assigned to a person.</small>
 
           <label class="filter-control" for="waitingFilterToggle">Waiting for</label>
           <details class="multi-select" id="waitingFilterPicker">
@@ -200,7 +198,7 @@
             <div id="searchTasksContainer" class="workspace-search-field" hidden>
               <label class="filter-control" for="searchTasks">Search</label>
               <div class="workspace-search-input">
-                <input id="searchTasks" type="search" placeholder="Search tasks, assignees, contexts…" autocomplete="off" />
+                <input id="searchTasks" type="search" placeholder="Search tasks, contexts, people…" autocomplete="off" />
               </div>
             </div>
           </div>
@@ -427,7 +425,6 @@
   </script>
 
   <datalist id="contextSuggestions"></datalist>
-  <datalist id="peopleSuggestions"></datalist>
   <datalist id="energySuggestions"></datalist>
   <datalist id="timeSuggestions"></datalist>
   <datalist id="projectAreaSuggestions"></datalist>

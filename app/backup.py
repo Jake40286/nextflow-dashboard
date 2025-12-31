@@ -20,7 +20,7 @@ class StateBackupManager:
 
     @classmethod
     def from_env(cls) -> "StateBackupManager":
-        backup_dir = Path(os.getenv("STATE_BACKUP_DIR", "/data/backups/full"))
+        backup_dir = Path(os.getenv("STATE_BACKUP_DIR", "./data/backups/full"))
         retention = int(os.getenv("STATE_BACKUP_RETENTION", "30"))
         return cls(backup_dir=backup_dir, retention=retention)
 

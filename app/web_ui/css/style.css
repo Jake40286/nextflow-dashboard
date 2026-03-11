@@ -1277,6 +1277,199 @@ button.meta-item:hover {
   border-style: dashed;
 }
 
+.statistics-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.statistics-overview-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.statistics-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.statistics-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+.statistics-header p {
+  margin: 4px 0 0;
+}
+
+.statistics-controls {
+  min-width: 170px;
+  display: grid;
+  gap: 6px;
+}
+
+.statistics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+
+.statistics-kpi {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.statistics-kpi-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.statistics-kpi-value {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.statistics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.statistics-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.statistics-card h4 {
+  margin: 0;
+  font-size: 0.97rem;
+  font-family: var(--font-display);
+}
+
+.statistics-card h5 {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.statistics-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.statistics-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.statistics-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.statistics-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.statistics-row-label {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.statistics-row-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.statistics-row[data-health="risk"] {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+}
+
+.statistics-row[data-health="ok"] {
+  border-color: color-mix(in srgb, var(--ok) 34%, var(--line));
+}
+
+.statistics-bar {
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--line) 74%, var(--surface-3));
+  overflow: hidden;
+}
+
+.statistics-bar-fill {
+  display: block;
+  height: 100%;
+  width: var(--bar-value, 0%);
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+.statistics-trend-bars {
+  min-height: 130px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.statistics-trend-bar {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 7px;
+  border-radius: 7px 7px 3px 3px;
+  height: var(--bar-height, 6%);
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 68%, var(--accent-strong)));
+}
+
+.statistics-trend-bar.is-empty {
+  background: color-mix(in srgb, var(--line) 76%, var(--surface-3));
+}
+
+.statistics-trend-bar::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .calendar-controls {
   display: grid;
   gap: var(--space-2);
@@ -2219,6 +2412,10 @@ textarea:focus-visible,
   .settings-theme-swatches {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .statistics-trend-bar::after {
+    display: none;
   }
 
   .calendar-grid {

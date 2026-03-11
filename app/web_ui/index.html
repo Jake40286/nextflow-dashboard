@@ -98,6 +98,10 @@
               <span class="summary-label">Complete</span>
               <span class="summary-value" id="summaryCompleted">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-statistics" data-panel-target="statistics" aria-controls="panel-statistics" aria-selected="false">
+              <span class="summary-label">Statistics</span>
+              <span class="summary-value" id="summaryStatistics">0</span>
+            </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
               <span class="summary-label">All Active</span>
               <span class="summary-value" id="summaryAllActive">0</span>
@@ -350,6 +354,103 @@
               <ul id="reportDetailsList" class="report-details-list" role="list"></ul>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="workspace-view" data-panel="statistics" role="tabpanel" aria-labelledby="summary-tab-statistics" id="panel-statistics" hidden>
+        <div class="panel-content statistics-panel">
+          <section class="statistics-overview-card">
+            <header class="statistics-header">
+              <div>
+                <h3>System Snapshot</h3>
+                <p class="muted small-text">Detailed health metrics for tasks, projects, contexts, and completion behavior.</p>
+              </div>
+              <div class="statistics-controls">
+                <label class="filter-control" for="statsLookback">Lookback window</label>
+                <select id="statsLookback">
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </div>
+            </header>
+            <div class="statistics-kpi-grid">
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Active Tasks</span>
+                <strong id="statActiveTasks" class="statistics-kpi-value">0</strong>
+              </article>
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Completed (Window)</span>
+                <strong id="statCompletedTasks" class="statistics-kpi-value">0</strong>
+              </article>
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Completion Rate</span>
+                <strong id="statCompletionRate" class="statistics-kpi-value">0%</strong>
+              </article>
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Open Projects</span>
+                <strong id="statOpenProjects" class="statistics-kpi-value">0</strong>
+              </article>
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Stale Tasks (14d+)</span>
+                <strong id="statStaleTasks" class="statistics-kpi-value">0</strong>
+              </article>
+              <article class="statistics-kpi">
+                <span class="statistics-kpi-label">Overdue Tasks</span>
+                <strong id="statOverdueTasks" class="statistics-kpi-value">0</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="statistics-grid">
+            <article class="statistics-card">
+              <h4>Task Status Distribution</h4>
+              <ul id="statsStatusBreakdown" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Completion Momentum</h4>
+              <p id="statsTrendMeta" class="muted small-text">No completion data yet.</p>
+              <div id="statsTrendBars" class="statistics-trend-bars" role="img" aria-label="Completion trend bars"></div>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Context Throughput</h4>
+              <ul id="statsContextList" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <div class="statistics-card-header">
+                <h4>Project Health</h4>
+                <span id="statsProjectHealthMeta" class="muted small-text">No projects yet.</span>
+              </div>
+              <ul id="statsProjectHealthList" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Due Horizon</h4>
+              <ul id="statsDueBuckets" class="statistics-list" role="list"></ul>
+              <h5>Upcoming Deadlines</h5>
+              <ul id="statsUpcomingDueList" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Metadata Coverage</h4>
+              <ul id="statsMetadataCoverage" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Task Aging</h4>
+              <ul id="statsAgeBuckets" class="statistics-list" role="list"></ul>
+            </article>
+
+            <article class="statistics-card">
+              <h4>Archive + Delegation</h4>
+              <ul id="statsArchiveMix" class="statistics-list" role="list"></ul>
+              <h5>Top Waiting For</h5>
+              <ul id="statsPeopleList" class="statistics-list" role="list"></ul>
+            </article>
+          </section>
         </div>
       </section>
 

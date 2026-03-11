@@ -445,8 +445,7 @@
           <h3>Is this actionable?</h3>
           <div class="clarify-option-buttons">
             <button id="clarifyActionableYes" class="btn btn-primary" type="button">Yes</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">No → Someday/Maybe</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="reference">No → Reference</button>
+            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Not currently → Someday/Maybe</button>
             <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">No → Trash</button>
           </div>
         </section>
@@ -454,12 +453,18 @@
         <section id="clarifyStepActionPlan" class="clarify-step" data-clarify-step="action-plan" hidden>
           <p class="muted small-text">Item</p>
           <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>What is the next physical action?</h3>
-          <label class="visually-hidden" for="clarifyActionInput">Next action</label>
-          <input id="clarifyActionInput" type="text" placeholder="Describe the next visible action" autocomplete="off" required />
+          <h3>Is this a project?</h3>
           <div class="clarify-option-buttons">
-            <button id="clarifyActionContinue" class="btn btn-primary" type="button">Continue</button>
-            <button id="clarifyConvertProject" class="btn btn-light" type="button">This is a multi-step outcome → Convert to Project</button>
+            <button id="clarifyActionSingle" class="btn btn-primary" type="button">Single action → Continue</button>
+            <button id="clarifyActionAddExisting" class="btn btn-light" type="button">Add to existing project</button>
+            <button id="clarifyConvertProject" class="btn btn-light" type="button">Yes — Create project</button>
+          </div>
+          <div id="clarifyProjectPicker" class="clarify-project-option" hidden>
+            <label for="clarifyProjectSelect">Pick a project</label>
+            <select id="clarifyProjectSelect"></select>
+            <div class="clarify-option-buttons">
+              <button id="clarifyProjectPickContinue" class="btn btn-primary" type="button">Continue</button>
+            </div>
           </div>
         </section>
 
@@ -523,28 +528,6 @@
           </div>
           <div class="clarify-option-buttons">
             <button id="clarifyDateContinue" class="btn btn-primary" type="button">Continue</button>
-          </div>
-        </section>
-
-        <section id="clarifyStepProject" class="clarify-step" data-clarify-step="project" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Is this part of a larger outcome?</h3>
-          <div class="clarify-project-option">
-            <label><input id="clarifyProjectOptionExisting" type="radio" name="clarifyProjectOption" value="existing" /> Select existing project</label>
-            <select id="clarifyProjectSelect">
-              <option value="none">No project</option>
-            </select>
-          </div>
-          <div class="clarify-project-option">
-            <label><input id="clarifyProjectOptionNew" type="radio" name="clarifyProjectOption" value="new" /> Create new project</label>
-            <input id="clarifyProjectNewInput" type="text" placeholder="New project name" autocomplete="off" />
-          </div>
-          <div class="clarify-project-option">
-            <label><input id="clarifyProjectOptionNone" type="radio" name="clarifyProjectOption" value="none" checked /> No project</label>
-          </div>
-          <div class="clarify-option-buttons">
-            <button id="clarifyProjectContinue" class="btn btn-primary" type="button">Continue</button>
           </div>
         </section>
 

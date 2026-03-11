@@ -1769,8 +1769,8 @@ export class UIController {
       closeClarifyModal,
       clarifyBackdrop,
       clarifyActionableYes,
-      clarifyActionInput,
-      clarifyActionContinue,
+      clarifyActionSingle,
+      clarifyActionAddExisting,
       clarifyConvertProject,
       clarifyTwoMinuteYes,
       clarifyTwoMinuteNo,
@@ -1790,12 +1790,9 @@ export class UIController {
       clarifyDueDateInput,
       clarifyDateOptionNone,
       clarifySpecificTimeInput,
-      clarifyProjectContinue,
       clarifyProjectSelect,
-      clarifyProjectOptionExisting,
-      clarifyProjectOptionNew,
-      clarifyProjectOptionNone,
-      clarifyProjectNewInput,
+      clarifyProjectPicker,
+      clarifyProjectPickContinue,
       clarifyContextSelect,
       clarifyEnergySelect,
       clarifyTimeSelect,
@@ -1806,7 +1803,6 @@ export class UIController {
       clarifyStepActionable,
       clarifyStepActionPlan,
       clarifyStepDates,
-      clarifyStepProject,
       clarifyStepMetadata,
       clarifyStepFinal,
       clarifyFinalMessage,
@@ -1822,10 +1818,11 @@ export class UIController {
     };
     this.clarifyDestinationButtons = Array.from(clarifyModal.querySelectorAll("[data-clarify-nonaction]"));
     clarifyActionableYes?.addEventListener("click", () => this.handleClarifyActionableChoice(true));
+    clarifyActionSingle?.addEventListener("click", () => this.handleClarifySingleAction());
+    clarifyActionAddExisting?.addEventListener("click", () => this.showClarifyProjectPicker());
     this.clarifyDestinationButtons.forEach((button) => {
       button.addEventListener("click", () => this.handleClarifyNonAction(button.dataset.clarifyNonaction));
     });
-    clarifyActionContinue?.addEventListener("click", () => this.handleClarifyActionContinue());
     clarifyConvertProject?.addEventListener("click", () => this.handleClarifyConvertToProject());
     clarifyTwoMinuteYes?.addEventListener("click", () => this.handleClarifyTwoMinuteYes());
     clarifyTwoMinuteNo?.addEventListener("click", () => this.showClarifyStep("who"));
@@ -1835,7 +1832,7 @@ export class UIController {
     clarifyWhoSelf?.addEventListener("click", () => this.showClarifyStep("dates"));
     clarifyWhoDelegate?.addEventListener("click", () => this.handleClarifyDelegation(clarifyDelegateNameInput?.value));
     clarifyDateContinue?.addEventListener("click", () => this.handleClarifyDateDecision());
-    clarifyProjectContinue?.addEventListener("click", () => this.handleClarifyProjectContinue());
+    clarifyProjectPickContinue?.addEventListener("click", () => this.handleClarifyExistingProjectContinue());
     clarifyMetadataSave?.addEventListener("click", () => this.handleClarifyMetadata({ skip: false }));
     clarifyMetadataSkip?.addEventListener("click", () => this.handleClarifyMetadata({ skip: true }));
     clarifyFinalReturn?.addEventListener("click", () => this.closeClarifyFlowToInbox());
@@ -1865,17 +1862,10 @@ export class UIController {
     clarifyStepActionable?.addEventListener("click", () => clearFollowup());
     clarifyStepActionPlan?.addEventListener("click", () => clearFollowup());
     clarifyStepDates?.addEventListener("click", () => clearFollowup());
-    clarifyStepProject?.addEventListener("click", () => clearFollowup());
     clarifyStepMetadata?.addEventListener("click", () => clearFollowup());
     clarifyStepFinal?.addEventListener("click", () => clearFollowup());
     closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
     clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
-    clarifyActionInput?.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        this.handleClarifyActionContinue();
-      }
-    });
     if (clarifyPreviewText) {
       clarifyPreviewText.addEventListener("input", () => this.handleClarifyPreviewEdit(false));
       clarifyPreviewText.addEventListener("blur", () => this.handleClarifyPreviewEdit(true));
@@ -1950,7 +1940,6 @@ export class UIController {
     this.clarifyState = {
       taskId: null,
       currentStep: "identify",
-      nextActionTitle: "",
       projectId: null,
       projectName: "",
       dueType: "none",
@@ -2003,7 +1992,6 @@ export class UIController {
       ["two-minute", this.elements.clarifyTwoMinuteStep],
       ["who", this.elements.clarifyWhoStep],
       ["dates", this.elements.clarifyStepDates],
-      ["project", this.elements.clarifyStepProject],
       ["metadata", this.elements.clarifyStepMetadata],
       ["final", this.elements.clarifyStepFinal],
     ];
@@ -2015,11 +2003,10 @@ export class UIController {
     this.clarifyState.currentStep = step;
     const focusTargets = {
       "actionable": this.elements.clarifyActionableYes,
-      "action-plan": this.elements.clarifyActionInput,
+      "action-plan": this.elements.clarifyActionSingle,
       "two-minute": this.elements.clarifyTwoMinuteYes,
       "who": this.elements.clarifyWhoSelf,
       "dates": this.elements.clarifyDateOptionNone,
-      "project": this.elements.clarifyProjectSelect,
       "metadata": this.elements.clarifyContextSelect,
       "final": this.elements.clarifyFinalReturn,
     };
@@ -2037,8 +2024,8 @@ export class UIController {
     document.querySelectorAll(".clarify-preview").forEach((el) => {
       el.textContent = task.description || task.title || "(No details captured)";
     });
-    if (this.elements.clarifyActionInput) {
-      this.elements.clarifyActionInput.value = task.title || "";
+    if (this.elements.clarifyProjectPicker) {
+      this.elements.clarifyProjectPicker.hidden = true;
     }
     if (this.elements.clarifySpecificDateInput) {
       this.elements.clarifySpecificDateInput.value = "";
@@ -2060,18 +2047,6 @@ export class UIController {
     }
     if (this.elements.clarifyProjectSelect) {
       this.populateProjectSelect();
-    }
-    if (this.elements.clarifyProjectOptionNone) {
-      this.elements.clarifyProjectOptionNone.checked = true;
-    }
-    if (this.elements.clarifyProjectOptionExisting) {
-      this.elements.clarifyProjectOptionExisting.checked = false;
-    }
-    if (this.elements.clarifyProjectOptionNew) {
-      this.elements.clarifyProjectOptionNew.checked = false;
-    }
-    if (this.elements.clarifyProjectNewInput) {
-      this.elements.clarifyProjectNewInput.value = "";
     }
     if (this.elements.clarifyDateOptionNone) {
       this.elements.clarifyDateOptionNone.checked = true;
@@ -2114,7 +2089,7 @@ export class UIController {
     select.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "none";
-    placeholder.textContent = "No project";
+    placeholder.textContent = "Choose a project";
     select.append(placeholder);
     const projects = this.taskManager
       .getProjects({ includeSomeday: true })
@@ -2147,8 +2122,6 @@ export class UIController {
       }
       this.taskManager.deleteTask(this.clarifyState.taskId);
       this.taskManager.notify("info", "Captured idea deleted.");
-    } else if (destination === "reference") {
-      this.taskManager.completeTask(this.clarifyState.taskId, { archive: "reference" });
     } else if (destination === "someday") {
       this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
       this.taskManager.notify("info", "Moved to Someday / Maybe.");
@@ -2157,89 +2130,62 @@ export class UIController {
     this.setActivePanel("inbox");
   }
 
-  handleClarifyActionContinue() {
+  handleClarifySingleAction() {
     if (!this.clarifyState.taskId) return;
-    const title = this.elements.clarifyActionInput?.value?.trim();
-    if (!title) {
-      this.taskManager.notify("warn", "Describe the next physical action before continuing.");
-      this.elements.clarifyActionInput?.focus();
-      return;
+    this.clarifyState.projectId = null;
+    this.clarifyState.projectName = "";
+    if (this.elements.clarifyProjectPicker) {
+      this.elements.clarifyProjectPicker.hidden = true;
     }
-    this.clarifyState.nextActionTitle = title;
     this.showClarifyStep("two-minute");
   }
 
   handleClarifyConvertToProject() {
     if (!this.clarifyState.taskId) return;
-    const actionTitle = this.elements.clarifyActionInput?.value?.trim();
-    if (!actionTitle) {
-      this.taskManager.notify("warn", "Describe the next action before converting to a project.");
-      this.elements.clarifyActionInput?.focus();
-      return;
-    }
-    this.clarifyState.nextActionTitle = actionTitle;
     const projectName = window.prompt("Project name");
     if (!projectName || !projectName.trim()) {
       return;
     }
     const trimmedName = projectName.trim();
-    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
-    const confirmed = window.confirm(`Convert "${task?.title || "this task"}" into project "${trimmedName}"?`);
-    if (!confirmed) {
-      return;
-    }
     const project = this.taskManager.addProject(trimmedName);
     if (project) {
       this.clarifyState.projectId = project.id;
       this.clarifyState.projectName = project.name;
+      if (this.elements.clarifyProjectPicker) {
+        this.elements.clarifyProjectPicker.hidden = true;
+      }
       this.populateProjectSelect();
       if (this.elements.clarifyProjectSelect) {
         this.elements.clarifyProjectSelect.value = project.id;
-      }
-      if (this.elements.clarifyProjectOptionExisting) {
-        this.elements.clarifyProjectOptionExisting.checked = true;
       }
       this.taskManager.notify("info", `Created project "${project.name}".`);
       this.showClarifyStep("two-minute");
     }
   }
 
-  handleClarifyProjectContinue() {
+  showClarifyProjectPicker() {
+    const picker = this.elements.clarifyProjectPicker;
+    if (!picker) return;
+    picker.hidden = false;
+    this.populateProjectSelect();
+    this.elements.clarifyProjectSelect?.focus();
+  }
+
+  handleClarifyExistingProjectContinue() {
     if (!this.clarifyState.taskId) return;
-    const existingSelected = this.elements.clarifyProjectOptionExisting?.checked;
-    const newSelected = this.elements.clarifyProjectOptionNew?.checked;
-    const noneSelected = this.elements.clarifyProjectOptionNone?.checked;
-    if (existingSelected) {
-      const selectedId = this.elements.clarifyProjectSelect?.value;
-      if (selectedId && selectedId !== "none") {
-        this.clarifyState.projectId = selectedId;
-      } else {
-        this.clarifyState.projectId = null;
-      }
-    } else if (newSelected) {
-      const newName = this.elements.clarifyProjectNewInput?.value?.trim();
-      if (!newName) {
-        this.taskManager.notify("warn", "Provide a project name.");
-        this.elements.clarifyProjectNewInput?.focus();
-        return;
-      }
-      const project = this.taskManager.addProject(newName);
-      if (project) {
-        this.clarifyState.projectId = project.id;
-        this.clarifyState.projectName = project.name;
-        this.populateProjectSelect();
-        this.elements.clarifyProjectSelect.value = project.id;
-        if (this.elements.clarifyProjectOptionExisting) {
-          this.elements.clarifyProjectOptionExisting.checked = true;
-        }
-        if (this.elements.clarifyProjectOptionNew) {
-          this.elements.clarifyProjectOptionNew.checked = false;
-        }
-      }
-    } else if (noneSelected) {
-      this.clarifyState.projectId = null;
+    const selectedId = this.elements.clarifyProjectSelect?.value;
+    if (!selectedId || selectedId === "none") {
+      this.taskManager.notify("warn", "Pick a project before continuing.");
+      this.elements.clarifyProjectSelect?.focus();
+      return;
     }
-    this.showClarifyStep("metadata");
+    this.clarifyState.projectId = selectedId;
+    const name = this.getProjectName(selectedId);
+    this.clarifyState.projectName = name || "";
+    if (this.elements.clarifyProjectPicker) {
+      this.elements.clarifyProjectPicker.hidden = true;
+    }
+    this.showClarifyStep("two-minute");
   }
 
   handleClarifyDateDecision() {
@@ -2272,7 +2218,7 @@ export class UIController {
       this.clarifyState.dueDate = "";
       this.clarifyState.calendarDate = "";
     }
-    this.showClarifyStep("project");
+    this.showClarifyStep("metadata");
   }
 
   handleClarifyAddContext() {
@@ -2427,9 +2373,6 @@ export class UIController {
     document.querySelectorAll(".clarify-preview").forEach((el) => {
       el.textContent = text;
     });
-    if (this.elements.clarifyActionInput && this.elements.clarifyActionInput.value.trim() === previousText) {
-      this.elements.clarifyActionInput.value = text;
-    }
     const field = this.clarifyState.previewField || "title";
     this.taskManager.updateTask(this.clarifyState.taskId, { [field]: text });
   }
@@ -2441,8 +2384,9 @@ export class UIController {
       return;
     }
     const statusTarget = this.clarifyState.statusTarget || STATUS.NEXT;
+    const nextActionTitle = this.clarifyState.previewText?.trim() || task.title;
     const updates = {
-      title: this.clarifyState.nextActionTitle || task.title,
+      title: nextActionTitle,
       description: task.description,
       context: this.clarifyState.context || task.context || PHYSICAL_CONTEXTS[0],
       energyLevel: this.clarifyState.energy || null,
@@ -3544,14 +3488,13 @@ function mapElements() {
     clarifyStepActionPlan: byId("clarifyStepActionPlan"),
     clarifyTwoMinuteStep: byId("clarifyStepTwoMinute"),
     clarifyWhoStep: byId("clarifyStepWho"),
-    clarifyStepProject: byId("clarifyStepProject"),
     clarifyStepDates: byId("clarifyStepDates"),
     clarifyStepMetadata: byId("clarifyStepMetadata"),
     clarifyStepFinal: byId("clarifyStepFinal"),
     clarifyPreviewText: byId("clarifyPreviewText"),
     clarifyActionableYes: byId("clarifyActionableYes"),
-    clarifyActionInput: byId("clarifyActionInput"),
-    clarifyActionContinue: byId("clarifyActionContinue"),
+    clarifyActionSingle: byId("clarifyActionSingle"),
+    clarifyActionAddExisting: byId("clarifyActionAddExisting"),
     clarifyConvertProject: byId("clarifyConvertProject"),
     clarifyTwoMinuteYes: byId("clarifyTwoMinuteYes"),
     clarifyTwoMinuteNo: byId("clarifyTwoMinuteNo"),
@@ -3565,11 +3508,8 @@ function mapElements() {
     clarifyWhoDelegate: byId("clarifyWhoDelegate"),
     clarifyDelegateNameInput: byId("clarifyDelegateNameInput"),
     clarifyProjectSelect: byId("clarifyProjectSelect"),
-    clarifyProjectOptionExisting: byId("clarifyProjectOptionExisting"),
-    clarifyProjectOptionNew: byId("clarifyProjectOptionNew"),
-    clarifyProjectOptionNone: byId("clarifyProjectOptionNone"),
-    clarifyProjectNewInput: byId("clarifyProjectNewInput"),
-    clarifyProjectContinue: byId("clarifyProjectContinue"),
+    clarifyProjectPicker: byId("clarifyProjectPicker"),
+    clarifyProjectPickContinue: byId("clarifyProjectPickContinue"),
     clarifyDateOptionSpecific: byId("clarifyDateOptionSpecific"),
     clarifyDateOptionDue: byId("clarifyDateOptionDue"),
     clarifyDateOptionNone: byId("clarifyDateOptionNone"),

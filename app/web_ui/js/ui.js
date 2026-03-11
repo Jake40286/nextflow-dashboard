@@ -340,9 +340,84 @@ export class UIController {
       }
     });
     this.updateActivePanelMeta();
-    const expandButton = this.elements.expandProjects;
-    if (expandButton) {
-      expandButton.hidden = this.activePanel !== "projects";
+    this.updateToolbarContext();
+  }
+
+  updateToolbarContext() {
+    const {
+      workspaceToolbar,
+      toolbarSearchSection,
+      toolbarTaskPickerSection,
+      toolbarActionsSection,
+      toolbarActionsTitle,
+      toolbarActionsNote,
+      nextProjectFanoutControl,
+      clearFilters,
+      expandProjects,
+    } = this.elements;
+    const panel = this.activePanel;
+    const taskPanels = new Set(["inbox", "next", "kanban", "waiting", "someday", "projects", "calendar", "all-active"]);
+    const supportsSearch = taskPanels.has(panel);
+    const supportsTaskPicker = panel === "next";
+    const supportsNextFanout = panel === "next";
+    const supportsExpandProjects = panel === "projects";
+    const supportsClearFilters = taskPanels.has(panel);
+
+    if (toolbarSearchSection) {
+      toolbarSearchSection.hidden = !supportsSearch;
+    }
+    if (toolbarTaskPickerSection) {
+      toolbarTaskPickerSection.hidden = !supportsTaskPicker;
+    }
+    if (nextProjectFanoutControl) {
+      nextProjectFanoutControl.hidden = !supportsNextFanout;
+    }
+    if (expandProjects) {
+      expandProjects.hidden = !supportsExpandProjects;
+    }
+    if (clearFilters) {
+      clearFilters.hidden = !supportsClearFilters;
+    }
+
+    const hasActions =
+      Boolean(nextProjectFanoutControl && !nextProjectFanoutControl.hidden) ||
+      Boolean(clearFilters && !clearFilters.hidden) ||
+      Boolean(expandProjects && !expandProjects.hidden);
+
+    if (toolbarActionsSection) {
+      toolbarActionsSection.hidden = !hasActions;
+    }
+
+    if (toolbarActionsTitle && toolbarActionsNote) {
+      if (supportsNextFanout) {
+        toolbarActionsTitle.textContent = "Next Actions Controls";
+        toolbarActionsNote.textContent = "Tune how next actions are grouped and filtered.";
+      } else if (supportsExpandProjects) {
+        toolbarActionsTitle.textContent = "Project Controls";
+        toolbarActionsNote.textContent = "Expand projects and reset project filters quickly.";
+      } else {
+        toolbarActionsTitle.textContent = "Panel Controls";
+        toolbarActionsNote.textContent = "Reset filters for this view.";
+      }
+    }
+
+    if (workspaceToolbar) {
+      const showToolbar =
+        Boolean(toolbarSearchSection && !toolbarSearchSection.hidden) ||
+        Boolean(toolbarTaskPickerSection && !toolbarTaskPickerSection.hidden) ||
+        Boolean(toolbarActionsSection && !toolbarActionsSection.hidden);
+      workspaceToolbar.hidden = !showToolbar;
+      if (!workspaceToolbar.hidden) {
+        if (supportsTaskPicker) {
+          workspaceToolbar.dataset.toolbarMode = "next";
+        } else if (supportsExpandProjects) {
+          workspaceToolbar.dataset.toolbarMode = "projects";
+        } else {
+          workspaceToolbar.dataset.toolbarMode = "list";
+        }
+      } else {
+        delete workspaceToolbar.dataset.toolbarMode;
+      }
     }
   }
 
@@ -4034,6 +4109,13 @@ function mapElements() {
   return {
     appRoot: document.querySelector(".app"),
     alerts: document.querySelector(".alerts"),
+    workspaceToolbar: document.querySelector(".workspace-toolbar"),
+    toolbarSearchSection: byId("toolbarSearchSection"),
+    toolbarTaskPickerSection: byId("toolbarTaskPickerSection"),
+    toolbarActionsSection: byId("toolbarActionsSection"),
+    toolbarActionsTitle: byId("toolbarActionsTitle"),
+    toolbarActionsNote: byId("toolbarActionsNote"),
+    nextProjectFanoutControl: byId("nextProjectFanoutControl"),
     contextFilterPicker: byId("contextFilterPicker"),
     contextFilterToggle: byId("contextFilterToggle"),
     contextFilterOptions: byId("contextFilterOptions"),

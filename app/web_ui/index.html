@@ -186,21 +186,26 @@
 
     <section class="workspace" aria-label="Workflow">
       <header class="workspace-toolbar">
-        <div class="workspace-toolbar-main">
+        <div class="workspace-toolbar-head">
           <div class="workspace-current" aria-live="polite">
             <h2 id="activePanelHeading">Inbox</h2>
             <span id="activePanelCount" class="muted small-text">0 items</span>
           </div>
-          <div class="workspace-search">
+          <p class="workspace-toolbar-note muted small-text">Search, pick, and tune your working view before you execute.</p>
+        </div>
+        <div class="workspace-toolbar-grid">
+          <section id="toolbarSearchSection" class="workspace-tool workspace-search" aria-label="Task search">
+            <h3 class="workspace-tool-title">Search Tasks</h3>
             <div id="searchTasksContainer" class="workspace-search-field">
-              <label class="filter-control" for="searchTasks">Search Tasks</label>
+              <label class="visually-hidden" for="searchTasks">Search Tasks</label>
               <div class="workspace-search-input">
                 <input id="searchTasks" type="search" placeholder="Search tasks, contexts, people…" autocomplete="off" />
               </div>
             </div>
-          </div>
-          <div class="task-picker-panel" aria-label="Task picker">
-            <p class="task-picker-title">Task Picker</p>
+          </section>
+          <section id="toolbarTaskPickerSection" class="workspace-tool task-picker-panel" aria-label="Task picker">
+            <h3 class="workspace-tool-title">Task Picker</h3>
+            <p class="workspace-tool-note muted small-text">Grab a random next action by context.</p>
             <div class="random-picker" aria-label="Random task helper">
               <label class="filter-control" for="randomContext">Context</label>
               <select id="randomContext">
@@ -208,15 +213,19 @@
               </select>
               <button id="pickRandomTask" class="btn btn-light" type="button">Pick a task</button>
             </div>
-          </div>
-        </div>
-        <div class="toolbar-actions">
-          <label class="toolbar-toggle" for="toggleNextProjectFanout">
-            <input id="toggleNextProjectFanout" type="checkbox" />
-            <span>Show all next actions per project</span>
-          </label>
-          <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
-          <button id="expandProjects" class="btn btn-light" type="button">Expand active projects</button>
+          </section>
+          <section id="toolbarActionsSection" class="workspace-tool toolbar-actions-panel" aria-label="Panel controls">
+            <h3 id="toolbarActionsTitle" class="workspace-tool-title">Panel Controls</h3>
+            <p id="toolbarActionsNote" class="workspace-tool-note muted small-text">Adjust list behavior and filters.</p>
+            <div class="toolbar-actions">
+              <label id="nextProjectFanoutControl" class="toolbar-toggle" for="toggleNextProjectFanout">
+                <input id="toggleNextProjectFanout" type="checkbox" />
+                <span>Show all next actions per project</span>
+              </label>
+              <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
+              <button id="expandProjects" class="btn btn-light" type="button">Expand active projects</button>
+            </div>
+          </section>
         </div>
       </header>
 

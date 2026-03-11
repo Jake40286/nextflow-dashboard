@@ -5,7 +5,6 @@ import {
   PHYSICAL_CONTEXTS,
   ENERGY_LEVELS,
   TIME_REQUIREMENTS,
-  PROJECT_AREAS,
   PROJECT_THEMES,
   PROJECT_STATUSES,
 } from "./data.js";
@@ -20,11 +19,18 @@ const TRANSITIONS = {
     { label: "Delegated", target: STATUS.WAITING },
   ],
   [STATUS.NEXT]: [
+    { label: "Start doing", target: STATUS.DOING },
+    { label: "Move to Waiting", target: STATUS.WAITING },
+    { label: "Archive to Someday", target: STATUS.SOMEDAY },
+  ],
+  [STATUS.DOING]: [
+    { label: "Back to Next", target: STATUS.NEXT },
     { label: "Move to Waiting", target: STATUS.WAITING },
     { label: "Archive to Someday", target: STATUS.SOMEDAY },
   ],
   [STATUS.WAITING]: [
     { label: "Back to Next", target: STATUS.NEXT },
+    { label: "Start doing", target: STATUS.DOING },
     { label: "Return to Inbox", target: STATUS.INBOX },
   ],
   [STATUS.SOMEDAY]: [
@@ -78,6 +84,7 @@ export class UIController {
     this.connectionCheckTimer = null;
     this.manualSyncInFlight = false;
     this.showMissingNextOnly = false;
+    this.selectedSettingsContext = null;
   }
 
   init() {
@@ -223,6 +230,40 @@ export class UIController {
     manualSyncButton?.addEventListener("click", () => {
       this.triggerManualSync();
     });
+    const settingsLists = [
+      this.elements.settingsContextsList,
+      this.elements.settingsPeopleList,
+      this.elements.settingsAreasList,
+    ].filter(Boolean);
+    settingsLists.forEach((list) => {
+      list.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-settings-action]");
+        if (button) {
+          const action = button.dataset.settingsAction;
+          const type = button.dataset.settingsType;
+          const value = button.dataset.settingsValue;
+          this.handleSettingsAction({ action, type, value });
+          return;
+        }
+        if (event.target.closest(".settings-context-inline")) {
+          return;
+        }
+        const contextItem = event.target.closest('li.settings-item[data-settings-type="context"]');
+        if (!contextItem) return;
+        const selected = contextItem.dataset.settingsValue;
+        this.selectedSettingsContext = selected || null;
+        this.renderSettings();
+      });
+    });
+    this.elements.settingsContextsList?.addEventListener("change", (event) => {
+      const select = event.target.closest("select[data-settings-task-id]");
+      if (!select) return;
+      const taskId = select.dataset.settingsTaskId;
+      const nextContext = select.value || null;
+      const updated = this.taskManager.updateTask(taskId, { context: nextContext });
+      if (!updated) return;
+      this.renderSettings();
+    });
 
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
@@ -327,9 +368,11 @@ export class UIController {
 
   getPanelLabel(panel) {
     if (STATUS_LABELS[panel]) return STATUS_LABELS[panel];
+    if (panel === "kanban") return "Kanban";
     if (panel === "projects") return "Active Projects";
     if (panel === "calendar") return "Calendar";
     if (panel === "reports") return "Complete";
+    if (panel === "settings") return "Settings";
     return "Overview";
   }
 
@@ -337,6 +380,12 @@ export class UIController {
     const summary = this.summaryCache || this.taskManager.getSummary();
     if (panel === "projects") {
       return `${summary.projects} active projects`;
+    }
+    if (panel === "kanban") {
+      const activeKanban = this.taskManager
+        .getTasks(this.buildTaskFilters())
+        .filter((task) => [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING].includes(task.status)).length;
+      return `${activeKanban} cards`;
     }
     if (panel === "calendar") {
       const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
@@ -346,6 +395,13 @@ export class UIController {
       const completed = this.taskManager.getCompletedTasks().length;
       return `${completed} completed`;
     }
+    if (panel === "settings") {
+      const totalSettings =
+        this.taskManager.getContexts().length +
+        this.taskManager.getPeopleTags().length +
+        this.taskManager.getAreasOfFocus().length;
+      return `${totalSettings} values`;
+    }
     switch (panel) {
       case STATUS.INBOX:
         return `${summary.inbox} items`;
@@ -353,6 +409,8 @@ export class UIController {
         return `${summary.next} items`;
       case STATUS.WAITING:
         return `${summary.waiting} items`;
+      case STATUS.DOING:
+        return `${summary.doing} items`;
       case STATUS.SOMEDAY:
         return `${summary.someday} items`;
       default:
@@ -368,12 +426,14 @@ export class UIController {
     this.renderFilters();
     this.renderInbox();
     this.renderNextActions();
+    this.renderKanban();
     this.renderProjects();
     this.renderWaitingFor();
     this.renderSomeday();
     this.renderCalendar();
     this.renderReports();
     this.renderAllActive();
+    this.renderSettings();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
@@ -472,7 +532,7 @@ export class UIController {
     fillDatalist(energySuggestions, Array.from(energies));
     fillDatalist(timeSuggestions, Array.from(times));
 
-    const areas = new Set([...PROJECT_AREAS]);
+    const areas = new Set(this.taskManager.getAreasOfFocus());
     const themes = new Set([...PROJECT_THEMES]);
     const statuses = new Set([...PROJECT_STATUSES]);
     (this.projectCache || []).forEach((project) => {
@@ -493,20 +553,35 @@ export class UIController {
     const {
       summaryInbox,
       summaryNext,
+      summaryKanban,
       summaryWaiting,
       summarySomeday,
       summaryProjects,
       summaryCalendar,
       summaryCompleted,
+      summarySettings,
     } = this.elements;
     summaryInbox.textContent = summary.inbox;
     summaryNext.textContent = summary.next;
+    if (summaryKanban) {
+      const kanbanCount = this.taskManager
+        .getTasks(this.buildTaskFilters())
+        .filter((task) => [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING].includes(task.status)).length;
+      summaryKanban.textContent = kanbanCount;
+    }
     summaryWaiting.textContent = summary.waiting;
     summarySomeday.textContent = summary.someday;
     summaryProjects.textContent = summary.projects;
     summaryCalendar.textContent = calendarTotal;
     if (summaryCompleted) {
       summaryCompleted.textContent = completedThisYear;
+    }
+    if (summarySettings) {
+      const settingsTotal =
+        this.taskManager.getContexts().length +
+        this.taskManager.getPeopleTags().length +
+        this.taskManager.getAreasOfFocus().length;
+      summarySettings.textContent = settingsTotal;
     }
     if (summaryAllActive) {
       const activeCount = this.taskManager.getTasks(this.buildTaskFilters()).length;
@@ -739,6 +814,89 @@ export class UIController {
     });
   }
 
+  renderKanban() {
+    const board = this.elements.kanbanBoard;
+    if (!board) return;
+    board.innerHTML = "";
+    const baseStatuses = [STATUS.NEXT, STATUS.DOING, STATUS.WAITING];
+    const statuses = [STATUS.INBOX, ...baseStatuses];
+    const activeTasks = this.taskManager
+      .getTasks(this.buildTaskFilters())
+      .filter((task) => statuses.includes(task.status));
+
+    if (!activeTasks.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text";
+      empty.textContent = "No active tasks for this board.";
+      board.append(empty);
+      return;
+    }
+
+    const lanes = new Set();
+    activeTasks.forEach((task) => {
+      lanes.add(this.getTaskAreaOfFocus(task));
+    });
+    if (activeTasks.some((task) => !task.projectId)) {
+      lanes.add("No Area");
+    }
+    const laneOrder = Array.from(lanes).sort((a, b) => a.localeCompare(b));
+
+    laneOrder.forEach((lane) => {
+      const laneSection = document.createElement("section");
+      laneSection.className = "kanban-lane";
+
+      const laneTitle = document.createElement("h3");
+      laneTitle.className = "kanban-lane-title";
+      laneTitle.textContent = lane;
+      laneSection.append(laneTitle);
+
+      const laneGrid = document.createElement("div");
+      laneGrid.className = "kanban-lane-grid";
+      const laneStatuses = lane === "No Area" ? statuses : baseStatuses;
+      laneGrid.style.gridTemplateColumns = `repeat(${laneStatuses.length}, minmax(200px, 1fr))`;
+
+      laneStatuses.forEach((status) => {
+        const column = document.createElement("section");
+        column.className = "kanban-column";
+        column.dataset.dropzone = status;
+        column.dataset.area = lane;
+
+        const items = activeTasks.filter(
+          (task) => task.status === status && this.getTaskAreaOfFocus(task) === lane
+        );
+
+        const header = document.createElement("header");
+        header.className = "kanban-column-header";
+        const title = document.createElement("span");
+        title.textContent = STATUS_LABELS[status] || status;
+        const count = document.createElement("span");
+        count.className = "context-count";
+        count.textContent = String(items.length);
+        header.append(title, count);
+        column.append(header);
+
+        const list = document.createElement("div");
+        list.className = "kanban-column-list";
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted small-text";
+          empty.textContent = "No tasks";
+          list.append(empty);
+        } else {
+          items.forEach((task) => {
+            list.append(this.createTaskCard(task));
+          });
+        }
+        column.append(list);
+        this.attachKanbanDropzone(column, status, lane);
+        laneGrid.append(column);
+      });
+
+      laneSection.append(laneGrid);
+      board.append(laneSection);
+    });
+  }
+
   renderProjects() {
     const container = this.elements.projectList;
     container.innerHTML = "";
@@ -759,10 +917,7 @@ export class UIController {
 
     if (this.elements.projectAreaFilter) {
       const select = this.elements.projectAreaFilter;
-      const areas = new Set([...PROJECT_AREAS]);
-      (this.projectCache || []).forEach((project) => {
-        if (project.areaOfFocus) areas.add(project.areaOfFocus);
-      });
+      const areas = new Set(this.taskManager.getAreasOfFocus());
       const existing = new Set(Array.from(select.options).map((opt) => opt.value));
       Array.from(areas).forEach((area) => {
         if (existing.has(area)) return;
@@ -913,6 +1068,7 @@ export class UIController {
 
       const grouped = {
         [STATUS.NEXT]: [],
+        [STATUS.DOING]: [],
         [STATUS.WAITING]: [],
         [STATUS.SOMEDAY]: [],
         [STATUS.INBOX]: [],
@@ -925,6 +1081,7 @@ export class UIController {
 
       const groups = [
         { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
+        { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
         { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
         { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
         { status: STATUS.INBOX, label: "Captured (Inbox)", empty: "No uncategorized work for this project." },
@@ -1486,6 +1643,293 @@ export class UIController {
     tasks.forEach((task) => {
       container.append(this.createTaskCard(task));
     });
+  }
+
+  renderSettings() {
+    const contextsList = this.elements.settingsContextsList;
+    const peopleList = this.elements.settingsPeopleList;
+    const areasList = this.elements.settingsAreasList;
+    if (!contextsList || !peopleList || !areasList) return;
+    const contexts = this.taskManager.getContexts();
+    const peopleTags = this.taskManager.getPeopleTags();
+    const areas = this.taskManager.getAreasOfFocus();
+    const usage = this.buildSettingsUsageCounts();
+
+    if (this.selectedSettingsContext && !contexts.includes(this.selectedSettingsContext)) {
+      this.selectedSettingsContext = null;
+    }
+    this.renderSettingsList(contextsList, contexts, "context", usage.contexts);
+    this.renderSettingsList(peopleList, peopleTags, "people", usage.people);
+    this.renderSettingsList(areasList, areas, "area", usage.areas);
+  }
+
+  buildSettingsUsageCounts() {
+    const activeTasks = this.taskManager.getTasks({ includeCompleted: false });
+    const inactiveTasks = this.taskManager.getCompletedTasks();
+    const completedProjects = this.taskManager.getCompletedProjects();
+    const areaByProjectId = new Map();
+    (this.projectCache || []).forEach((project) => {
+      if (project?.id && project?.areaOfFocus) {
+        areaByProjectId.set(project.id, project.areaOfFocus);
+      }
+    });
+    completedProjects.forEach((entry) => {
+      if (entry?.id && entry?.snapshot?.areaOfFocus) {
+        areaByProjectId.set(entry.id, entry.snapshot.areaOfFocus);
+      }
+    });
+    const contexts = new Map();
+    const people = new Map();
+    const areas = new Map();
+
+    const bump = (map, key, bucket) => {
+      if (!key) return;
+      const current = map.get(key) || { active: 0, inactive: 0 };
+      current[bucket] += 1;
+      map.set(key, current);
+    };
+
+    activeTasks.forEach((task) => {
+      bump(contexts, task.context, "active");
+      bump(people, task.peopleTag, "active");
+      bump(areas, this.getTaskAreaOfFocus(task), "active");
+    });
+    inactiveTasks.forEach((task) => {
+      bump(contexts, task.context, "inactive");
+      bump(people, task.peopleTag, "inactive");
+      const area =
+        task.projectId
+          ? areaByProjectId.get(task.projectId) || "No Area"
+          : (typeof task.areaOfFocus === "string" && task.areaOfFocus.trim() ? task.areaOfFocus.trim() : "No Area");
+      bump(areas, area, "inactive");
+    });
+
+    return { contexts, people, areas };
+  }
+
+  renderSettingsList(container, values, type, usageMap = new Map()) {
+    container.innerHTML = "";
+    if (!values.length) {
+      const empty = document.createElement("li");
+      empty.className = "muted small-text";
+      empty.textContent = "No values yet.";
+      container.append(empty);
+      return;
+    }
+    values.forEach((value) => {
+      const item = document.createElement("li");
+      item.className = "settings-item";
+      item.dataset.settingsType = type;
+      item.dataset.settingsValue = value;
+      if (type === "context" && value === this.selectedSettingsContext) {
+        item.classList.add("is-selected");
+      }
+      const main = document.createElement("div");
+      main.className = "settings-item-main";
+
+      const labelWrap = document.createElement("div");
+      labelWrap.className = "settings-item-label";
+      const label = document.createElement("span");
+      label.textContent = value;
+      const meta = document.createElement("span");
+      meta.className = "settings-item-meta muted small-text";
+      const usage = usageMap.get(value) || { active: 0, inactive: 0 };
+      meta.textContent =
+        `${usage.active} active task${usage.active === 1 ? "" : "s"} • ` +
+        `${usage.inactive} inactive task${usage.inactive === 1 ? "" : "s"}`;
+      labelWrap.append(label, meta);
+      const actions = document.createElement("div");
+      actions.className = "settings-item-actions";
+
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.className = "btn btn-light btn-small";
+      renameButton.textContent = "Rename";
+      renameButton.dataset.settingsAction = "rename";
+      renameButton.dataset.settingsType = type;
+      renameButton.dataset.settingsValue = value;
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "btn btn-danger btn-small";
+      deleteButton.textContent = "Delete";
+      deleteButton.dataset.settingsAction = "delete";
+      deleteButton.dataset.settingsType = type;
+      deleteButton.dataset.settingsValue = value;
+
+      actions.append(renameButton, deleteButton);
+      main.append(labelWrap, actions);
+      item.append(main);
+      if (type === "context" && value === this.selectedSettingsContext) {
+        item.append(this.renderSettingsContextTasksInline(value));
+      }
+      container.append(item);
+    });
+  }
+
+  renderSettingsContextTasksInline(context) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "settings-context-inline";
+
+    const header = document.createElement("header");
+    header.className = "settings-context-header";
+    const title = document.createElement("h4");
+    title.textContent = `Tasks in ${context}`;
+    const meta = document.createElement("p");
+    meta.className = "muted small-text";
+
+    const activeTasks = this.taskManager
+      .getTasks({ includeCompleted: false })
+      .filter((task) => task.context === context)
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    const inactiveTasks = this.taskManager
+      .getCompletedTasks({ context })
+      .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
+    meta.textContent =
+      `${activeTasks.length} active task${activeTasks.length === 1 ? "" : "s"} • ` +
+      `${inactiveTasks.length} inactive task${inactiveTasks.length === 1 ? "" : "s"}`;
+    header.append(title, meta);
+    wrapper.append(header);
+
+    if (!activeTasks.length && !inactiveTasks.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text";
+      empty.textContent = "No tasks currently use this context.";
+      wrapper.append(empty);
+      return wrapper;
+    }
+
+    if (activeTasks.length) {
+      const activeTitle = document.createElement("p");
+      activeTitle.className = "settings-context-group-label muted small-text";
+      activeTitle.textContent = "Active tasks";
+      wrapper.append(activeTitle);
+
+      const activeList = document.createElement("ul");
+      activeList.className = "settings-list";
+      activeList.setAttribute("role", "list");
+      const contexts = this.taskManager.getContexts();
+      activeTasks.forEach((task) => {
+        const item = document.createElement("li");
+        item.className = "settings-item settings-task-row";
+
+        const top = document.createElement("div");
+        top.className = "settings-task-row-top";
+        const taskTitle = document.createElement("strong");
+        taskTitle.textContent = task.title;
+        const status = document.createElement("span");
+        status.className = "muted small-text";
+        status.textContent = STATUS_LABELS[task.status] || task.status;
+        top.append(taskTitle, status);
+
+        const actions = document.createElement("div");
+        actions.className = "settings-task-actions";
+        const select = document.createElement("select");
+        select.dataset.settingsTaskId = task.id;
+        contexts.forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          if (value === task.context) {
+            option.selected = true;
+          }
+          select.append(option);
+        });
+
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "btn btn-light btn-small";
+        openButton.textContent = "Open";
+        openButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.openTaskFlyout(task.id);
+        });
+
+        actions.append(select, openButton);
+        item.append(top, actions);
+        activeList.append(item);
+      });
+      wrapper.append(activeList);
+    }
+
+    if (inactiveTasks.length) {
+      const inactiveTitle = document.createElement("p");
+      inactiveTitle.className = "settings-context-group-label muted small-text";
+      inactiveTitle.textContent = "Inactive tasks";
+      wrapper.append(inactiveTitle);
+
+      const inactiveList = document.createElement("ul");
+      inactiveList.className = "settings-list";
+      inactiveList.setAttribute("role", "list");
+      inactiveTasks.forEach((entry) => {
+        const item = document.createElement("li");
+        item.className = "settings-item settings-task-row";
+
+        const top = document.createElement("div");
+        top.className = "settings-task-row-top";
+        const taskTitle = document.createElement("strong");
+        taskTitle.textContent = entry.title || "Completed task";
+        const completed = document.createElement("span");
+        completed.className = "muted small-text";
+        completed.textContent = entry.completedAt
+          ? `Completed ${formatFriendlyDate(entry.completedAt)}`
+          : "Completed";
+        top.append(taskTitle, completed);
+
+        const actions = document.createElement("div");
+        actions.className = "settings-task-actions";
+        const note = document.createElement("span");
+        note.className = "muted small-text";
+        note.textContent = "Read-only";
+
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "btn btn-light btn-small";
+        openButton.textContent = "Open";
+        openButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.openTaskFlyout(entry, { readOnly: true, entry });
+        });
+
+        actions.append(note, openButton);
+        item.append(top, actions);
+        inactiveList.append(item);
+      });
+      wrapper.append(inactiveList);
+    }
+
+    return wrapper;
+  }
+
+  handleSettingsAction({ action, type, value }) {
+    if (!action || !type || !value) return;
+    if (action === "rename") {
+      const candidate = window.prompt(`Rename "${value}" to:`, value);
+      if (!candidate || !candidate.trim()) return;
+      const nextValue = candidate.trim();
+      if (nextValue === value) return;
+      if (type === "context") {
+        const changed = this.taskManager.renameContext(value, nextValue);
+        if (changed && this.selectedSettingsContext === value) {
+          this.selectedSettingsContext = nextValue;
+        }
+      }
+      if (type === "people") this.taskManager.renamePeopleTag(value, nextValue);
+      if (type === "area") this.taskManager.renameAreaOfFocus(value, nextValue);
+      return;
+    }
+    if (action === "delete") {
+      const confirmed = window.confirm(`Delete "${value}"?`);
+      if (!confirmed) return;
+      if (type === "context") {
+        const changed = this.taskManager.deleteContext(value);
+        if (changed && this.selectedSettingsContext === value) {
+          this.selectedSettingsContext = null;
+        }
+      }
+      if (type === "people") this.taskManager.deletePeopleTag(value);
+      if (type === "area") this.taskManager.deleteAreaOfFocus(value);
+    }
   }
 
   renderReportContextPicker(contexts) {
@@ -3201,6 +3645,17 @@ export class UIController {
     return `${displayHour}:${minutes} ${period}`;
   }
 
+  getTaskAreaOfFocus(task) {
+    const project = task?.projectId ? this.projectLookup?.get(task.projectId) : null;
+    if (project?.areaOfFocus) {
+      return project.areaOfFocus;
+    }
+    if (typeof task?.areaOfFocus === "string" && task.areaOfFocus.trim()) {
+      return task.areaOfFocus.trim();
+    }
+    return "No Area";
+  }
+
   getProjectName(projectId) {
     if (!projectId) return null;
     return this.projectLookup?.get(projectId)?.name || null;
@@ -3383,6 +3838,32 @@ export class UIController {
     }
   }
 
+  attachKanbanDropzone(element, status, area) {
+    if (!element) return;
+    if (this.dropzones.includes(element)) return;
+    this.dropzones.push(element);
+    const helper = window.DragDropHelper;
+    if (helper) {
+      helper.setupDropzone(element, {
+        onDrop: (taskId) => this.handleKanbanDrop(taskId, status, area),
+      });
+      return;
+    }
+    element.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      element.classList.add("is-drag-over");
+    });
+    element.addEventListener("dragleave", () => {
+      element.classList.remove("is-drag-over");
+    });
+    element.addEventListener("drop", (event) => {
+      event.preventDefault();
+      element.classList.remove("is-drag-over");
+      const taskId = event.dataTransfer?.getData("text/task-id");
+      if (taskId) this.handleKanbanDrop(taskId, status, area);
+    });
+  }
+
   handleDrop(taskId, status, context) {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) {
@@ -3398,6 +3879,25 @@ export class UIController {
     } else {
       this.taskManager.moveTask(taskId, status);
     }
+  }
+
+  handleKanbanDrop(taskId, status, area) {
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) {
+      this.taskManager.notify("error", "Cannot drop missing task.");
+      return;
+    }
+    const updates = { status };
+    if (task.projectId) {
+      if (area === "No Area") {
+        this.taskManager.notify("warn", "Project tasks must stay in a valid area of focus.");
+      } else {
+        this.taskManager.updateProject(task.projectId, { areaOfFocus: area });
+      }
+    } else {
+      updates.areaOfFocus = area === "No Area" ? null : area;
+    }
+    this.taskManager.updateTask(taskId, updates);
   }
 
   showToast(level, message) {
@@ -3584,6 +4084,7 @@ function mapElements() {
     activePanelCount: byId("activePanelCount"),
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
     contextBoard: document.querySelector("[data-context-board]"),
+    kanbanBoard: document.querySelector("[data-kanban-board]"),
     projectList: document.querySelector("[data-projects]"),
     projectAreaFilter: document.getElementById("projectAreaFilter"),
     toggleMissingNextAction: document.getElementById("toggleMissingNextAction"),
@@ -3598,13 +4099,18 @@ function mapElements() {
     overdueCount: byId("overdueCount"),
     summaryInbox: byId("summaryInbox"),
     summaryNext: byId("summaryNext"),
+    summaryKanban: byId("summaryKanban"),
     summaryWaiting: byId("summaryWaiting"),
     summarySomeday: byId("summarySomeday"),
     summaryProjects: byId("summaryProjects"),
     summaryCalendar: byId("summaryCalendar"),
     summaryCompleted: byId("summaryCompleted"),
     summaryAllActive: byId("summaryAllActive"),
+    summarySettings: byId("summarySettings"),
     allActiveList: byId("allActiveList"),
+    settingsContextsList: byId("settingsContextsList"),
+    settingsPeopleList: byId("settingsPeopleList"),
+    settingsAreasList: byId("settingsAreasList"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     integrationsCard: document.querySelector(".integrations-card"),

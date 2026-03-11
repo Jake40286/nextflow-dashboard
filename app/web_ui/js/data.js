@@ -4,6 +4,7 @@ const STATE_ENDPOINT = "/state";
 export const STATUS = Object.freeze({
   INBOX: "inbox",
   NEXT: "next",
+  DOING: "doing",
   WAITING: "waiting",
   SOMEDAY: "someday",
 });
@@ -28,16 +29,20 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
   [STATUS.INBOX]: "Inbox",
   [STATUS.NEXT]: "Next Actions",
+  [STATUS.DOING]: "Doing",
   [STATUS.WAITING]: "Waiting",
   [STATUS.SOMEDAY]: "Someday / Maybe",
 };
-const STATUS_ORDER = [STATUS.INBOX, STATUS.NEXT, STATUS.WAITING, STATUS.SOMEDAY];
+const STATUS_ORDER = [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING, STATUS.SOMEDAY];
 const SECTION_STATUS_MAP = new Map([
   ["inbox", STATUS.INBOX],
   ["capture", STATUS.INBOX],
   ["next actions", STATUS.NEXT],
   ["next-actions", STATUS.NEXT],
   ["next", STATUS.NEXT],
+  ["doing", STATUS.DOING],
+  ["in progress", STATUS.DOING],
+  ["in-progress", STATUS.DOING],
   ["waiting for", STATUS.WAITING],
   ["waiting-for", STATUS.WAITING],
   ["waiting", STATUS.WAITING],
@@ -80,6 +85,7 @@ const defaultState = () => ({
   },
   settings: {
     theme: "light",
+    areaOptions: [...PROJECT_AREAS],
   },
 });
 
@@ -97,6 +103,14 @@ function hydrateState(raw = {}) {
   nextState.completedProjects = (nextState.completedProjects || [])
     .map((project) => normalizeCompletedProject(project))
     .filter(Boolean);
+  nextState.settings = {
+    theme: nextState.settings?.theme || "light",
+    areaOptions: normalizeAreaOptions(
+      nextState.settings?.areaOptions,
+      nextState.projects,
+      nextState.completedProjects
+    ),
+  };
   return nextState;
 }
 
@@ -441,6 +455,10 @@ export class TaskManager extends EventTarget {
           ? payload.context.trim()
           : null,
       dueDate: payload.dueDate || null,
+      areaOfFocus:
+        typeof payload.areaOfFocus === "string" && payload.areaOfFocus.trim()
+          ? payload.areaOfFocus.trim()
+          : null,
       projectId: payload.projectId || null,
       createdAt: new Date().toISOString(),
       waitingFor: payload.waitingFor || null,
@@ -610,6 +628,10 @@ export class TaskManager extends EventTarget {
       peopleTag: entry.peopleTag || null,
       energyLevel: entry.energyLevel || null,
       timeRequired: entry.timeRequired || null,
+      areaOfFocus:
+        typeof entry.areaOfFocus === "string" && entry.areaOfFocus.trim()
+          ? entry.areaOfFocus.trim()
+          : null,
       projectId: entry.projectId || null,
       waitingFor: entry.waitingFor || null,
       dueDate: entry.dueDate || null,
@@ -871,11 +893,254 @@ export class TaskManager extends EventTarget {
     return Array.from(contexts).sort((a, b) => a.localeCompare(b));
   }
 
+  getPeopleTags() {
+    const tags = new Set();
+    const addTag = (value) => {
+      if (typeof value !== "string") return;
+      const normalized = sanitizePeopleTag(value);
+      if (normalized) tags.add(normalized);
+    };
+    this.state.tasks.forEach((task) => addTag(task.peopleTag));
+    (this.state.reference || []).forEach((entry) => addTag(entry.peopleTag));
+    (this.state.completionLog || []).forEach((entry) => addTag(entry.peopleTag));
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }
+
+  getAreasOfFocus() {
+    const areas = new Set(this.state.settings?.areaOptions || []);
+    (this.state.projects || []).forEach((project) => {
+      if (project?.areaOfFocus) areas.add(project.areaOfFocus);
+    });
+    (this.state.completedProjects || []).forEach((entry) => {
+      if (entry?.snapshot?.areaOfFocus) areas.add(entry.snapshot.areaOfFocus);
+    });
+    return Array.from(areas).sort((a, b) => a.localeCompare(b));
+  }
+
+  renameContext(fromValue, toValue) {
+    const from = typeof fromValue === "string" ? fromValue.trim() : "";
+    const to = typeof toValue === "string" ? toValue.trim() : "";
+    if (!from || !to) {
+      this.notify("warn", "Context rename requires both current and new values.");
+      return false;
+    }
+    if (from === to) return false;
+    let changed = false;
+    this.state.tasks.forEach((task) => {
+      if (task.context === from) {
+        task.context = to;
+        task.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.context === from) {
+        entry.context = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.context === from) {
+        entry.context = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Renamed context "${from}" to "${to}".`);
+    return true;
+  }
+
+  deleteContext(value) {
+    const target = typeof value === "string" ? value.trim() : "";
+    if (!target) return false;
+    const fallback =
+      this.getContexts().find((context) => context !== target) || PHYSICAL_CONTEXTS[0];
+    let changed = false;
+    this.state.tasks.forEach((task) => {
+      if (task.context !== target) return;
+      task.context = task.status === STATUS.INBOX ? null : fallback;
+      task.updatedAt = nowIso();
+      changed = true;
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.context === target) {
+        entry.context = null;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.context === target) {
+        entry.context = null;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Deleted context "${target}".`);
+    return true;
+  }
+
+  renamePeopleTag(fromValue, toValue) {
+    const from = sanitizePeopleTag(fromValue);
+    const to = sanitizePeopleTag(toValue);
+    if (!from || !to) {
+      this.notify("warn", "People tag rename requires valid @tag values.");
+      return false;
+    }
+    if (from === to) return false;
+    let changed = false;
+    this.state.tasks.forEach((task) => {
+      if (task.peopleTag === from) {
+        task.peopleTag = to;
+        task.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.peopleTag === from) {
+        entry.peopleTag = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.peopleTag === from) {
+        entry.peopleTag = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Renamed people tag "${from}" to "${to}".`);
+    return true;
+  }
+
+  deletePeopleTag(value) {
+    const target = sanitizePeopleTag(value);
+    if (!target) return false;
+    let changed = false;
+    this.state.tasks.forEach((task) => {
+      if (task.peopleTag === target) {
+        task.peopleTag = null;
+        task.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.peopleTag === target) {
+        entry.peopleTag = null;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.peopleTag === target) {
+        entry.peopleTag = null;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Deleted people tag "${target}".`);
+    return true;
+  }
+
+  renameAreaOfFocus(fromValue, toValue) {
+    const from = typeof fromValue === "string" ? fromValue.trim() : "";
+    const to = typeof toValue === "string" ? toValue.trim() : "";
+    if (!from || !to) {
+      this.notify("warn", "Area rename requires both current and new values.");
+      return false;
+    }
+    if (from === to) return false;
+    let changed = false;
+    const areaOptions = Array.isArray(this.state.settings?.areaOptions)
+      ? this.state.settings.areaOptions
+      : [];
+    const optionIndex = areaOptions.findIndex((area) => area === from);
+    if (optionIndex !== -1) {
+      areaOptions[optionIndex] = to;
+      this.state.settings.areaOptions = Array.from(new Set(areaOptions));
+      changed = true;
+    }
+    this.state.projects.forEach((project) => {
+      if (project.areaOfFocus === from) {
+        project.areaOfFocus = to;
+        normalizeProjectTags(project);
+        project.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completedProjects || []).forEach((entry) => {
+      if (entry?.snapshot?.areaOfFocus === from) {
+        entry.snapshot.areaOfFocus = to;
+        normalizeProjectTags(entry.snapshot);
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Renamed area "${from}" to "${to}".`);
+    return true;
+  }
+
+  deleteAreaOfFocus(value) {
+    const target = typeof value === "string" ? value.trim() : "";
+    if (!target) return false;
+    const areaOptions = Array.isArray(this.state.settings?.areaOptions)
+      ? this.state.settings.areaOptions.filter((area) => area !== target)
+      : [];
+    const fallback =
+      areaOptions[0] ||
+      this.getAreasOfFocus().find((area) => area !== target) ||
+      PROJECT_AREAS[0];
+    let changed = false;
+    if (!this.state.settings) {
+      this.state.settings = { theme: "light", areaOptions: [...PROJECT_AREAS] };
+    }
+    if (Array.isArray(this.state.settings.areaOptions)) {
+      const before = this.state.settings.areaOptions.length;
+      this.state.settings.areaOptions = this.state.settings.areaOptions.filter((area) => area !== target);
+      if (this.state.settings.areaOptions.length !== before) {
+        changed = true;
+      }
+    }
+    this.state.projects.forEach((project) => {
+      if (project.areaOfFocus === target) {
+        project.areaOfFocus = fallback;
+        normalizeProjectTags(project);
+        project.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completedProjects || []).forEach((entry) => {
+      if (entry?.snapshot?.areaOfFocus === target) {
+        entry.snapshot.areaOfFocus = fallback;
+        normalizeProjectTags(entry.snapshot);
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    if (!changed) return false;
+    this.emitChange();
+    this.notify("info", `Deleted area "${target}". Reassigned to "${fallback}".`);
+    return true;
+  }
+
   getSummary() {
     const todayIso = new Date().toISOString().slice(0, 10);
     const summary = {
       inbox: 0,
       next: 0,
+      doing: 0,
       waiting: 0,
       someday: 0,
       projects: this.getProjects({ includeSomeday: true }).length,
@@ -887,6 +1152,7 @@ export class TaskManager extends EventTarget {
       if (task.completedAt) return;
       if (task.status === STATUS.INBOX) summary.inbox += 1;
       if (task.status === STATUS.NEXT) summary.next += 1;
+      if (task.status === STATUS.DOING) summary.doing += 1;
       if (task.status === STATUS.WAITING) summary.waiting += 1;
       if (task.status === STATUS.SOMEDAY) summary.someday += 1;
       if (!task.dueDate) return;
@@ -1120,6 +1386,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     peopleTag: task.peopleTag,
     energyLevel: task.energyLevel,
     timeRequired: task.timeRequired,
+    areaOfFocus: task.areaOfFocus || null,
     projectId: task.projectId,
     waitingFor: task.waitingFor,
     dueDate: task.dueDate,
@@ -1152,6 +1419,10 @@ function normalizeTask(task) {
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
+    areaOfFocus:
+      typeof task.areaOfFocus === "string" && task.areaOfFocus.trim()
+        ? task.areaOfFocus.trim()
+        : null,
     closureNotes: task.closureNotes ?? null,
     updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
@@ -1169,6 +1440,10 @@ function normalizeCompletionEntry(entry) {
     peopleTag: entry.peopleTag || null,
     energyLevel: entry.energyLevel || null,
     timeRequired: entry.timeRequired || null,
+    areaOfFocus:
+      typeof entry.areaOfFocus === "string" && entry.areaOfFocus.trim()
+        ? entry.areaOfFocus.trim()
+        : null,
     projectId: entry.projectId || null,
     waitingFor: entry.waitingFor || null,
     dueDate: entry.dueDate || null,
@@ -1316,6 +1591,24 @@ function sanitizeTime(value) {
   const hours = match[1].padStart(2, "0");
   const minutes = match[2];
   return `${hours}:${minutes}`;
+}
+
+function normalizeAreaOptions(options, projects = [], completedProjects = []) {
+  const values = new Set(
+    (Array.isArray(options) ? options : [])
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter(Boolean)
+  );
+  if (!values.size) {
+    PROJECT_AREAS.forEach((area) => values.add(area));
+  }
+  (projects || []).forEach((project) => {
+    if (project?.areaOfFocus) values.add(project.areaOfFocus);
+  });
+  (completedProjects || []).forEach((entry) => {
+    if (entry?.snapshot?.areaOfFocus) values.add(entry.snapshot.areaOfFocus);
+  });
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
 }
 
 function normalizeRecurrenceRule(rule) {

@@ -74,6 +74,10 @@
               <span class="summary-label">Next Actions</span>
               <span class="summary-value" id="summaryNext">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-kanban" data-panel-target="kanban" aria-controls="panel-kanban" aria-selected="false">
+              <span class="summary-label">Kanban</span>
+              <span class="summary-value" id="summaryKanban">0</span>
+            </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-waiting" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false">
               <span class="summary-label">Waiting</span>
               <span class="summary-value" id="summaryWaiting">0</span>
@@ -97,6 +101,10 @@
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
               <span class="summary-label">All Active</span>
               <span class="summary-value" id="summaryAllActive">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-settings" data-panel-target="settings" aria-controls="panel-settings" aria-selected="false">
+              <span class="summary-label">Settings</span>
+              <span class="summary-value" id="summarySettings">0</span>
             </button>
           </div>
         </section>
@@ -233,6 +241,13 @@
         </div>
       </section>
 
+      <section class="workspace-view" data-panel="kanban" role="tabpanel" aria-labelledby="summary-tab-kanban" id="panel-kanban" hidden>
+        <div class="panel-content">
+          <div class="panel-subheading muted">Swimlanes by area of focus</div>
+          <div class="panel-body" data-kanban-board></div>
+        </div>
+      </section>
+
       <section class="workspace-view" data-panel="projects" role="tabpanel" aria-labelledby="summary-tab-projects" id="panel-projects" hidden>
         <div class="panel-content">
         <div class="project-filters">
@@ -334,6 +349,32 @@
               <ul id="reportDetailsList" class="report-details-list" role="list"></ul>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="workspace-view" data-panel="settings" role="tabpanel" aria-labelledby="summary-tab-settings" id="panel-settings" hidden>
+        <div class="panel-content settings-panel">
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>Contexts</h3>
+              <p class="muted small-text">Rename or delete contexts used by tasks.</p>
+            </header>
+            <ul id="settingsContextsList" class="settings-list" role="list"></ul>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>People Tags</h3>
+              <p class="muted small-text">Manage @people tags for delegation and coordination.</p>
+            </header>
+            <ul id="settingsPeopleList" class="settings-list" role="list"></ul>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>Areas of Focus</h3>
+              <p class="muted small-text">Manage project swimlane areas.</p>
+            </header>
+            <ul id="settingsAreasList" class="settings-list" role="list"></ul>
+          </section>
         </div>
       </section>
     </section>

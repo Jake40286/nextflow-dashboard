@@ -25,7 +25,15 @@ function createManager(initialState = {}) {
     completedProjects: [],
     checklist: [],
     analytics: { history: [] },
-    settings: { theme: "light" },
+    settings: {
+      theme: "light",
+      customTheme: {
+        canvas: "#f5efe2",
+        accent: "#0f766e",
+        signal: "#b45309",
+      },
+      areaOptions: ["Work", "Personal", "Home", "Finance", "Health"],
+    },
     ...initialState,
   };
   return manager;
@@ -258,6 +266,30 @@ test("updateTheme accepts known themes and normalizes invalid values to light", 
 
   manager.updateTheme("unknown-theme-id");
   assert.equal(manager.getTheme(), "light");
+});
+
+test("custom theme stores three user colors and ignores invalid updates", () => {
+  const manager = createManager();
+  manager.updateTheme("custom");
+
+  manager.updateCustomTheme({
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
+
+  assert.deepEqual(manager.getCustomTheme(), {
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
+
+  manager.updateCustomTheme({ canvas: "not-a-color" });
+  assert.deepEqual(manager.getCustomTheme(), {
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
 });
 
 test.after(() => {

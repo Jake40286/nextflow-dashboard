@@ -40,6 +40,29 @@ const TRANSITIONS = {
   ],
 };
 
+const CUSTOM_THEME_CSS_VARIABLES = Object.freeze([
+  "--bg",
+  "--bg-alt",
+  "--surface",
+  "--surface-2",
+  "--surface-3",
+  "--line",
+  "--line-strong",
+  "--text",
+  "--text-muted",
+  "--accent",
+  "--accent-strong",
+  "--accent-soft",
+  "--accent-contrast",
+  "--warning",
+  "--danger",
+  "--ok",
+  "--shadow-sm",
+  "--shadow-md",
+  "--shadow-lg",
+  "--ring",
+]);
+
 export class UIController {
   constructor(taskManager) {
     this.taskManager = taskManager;
@@ -2154,6 +2177,7 @@ export class UIController {
   renderThemeSettings(container) {
     container.innerHTML = "";
     const activeTheme = this.taskManager.getTheme();
+    const customTheme = this.taskManager.getCustomTheme();
     THEME_OPTIONS.forEach((theme) => {
       const item = document.createElement("li");
       item.className = "settings-item settings-theme-option";
@@ -2187,7 +2211,11 @@ export class UIController {
 
       const swatches = document.createElement("span");
       swatches.className = "settings-theme-swatches";
-      const colors = Array.isArray(theme.swatches) ? theme.swatches.slice(0, 3) : [];
+      const colors = theme.id === "custom"
+        ? [customTheme.canvas, customTheme.accent, customTheme.signal]
+        : Array.isArray(theme.swatches)
+          ? theme.swatches.slice(0, 3)
+          : [];
       colors.forEach((color) => {
         const swatch = document.createElement("span");
         swatch.className = "settings-theme-swatch";
@@ -2197,6 +2225,33 @@ export class UIController {
 
       label.append(input, textWrap, swatches);
       item.append(label);
+      if (theme.id === "custom") {
+        const controls = document.createElement("div");
+        controls.className = "settings-theme-custom-controls";
+        const customFields = [
+          { key: "canvas", label: "Canvas" },
+          { key: "accent", label: "Accent" },
+          { key: "signal", label: "Highlight" },
+        ];
+        customFields.forEach((field) => {
+          const colorField = document.createElement("label");
+          colorField.className = "settings-theme-color-field";
+          colorField.setAttribute("for", `theme-custom-${field.key}`);
+          const fieldText = document.createElement("span");
+          fieldText.className = "small-text muted";
+          fieldText.textContent = field.label;
+          const colorInput = document.createElement("input");
+          colorInput.type = "color";
+          colorInput.id = `theme-custom-${field.key}`;
+          colorInput.value = customTheme[field.key];
+          colorInput.addEventListener("change", () => {
+            this.taskManager.updateCustomTheme({ [field.key]: colorInput.value });
+          });
+          colorField.append(fieldText, colorInput);
+          controls.append(colorField);
+        });
+        item.append(controls);
+      }
       container.append(item);
     });
   }
@@ -4531,8 +4586,16 @@ export class UIController {
 
   syncTheme(theme) {
     const appRoot = this.elements.appRoot;
-    appRoot.dataset.theme = theme;
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    if (theme === "custom") {
+      applyCustomThemeVariables(root, this.taskManager.getCustomTheme());
+    } else {
+      clearCustomThemeVariables(root);
+    }
+    if (appRoot) {
+      appRoot.dataset.theme = theme;
+    }
+    root.dataset.theme = theme;
     document.body.dataset.theme = theme;
     const toggle = this.elements.themeToggle;
     if (!toggle) return;
@@ -4567,6 +4630,120 @@ export class UIController {
     modal.removeAttribute("hidden");
     this.elements.closureNotesInput.focus();
   }
+}
+
+function clearCustomThemeVariables(root) {
+  if (!root?.style) return;
+  CUSTOM_THEME_CSS_VARIABLES.forEach((token) => {
+    root.style.removeProperty(token);
+  });
+}
+
+function applyCustomThemeVariables(root, customTheme) {
+  if (!root?.style) return;
+  const variables = buildCustomThemeVariables(customTheme);
+  Object.entries(variables).forEach(([token, value]) => {
+    root.style.setProperty(token, value);
+  });
+}
+
+function buildCustomThemeVariables(customTheme) {
+  const canvas = parseHexColor(customTheme?.canvas, [245, 239, 226]);
+  const accent = parseHexColor(customTheme?.accent, [15, 118, 110]);
+  const signal = parseHexColor(customTheme?.signal, [180, 83, 9]);
+  const canvasLuminance = relativeLuminance(canvas);
+  const isDarkCanvas = canvasLuminance < 0.45;
+  const surface = mixRgb(canvas, [255, 255, 255], isDarkCanvas ? 0.1 : 0.18);
+  const surfaceTwo = mixRgb(canvas, accent, isDarkCanvas ? 0.15 : 0.08);
+  const surfaceThree = mixRgb(canvas, signal, isDarkCanvas ? 0.2 : 0.14);
+  const line = mixRgb(canvas, accent, isDarkCanvas ? 0.42 : 0.27);
+  const lineStrong = mixRgb(canvas, accent, isDarkCanvas ? 0.58 : 0.43);
+  const text = isDarkCanvas ? mixRgb([248, 252, 255], accent, 0.09) : mixRgb([24, 30, 36], accent, 0.18);
+  const textMuted = mixRgb(text, canvas, isDarkCanvas ? 0.46 : 0.5);
+  const accentStrong = isDarkCanvas ? mixRgb(accent, [255, 255, 255], 0.2) : mixRgb(accent, [0, 0, 0], 0.22);
+  const accentContrast = relativeLuminance(accent) > 0.5 ? "#0f1c24" : "#f5fffe";
+  const danger = mixRgb(signal, [220, 38, 38], 0.52);
+  const ok = mixRgb(accent, [22, 163, 74], 0.5);
+  const shadowBase = isDarkCanvas ? [0, 0, 0] : mixRgb(canvas, [49, 31, 11], 0.78);
+  return {
+    "--bg": rgbToHex(canvas),
+    "--bg-alt": rgbToHex(mixRgb(canvas, accent, isDarkCanvas ? 0.2 : 0.14)),
+    "--surface": rgbToHex(surface),
+    "--surface-2": rgbToHex(surfaceTwo),
+    "--surface-3": rgbToHex(surfaceThree),
+    "--line": rgbToHex(line),
+    "--line-strong": rgbToHex(lineStrong),
+    "--text": rgbToHex(text),
+    "--text-muted": rgbToHex(textMuted),
+    "--accent": rgbToHex(accent),
+    "--accent-strong": rgbToHex(accentStrong),
+    "--accent-soft": rgba(accent, isDarkCanvas ? 0.24 : 0.17),
+    "--accent-contrast": accentContrast,
+    "--warning": rgbToHex(signal),
+    "--danger": rgbToHex(danger),
+    "--ok": rgbToHex(ok),
+    "--shadow-sm": `0 10px 22px ${rgba(shadowBase, isDarkCanvas ? 0.3 : 0.12)}`,
+    "--shadow-md": `0 18px 42px ${rgba(shadowBase, isDarkCanvas ? 0.38 : 0.17)}`,
+    "--shadow-lg": `0 28px 70px ${rgba(shadowBase, isDarkCanvas ? 0.46 : 0.23)}`,
+    "--ring": `0 0 0 3px ${rgba(accent, isDarkCanvas ? 0.34 : 0.26)}`,
+  };
+}
+
+function parseHexColor(value, fallback) {
+  if (typeof value !== "string") {
+    return fallback.slice();
+  }
+  let hex = value.trim();
+  if (hex.startsWith("#")) {
+    hex = hex.slice(1);
+  }
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+  }
+  if (!/^[0-9a-f]{6}$/i.test(hex)) {
+    return fallback.slice();
+  }
+  return [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
+}
+
+function mixRgb(from, to, weight = 0.5) {
+  const blend = Math.max(0, Math.min(1, Number(weight) || 0));
+  return from.map((channel, index) => {
+    const base = clampColorChannel(channel);
+    const target = clampColorChannel(to[index]);
+    return clampColorChannel(base + (target - base) * blend);
+  });
+}
+
+function rgbToHex(rgb) {
+  const hex = rgb.map((channel) => clampColorChannel(channel).toString(16).padStart(2, "0")).join("");
+  return `#${hex}`;
+}
+
+function rgba(rgb, alpha) {
+  const normalizedAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const prettyAlpha = String(Number(normalizedAlpha.toFixed(3)));
+  return `rgba(${clampColorChannel(rgb[0])}, ${clampColorChannel(rgb[1])}, ${clampColorChannel(rgb[2])}, ${prettyAlpha})`;
+}
+
+function clampColorChannel(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(255, Math.round(parsed)));
+}
+
+function relativeLuminance(rgb) {
+  const linear = rgb.map((channel) => {
+    const normalized = clampColorChannel(channel) / 255;
+    if (normalized <= 0.03928) {
+      return normalized / 12.92;
+    }
+    return ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
 }
 
 function mapElements() {

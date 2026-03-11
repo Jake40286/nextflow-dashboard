@@ -60,9 +60,50 @@ export const THEME_OPTIONS = Object.freeze([
     icon: "◐",
     swatches: Object.freeze(["#fff1e7", "#c2410c", "#b45309"]),
   }),
+  Object.freeze({
+    id: "aurora",
+    label: "Aurora",
+    description: "Fresh mint gradients with energetic lime accents.",
+    icon: "✦",
+    swatches: Object.freeze(["#ecfff7", "#0f766e", "#65a30d"]),
+  }),
+  Object.freeze({
+    id: "graphite",
+    label: "Graphite",
+    description: "Cool dark slate with bright cyan highlights.",
+    icon: "◼",
+    swatches: Object.freeze(["#141a22", "#38bdf8", "#f59e0b"]),
+  }),
+  Object.freeze({
+    id: "skyline",
+    label: "Skyline",
+    description: "Light blue workspace tuned for daytime planning.",
+    icon: "◧",
+    swatches: Object.freeze(["#eef6ff", "#2563eb", "#0d9488"]),
+  }),
+  Object.freeze({
+    id: "clay",
+    label: "Clay",
+    description: "Earthy neutrals with rust and jade accents.",
+    icon: "◓",
+    swatches: Object.freeze(["#f6ede5", "#92400e", "#0f766e"]),
+  }),
+  Object.freeze({
+    id: "custom",
+    label: "Custom",
+    description: "Choose your own canvas, accent, and highlight colors.",
+    icon: "✎",
+    swatches: Object.freeze(["#f5efe2", "#0f766e", "#b45309"]),
+  }),
 ]);
 const DEFAULT_THEME = "light";
 const THEME_IDS = new Set(THEME_OPTIONS.map((theme) => theme.id));
+const DEFAULT_CUSTOM_THEME = Object.freeze({
+  canvas: "#f5efe2",
+  accent: "#0f766e",
+  signal: "#b45309",
+});
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
@@ -124,6 +165,7 @@ const defaultState = () => ({
   },
   settings: {
     theme: DEFAULT_THEME,
+    customTheme: { ...DEFAULT_CUSTOM_THEME },
     areaOptions: [...PROJECT_AREAS],
   },
 });
@@ -144,6 +186,7 @@ function hydrateState(raw = {}) {
     .filter(Boolean);
   nextState.settings = {
     theme: normalizeTheme(nextState.settings?.theme),
+    customTheme: normalizeCustomTheme(nextState.settings?.customTheme),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
       nextState.projects,
@@ -701,11 +744,25 @@ export class TaskManager extends EventTarget {
 
   refreshFromStorage() {
     const previousTheme = this.getTheme();
+    const previousCustomTheme = this.getCustomTheme();
     this.load();
     if (!this.state.settings) {
-      this.state.settings = { theme: previousTheme };
+      this.state.settings = {
+        theme: previousTheme,
+        customTheme: { ...previousCustomTheme },
+        areaOptions: normalizeAreaOptions(undefined, this.state.projects, this.state.completedProjects),
+      };
     } else {
-      this.state.settings.theme = this.state.settings.theme || previousTheme;
+      this.state.settings.theme = normalizeTheme(this.state.settings.theme || previousTheme);
+      this.state.settings.customTheme = normalizeCustomTheme(
+        this.state.settings.customTheme,
+        previousCustomTheme
+      );
+      this.state.settings.areaOptions = normalizeAreaOptions(
+        this.state.settings.areaOptions,
+        this.state.projects,
+        this.state.completedProjects
+      );
     }
     this.emitChange();
     this.notify("info", "Reloaded saved dashboard data.");
@@ -713,8 +770,10 @@ export class TaskManager extends EventTarget {
 
   resetToDefaults() {
     const theme = this.getTheme();
+    const customTheme = this.getCustomTheme();
     this.state = defaultState();
     this.state.settings.theme = theme;
+    this.state.settings.customTheme = { ...customTheme };
     this.state.tasks = this.state.tasks.map((task) => normalizeTask(task));
     this.state.projects = this.state.projects.map((project) => normalizeProjectTags(project));
     this.state.reference = [];
@@ -1143,7 +1202,11 @@ export class TaskManager extends EventTarget {
       PROJECT_AREAS[0];
     let changed = false;
     if (!this.state.settings) {
-      this.state.settings = { theme: DEFAULT_THEME, areaOptions: [...PROJECT_AREAS] };
+      this.state.settings = {
+        theme: DEFAULT_THEME,
+        customTheme: { ...DEFAULT_CUSTOM_THEME },
+        areaOptions: [...PROJECT_AREAS],
+      };
     }
     if (Array.isArray(this.state.settings.areaOptions)) {
       const before = this.state.settings.areaOptions.length;
@@ -1409,6 +1472,7 @@ export class TaskManager extends EventTarget {
     if (!this.state.settings) {
       this.state.settings = {
         theme: DEFAULT_THEME,
+        customTheme: { ...DEFAULT_CUSTOM_THEME },
         areaOptions: [...PROJECT_AREAS],
       };
     }
@@ -1420,8 +1484,40 @@ export class TaskManager extends EventTarget {
     this.emitChange();
   }
 
+  updateCustomTheme(nextCustomTheme = {}) {
+    if (!this.state.settings) {
+      this.state.settings = {
+        theme: DEFAULT_THEME,
+        customTheme: { ...DEFAULT_CUSTOM_THEME },
+        areaOptions: [...PROJECT_AREAS],
+      };
+    }
+    const current = normalizeCustomTheme(this.state.settings.customTheme);
+    const next = normalizeCustomTheme(
+      {
+        ...current,
+        ...(nextCustomTheme || {}),
+      },
+      current
+    );
+    const unchanged =
+      current.canvas === next.canvas &&
+      current.accent === next.accent &&
+      current.signal === next.signal;
+    if (unchanged) {
+      return current;
+    }
+    this.state.settings.customTheme = next;
+    this.emitChange();
+    return next;
+  }
+
   getTheme() {
     return normalizeTheme(this.state.settings?.theme);
+  }
+
+  getCustomTheme() {
+    return normalizeCustomTheme(this.state.settings?.customTheme);
   }
 }
 
@@ -1430,6 +1526,29 @@ function normalizeTheme(theme) {
     return theme;
   }
   return DEFAULT_THEME;
+}
+
+function normalizeThemeColor(value, fallback) {
+  const resolvedFallback = typeof fallback === "string" && HEX_COLOR_PATTERN.test(fallback)
+    ? fallback.toLowerCase()
+    : "#000000";
+  if (typeof value !== "string") return resolvedFallback;
+  const normalized = value.trim().toLowerCase();
+  if (!HEX_COLOR_PATTERN.test(normalized)) return resolvedFallback;
+  return normalized;
+}
+
+function normalizeCustomTheme(customTheme, fallbackTheme = DEFAULT_CUSTOM_THEME) {
+  const fallback = {
+    canvas: normalizeThemeColor(fallbackTheme?.canvas, DEFAULT_CUSTOM_THEME.canvas),
+    accent: normalizeThemeColor(fallbackTheme?.accent, DEFAULT_CUSTOM_THEME.accent),
+    signal: normalizeThemeColor(fallbackTheme?.signal, DEFAULT_CUSTOM_THEME.signal),
+  };
+  return {
+    canvas: normalizeThemeColor(customTheme?.canvas, fallback.canvas),
+    accent: normalizeThemeColor(customTheme?.accent, fallback.accent),
+    signal: normalizeThemeColor(customTheme?.signal, fallback.signal),
+  };
 }
 
 function createCompletionSnapshot(task, completedAt, archiveType = "reference") {

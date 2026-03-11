@@ -1,4 +1,4 @@
-import { TaskManager, STATUS } from "./data.js";
+import { TaskManager, STATUS, THEME_OPTIONS } from "./data.js";
 import { UIController } from "./ui.js";
 import { AnalyticsController } from "./analytics.js";
 
@@ -67,9 +67,14 @@ function setupQuickAdd() {
 function setupThemeToggle() {
   const toggle = document.getElementById("themeToggle");
   if (!toggle) return;
+  const themeOrder = THEME_OPTIONS.map((theme) => theme.id);
+  if (!themeOrder.length) return;
 
   toggle.addEventListener("click", () => {
-    const nextTheme = taskManager.getTheme() === "dark" ? "light" : "dark";
+    const currentTheme = taskManager.getTheme();
+    const currentIndex = themeOrder.indexOf(currentTheme);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % themeOrder.length : 0;
+    const nextTheme = themeOrder[nextIndex];
     taskManager.updateTheme(nextTheme);
   });
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TaskManager, STATUS, __testing } from "../app/web_ui/js/data.js";
+import { TaskManager, STATUS, THEME_OPTIONS, __testing } from "../app/web_ui/js/data.js";
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = undefined;
@@ -247,6 +247,17 @@ test("getProjects excludes projects already archived in completedProjects", () =
 
   const visible = manager.getProjects({ includeSomeday: true }).map((project) => project.id);
   assert.deepEqual(visible, ["p-2"]);
+});
+
+test("updateTheme accepts known themes and normalizes invalid values to light", () => {
+  const manager = createManager();
+  const alternateTheme = THEME_OPTIONS.find((theme) => theme.id !== "light")?.id || "dark";
+
+  manager.updateTheme(alternateTheme);
+  assert.equal(manager.getTheme(), alternateTheme);
+
+  manager.updateTheme("unknown-theme-id");
+  assert.equal(manager.getTheme(), "light");
 });
 
 test.after(() => {

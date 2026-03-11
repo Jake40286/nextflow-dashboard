@@ -49,7 +49,7 @@
           <span class="meta-label">Sync</span>
           <span id="connectionStatusDot" class="status-dot" aria-live="polite" role="status">●</span>
         </button>
-        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Toggle light or dark theme">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Cycle dashboard theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
         </button>
         <button id="openHelp" class="btn btn-light" type="button" aria-haspopup="dialog" aria-controls="helpModal">How it works</button>
@@ -192,30 +192,22 @@
             <span id="activePanelCount" class="muted small-text">0 items</span>
           </div>
           <div class="workspace-search">
-            <button
-              id="toggleSearch"
-              class="btn btn-light workspace-search-toggle"
-              type="button"
-              aria-expanded="false"
-              aria-controls="searchTasksContainer"
-              data-label-show="Search tasks"
-              data-label-hide="Hide search"
-            >
-              Search tasks
-            </button>
-            <div id="searchTasksContainer" class="workspace-search-field" hidden>
-              <label class="filter-control" for="searchTasks">Search</label>
+            <div id="searchTasksContainer" class="workspace-search-field">
+              <label class="filter-control" for="searchTasks">Search Tasks</label>
               <div class="workspace-search-input">
                 <input id="searchTasks" type="search" placeholder="Search tasks, contexts, people…" autocomplete="off" />
               </div>
             </div>
           </div>
-          <div class="random-picker" aria-label="Random task helper">
-            <label class="filter-control" for="randomContext">Focus context</label>
-            <select id="randomContext">
-              <option value="all">Any context</option>
-            </select>
-            <button id="pickRandomTask" class="btn btn-light" type="button">Pick a task</button>
+          <div class="task-picker-panel" aria-label="Task picker">
+            <p class="task-picker-title">Task Picker</p>
+            <div class="random-picker" aria-label="Random task helper">
+              <label class="filter-control" for="randomContext">Context</label>
+              <select id="randomContext">
+                <option value="all">Any context</option>
+              </select>
+              <button id="pickRandomTask" class="btn btn-light" type="button">Pick a task</button>
+            </div>
           </div>
         </div>
         <div class="toolbar-actions">
@@ -354,6 +346,13 @@
 
       <section class="workspace-view" data-panel="settings" role="tabpanel" aria-labelledby="summary-tab-settings" id="panel-settings" hidden>
         <div class="panel-content settings-panel">
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>Appearance</h3>
+              <p class="muted small-text">Choose a dashboard theme.</p>
+            </header>
+            <ul id="settingsThemesList" class="settings-list settings-theme-list" role="list"></ul>
+          </section>
           <section class="settings-card">
             <header class="settings-card-header">
               <h3>Contexts</h3>

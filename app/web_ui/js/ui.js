@@ -7,6 +7,7 @@ import {
   TIME_REQUIREMENTS,
   PROJECT_THEMES,
   PROJECT_STATUSES,
+  THEME_OPTIONS,
 } from "./data.js";
 
 const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
@@ -52,7 +53,6 @@ export class UIController {
       search: "",
       date: "",
     };
-    this.isSearchVisible = false;
     this.elements = mapElements();
     this.dropzones = [];
     this.panelButtons = [];
@@ -103,8 +103,6 @@ export class UIController {
   bindListeners() {
     const {
       searchTasks,
-      searchToggle,
-      searchField,
       clearFilters,
       expandProjects,
       calendarDate,
@@ -123,15 +121,6 @@ export class UIController {
       summaryAllActive,
       toggleNextProjectFanout,
     } = this.elements;
-
-    searchToggle?.addEventListener("click", () => {
-      const isCurrentlyVisible = searchField ? !searchField.hidden : this.isSearchVisible;
-      if (isCurrentlyVisible) {
-        this.hideSearchField({ focus: false });
-      } else {
-        this.showSearchField();
-      }
-    });
 
     searchTasks.addEventListener("input", (event) => {
       this.filters.search = event.target.value;
@@ -158,7 +147,6 @@ export class UIController {
       };
       searchTasks.value = "";
       calendarDate.value = "";
-      this.hideSearchField({ focus: false });
       this.renderAll();
     });
 
@@ -397,6 +385,7 @@ export class UIController {
     }
     if (panel === "settings") {
       const totalSettings =
+        THEME_OPTIONS.length +
         this.taskManager.getContexts().length +
         this.taskManager.getPeopleTags().length +
         this.taskManager.getAreasOfFocus().length;
@@ -445,59 +434,15 @@ export class UIController {
     if (searchTasks) {
       searchTasks.value = this.filters.search || "";
     }
-    if (this.filters.search) {
-      this.isSearchVisible = true;
-    }
-    this.setSearchFieldVisibility(this.isSearchVisible || Boolean(this.filters.search), { focus: false, updateState: false });
-  }
-
-  showSearchField({ focus = true } = {}) {
-    this.isSearchVisible = true;
-    this.setSearchFieldVisibility(true, { focus });
-  }
-
-  hideSearchField({ focus = true } = {}) {
-    this.isSearchVisible = false;
-    this.setSearchFieldVisibility(false, { focus });
-  }
-
-  setSearchFieldVisibility(visible, { focus = true, updateState = true } = {}) {
-    const { searchField, searchToggle, searchTasks } = this.elements;
-    if (!searchField || !searchToggle) return;
-    if (visible) {
-      searchField.hidden = false;
-      searchToggle.setAttribute("aria-expanded", "true");
-      searchToggle.classList.add("is-active");
-      const hideLabel = searchToggle.dataset.labelHide || searchToggle.textContent;
-      searchToggle.textContent = hideLabel;
-      if (updateState) {
-        this.isSearchVisible = true;
-      }
-      if (focus) {
-        searchTasks?.focus();
-      }
-    } else {
-      searchField.hidden = true;
-      searchToggle.setAttribute("aria-expanded", "false");
-      searchToggle.classList.remove("is-active");
-      const showLabel = searchToggle.dataset.labelShow || searchToggle.textContent;
-      searchToggle.textContent = showLabel;
-      if (updateState) {
-        this.isSearchVisible = false;
-      }
-      if (focus) {
-        searchToggle.focus();
-      }
-    }
   }
 
   clearSearch() {
     const { searchTasks } = this.elements;
     if (searchTasks) {
       searchTasks.value = "";
+      searchTasks.focus();
     }
     this.filters.search = "";
-    this.hideSearchField({ focus: true });
     this.renderAll();
   }
 
@@ -578,6 +523,7 @@ export class UIController {
     }
     if (summarySettings) {
       const settingsTotal =
+        THEME_OPTIONS.length +
         this.taskManager.getContexts().length +
         this.taskManager.getPeopleTags().length +
         this.taskManager.getAreasOfFocus().length;
@@ -1646,10 +1592,11 @@ export class UIController {
   }
 
   renderSettings() {
+    const themesList = this.elements.settingsThemesList;
     const contextsList = this.elements.settingsContextsList;
     const peopleList = this.elements.settingsPeopleList;
     const areasList = this.elements.settingsAreasList;
-    if (!contextsList || !peopleList || !areasList) return;
+    if (!themesList || !contextsList || !peopleList || !areasList) return;
     const contexts = this.taskManager.getContexts();
     const peopleTags = this.taskManager.getPeopleTags();
     const areas = this.taskManager.getAreasOfFocus();
@@ -1658,9 +1605,60 @@ export class UIController {
     if (this.selectedSettingsContext && !contexts.includes(this.selectedSettingsContext)) {
       this.selectedSettingsContext = null;
     }
+    this.renderThemeSettings(themesList);
     this.renderSettingsList(contextsList, contexts, "context", usage.contexts);
     this.renderSettingsList(peopleList, peopleTags, "people", usage.people);
     this.renderSettingsList(areasList, areas, "area", usage.areas);
+  }
+
+  renderThemeSettings(container) {
+    container.innerHTML = "";
+    const activeTheme = this.taskManager.getTheme();
+    THEME_OPTIONS.forEach((theme) => {
+      const item = document.createElement("li");
+      item.className = "settings-item settings-theme-option";
+      if (theme.id === activeTheme) {
+        item.classList.add("is-selected");
+      }
+
+      const label = document.createElement("label");
+      label.className = "settings-theme-label";
+      label.setAttribute("for", `theme-option-${theme.id}`);
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "dashboardTheme";
+      input.id = `theme-option-${theme.id}`;
+      input.value = theme.id;
+      input.checked = theme.id === activeTheme;
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        this.taskManager.updateTheme(theme.id);
+      });
+
+      const textWrap = document.createElement("span");
+      textWrap.className = "settings-theme-copy";
+      const title = document.createElement("strong");
+      title.textContent = `${theme.icon} ${theme.label}`;
+      const detail = document.createElement("span");
+      detail.className = "settings-item-meta muted small-text";
+      detail.textContent = theme.description;
+      textWrap.append(title, detail);
+
+      const swatches = document.createElement("span");
+      swatches.className = "settings-theme-swatches";
+      const colors = Array.isArray(theme.swatches) ? theme.swatches.slice(0, 3) : [];
+      colors.forEach((color) => {
+        const swatch = document.createElement("span");
+        swatch.className = "settings-theme-swatch";
+        swatch.style.setProperty("--swatch-color", color);
+        swatches.append(swatch);
+      });
+
+      label.append(input, textWrap, swatches);
+      item.append(label);
+      container.append(item);
+    });
   }
 
   buildSettingsUsageCounts() {
@@ -3997,8 +3995,15 @@ export class UIController {
     document.documentElement.dataset.theme = theme;
     document.body.dataset.theme = theme;
     const toggle = this.elements.themeToggle;
-    toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-    toggle.querySelector(".theme-icon").textContent = theme === "dark" ? "☾" : "☀︎";
+    if (!toggle) return;
+    const activeTheme = THEME_OPTIONS.find((option) => option.id === theme) || THEME_OPTIONS[0];
+    toggle.setAttribute("aria-pressed", activeTheme?.id !== "light" ? "true" : "false");
+    toggle.setAttribute("aria-label", `Cycle dashboard theme. Current: ${activeTheme?.label || "Theme"}`);
+    toggle.title = activeTheme?.label || "Theme";
+    const icon = toggle.querySelector(".theme-icon");
+    if (icon) {
+      icon.textContent = activeTheme?.icon || "☀︎";
+    }
   }
 
   updateFooterYear() {
@@ -4048,8 +4053,6 @@ function mapElements() {
     timeFilterToggle: byId("timeFilterToggle"),
     timeFilterOptions: byId("timeFilterOptions"),
     searchTasks: byId("searchTasks"),
-    searchToggle: byId("toggleSearch"),
-    searchField: byId("searchTasksContainer"),
     clearFilters: byId("clearFilters"),
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),
@@ -4108,6 +4111,7 @@ function mapElements() {
     summaryAllActive: byId("summaryAllActive"),
     summarySettings: byId("summarySettings"),
     allActiveList: byId("allActiveList"),
+    settingsThemesList: byId("settingsThemesList"),
     settingsContextsList: byId("settingsContextsList"),
     settingsPeopleList: byId("settingsPeopleList"),
     settingsAreasList: byId("settingsAreasList"),

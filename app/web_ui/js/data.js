@@ -24,6 +24,45 @@ export const RECURRENCE_TYPES = Object.freeze({
   MONTHLY: "monthly",
 });
 export const RECURRING_OPTIONS = ["daily", "weekly", "monthly"];
+export const THEME_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: "light",
+    label: "Sandstone",
+    description: "Warm paper canvas with calm teal accents.",
+    icon: "☀︎",
+    swatches: Object.freeze(["#f5efe2", "#0f766e", "#b45309"]),
+  }),
+  Object.freeze({
+    id: "dark",
+    label: "Ember Night",
+    description: "Deep contrast for late-night reviews.",
+    icon: "☾",
+    swatches: Object.freeze(["#1b1510", "#5eead4", "#fb923c"]),
+  }),
+  Object.freeze({
+    id: "ocean",
+    label: "Tidepool",
+    description: "Cool blues with clean high-legibility cards.",
+    icon: "◍",
+    swatches: Object.freeze(["#eaf5f8", "#0d9488", "#c27803"]),
+  }),
+  Object.freeze({
+    id: "forest",
+    label: "Canopy",
+    description: "Natural greens with soft low-glare backgrounds.",
+    icon: "△",
+    swatches: Object.freeze(["#edf4ec", "#2f855a", "#b7791f"]),
+  }),
+  Object.freeze({
+    id: "sunset",
+    label: "Terracotta",
+    description: "Warm dusk tones with stronger orange highlights.",
+    icon: "◐",
+    swatches: Object.freeze(["#fff1e7", "#c2410c", "#b45309"]),
+  }),
+]);
+const DEFAULT_THEME = "light";
+const THEME_IDS = new Set(THEME_OPTIONS.map((theme) => theme.id));
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
@@ -84,7 +123,7 @@ const defaultState = () => ({
     ],
   },
   settings: {
-    theme: "light",
+    theme: DEFAULT_THEME,
     areaOptions: [...PROJECT_AREAS],
   },
 });
@@ -104,7 +143,7 @@ function hydrateState(raw = {}) {
     .map((project) => normalizeCompletedProject(project))
     .filter(Boolean);
   nextState.settings = {
-    theme: nextState.settings?.theme || "light",
+    theme: normalizeTheme(nextState.settings?.theme),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
       nextState.projects,
@@ -1104,7 +1143,7 @@ export class TaskManager extends EventTarget {
       PROJECT_AREAS[0];
     let changed = false;
     if (!this.state.settings) {
-      this.state.settings = { theme: "light", areaOptions: [...PROJECT_AREAS] };
+      this.state.settings = { theme: DEFAULT_THEME, areaOptions: [...PROJECT_AREAS] };
     }
     if (Array.isArray(this.state.settings.areaOptions)) {
       const before = this.state.settings.areaOptions.length;
@@ -1367,13 +1406,30 @@ export class TaskManager extends EventTarget {
   }
 
   updateTheme(theme) {
-    this.state.settings.theme = theme;
+    if (!this.state.settings) {
+      this.state.settings = {
+        theme: DEFAULT_THEME,
+        areaOptions: [...PROJECT_AREAS],
+      };
+    }
+    const normalized = normalizeTheme(theme);
+    if (this.state.settings.theme === normalized) {
+      return;
+    }
+    this.state.settings.theme = normalized;
     this.emitChange();
   }
 
   getTheme() {
-    return this.state.settings.theme;
+    return normalizeTheme(this.state.settings?.theme);
   }
+}
+
+function normalizeTheme(theme) {
+  if (typeof theme === "string" && THEME_IDS.has(theme)) {
+    return theme;
+  }
+  return DEFAULT_THEME;
 }
 
 function createCompletionSnapshot(task, completedAt, archiveType = "reference") {

@@ -234,6 +234,21 @@ test("recurring tasks without a due date still gain a future calendar date after
   assert.equal(next.recurrenceRule.type, "monthly");
 });
 
+test("getProjects excludes projects already archived in completedProjects", () => {
+  const manager = createManager({
+    projects: [
+      { id: "p-1", name: "Christmas 2025", statusTag: "Active", someday: false, tasks: [] },
+      { id: "p-2", name: "Move house", statusTag: "Active", someday: false, tasks: [] },
+    ],
+    completedProjects: [
+      { id: "p-1", name: "Christmas 2025", completedAt: "2025-12-26T00:00:00.000Z" },
+    ],
+  });
+
+  const visible = manager.getProjects({ includeSomeday: true }).map((project) => project.id);
+  assert.deepEqual(visible, ["p-2"]);
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

@@ -83,7 +83,7 @@
               <span class="summary-value" id="summarySomeday">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-projects" data-panel-target="projects" aria-controls="panel-projects" aria-selected="false">
-              <span class="summary-label">Projects</span>
+              <span class="summary-label">Active Projects</span>
               <span class="summary-value" id="summaryProjects">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-calendar" data-panel-target="calendar" aria-controls="panel-calendar" aria-selected="false">
@@ -216,7 +216,7 @@
             <span>Show all next actions per project</span>
           </label>
           <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
-          <button id="expandProjects" class="btn btn-light" type="button">Expand projects</button>
+          <button id="expandProjects" class="btn btn-light" type="button">Expand active projects</button>
         </div>
       </header>
 
@@ -240,6 +240,10 @@
           <select id="projectAreaFilter">
             <option value="all">All areas</option>
           </select>
+          <label class="toolbar-toggle" for="toggleMissingNextAction">
+            <input id="toggleMissingNextAction" type="checkbox" />
+            <span>Missing next action</span>
+          </label>
         </div>
         <form id="newProjectForm" class="project-create" aria-label="Create project">
           <label class="visually-hidden" for="projectName">Project name</label>
@@ -298,13 +302,6 @@
 
       <section class="workspace-view" data-panel="reports" role="tabpanel" aria-labelledby="summary-tab-reports" id="panel-reports" hidden>
         <div class="panel-content">
-          <section class="completed-projects-card" aria-labelledby="completedProjectsHeading">
-            <header class="completed-projects-header">
-              <h3 id="completedProjectsHeading">Completed Projects</h3>
-              <p class="muted small-text">Archive of finished work. Edit closure notes anytime.</p>
-            </header>
-            <div class="completed-projects-body" data-completed-projects></div>
-          </section>
           <div class="report-controls">
             <label class="filter-control" for="reportGrouping">View by</label>
             <select id="reportGrouping">

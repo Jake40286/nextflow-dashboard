@@ -681,7 +681,11 @@ export class TaskManager extends EventTarget {
   }
 
   getProjects({ includeSomeday = true } = {}) {
-    return this.state.projects.filter((project) => includeSomeday || !project.someday);
+    const completedIds = new Set((this.state.completedProjects || []).map((entry) => entry?.id).filter(Boolean));
+    return this.state.projects
+      .filter((project) => !completedIds.has(project.id))
+      .filter((project) => !isCompletedProject(project))
+      .filter((project) => includeSomeday || !project.someday);
   }
 
   toggleProjectExpansion(projectId, force) {
@@ -874,7 +878,7 @@ export class TaskManager extends EventTarget {
       next: 0,
       waiting: 0,
       someday: 0,
-      projects: this.state.projects.length,
+      projects: this.getProjects({ includeSomeday: true }).length,
       overdue: 0,
       dueToday: 0,
     };
@@ -1254,6 +1258,13 @@ function validateProjectTags(project) {
     return "Project needs a Status classification.";
   }
   return null;
+}
+
+function isCompletedProject(project) {
+  if (!project) return false;
+  const status = typeof project.status === "string" ? project.status.trim().toLowerCase() : "";
+  const statusTag = typeof project.statusTag === "string" ? project.statusTag.trim().toLowerCase() : "";
+  return status === "completed" || statusTag === "completed";
 }
 
 function buildProjectTagList(project) {

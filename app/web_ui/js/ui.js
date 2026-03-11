@@ -1811,6 +1811,7 @@ export class UIController {
       clarifyStepFinal,
       clarifyFinalMessage,
       clarifyFinalReturn,
+      clarifyPreviewText,
     } = this.elements;
     if (!clarifyModal) return;
     this.handleClarifyKeydown = (event) => {
@@ -1875,6 +1876,10 @@ export class UIController {
         this.handleClarifyActionContinue();
       }
     });
+    if (clarifyPreviewText) {
+      clarifyPreviewText.addEventListener("input", () => this.handleClarifyPreviewEdit(false));
+      clarifyPreviewText.addEventListener("blur", () => this.handleClarifyPreviewEdit(true));
+    }
     const {
       closureModal,
       closureBackdrop,
@@ -1956,6 +1961,10 @@ export class UIController {
       energy: "",
       time: "",
       delegateTo: "",
+      statusTarget: null,
+      waitingFor: "",
+      previewField: "title",
+      previewText: "",
       actionPlanInitialized: false,
       expectResponse: false,
     };
@@ -1974,6 +1983,8 @@ export class UIController {
     this.clarifyState.context = task.context || "";
     this.clarifyState.energy = task.energyLevel || "";
     this.clarifyState.time = task.timeRequired || "";
+    this.clarifyState.previewField = task.description ? "description" : "title";
+    this.clarifyState.previewText = task.description || task.title || "";
     this.populateClarifyPreview(task);
     this.populateClarifyContexts();
     this.populateProjectSelect();
@@ -2020,7 +2031,8 @@ export class UIController {
 
   populateClarifyPreview(task) {
     if (this.elements.clarifyPreviewText) {
-      this.elements.clarifyPreviewText.textContent = task.description || task.title || "(No details captured)";
+      const content = task.description || task.title || "(No details captured)";
+      this.elements.clarifyPreviewText.textContent = content;
     }
     document.querySelectorAll(".clarify-preview").forEach((el) => {
       el.textContent = task.description || task.title || "(No details captured)";
@@ -2351,20 +2363,27 @@ export class UIController {
       return;
     }
     if (expectResponse) {
-      const updates = {
-        title: this.clarifyState.nextActionTitle || task.title,
-        status: STATUS.WAITING,
-        waitingFor,
-        context: this.clarifyState.context || task.context || PHYSICAL_CONTEXTS[0],
-        projectId: this.clarifyState.projectId || task.projectId || null,
-        dueDate: followUpDueDate,
-      };
-      this.taskManager.updateTask(task.id, updates);
-      this.taskManager.notify("info", "Captured as Waiting.");
-    } else {
-      this.taskManager.completeTask(task.id, { archive: "reference", closureNotes: task.closureNotes });
-      this.taskManager.notify("info", "Completed in under two minutes.");
+      this.clarifyState.statusTarget = STATUS.WAITING;
+      this.clarifyState.waitingFor = waitingFor;
+      this.clarifyState.dueType = "due";
+      this.clarifyState.dueDate = followUpDueDate || "";
+      if (this.elements.clarifyDateOptionDue) {
+        this.elements.clarifyDateOptionDue.checked = true;
+      }
+      if (this.elements.clarifyDueDateInput) {
+        this.elements.clarifyDueDateInput.value = followUpDueDate || "";
+      }
+      if (this.elements.clarifySpecificDateInput) {
+        this.elements.clarifySpecificDateInput.value = "";
+      }
+      if (this.elements.clarifySpecificTimeInput) {
+        this.elements.clarifySpecificTimeInput.value = "";
+      }
+      this.showClarifyStep("dates");
+      return;
     }
+    this.taskManager.completeTask(task.id, { archive: "reference", closureNotes: task.closureNotes });
+    this.taskManager.notify("info", "Completed in under two minutes.");
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -2377,22 +2396,9 @@ export class UIController {
       this.elements.clarifyDelegateNameInput?.focus();
       return;
     }
-    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
-    if (!task) {
-      this.closeClarifyModal();
-      return;
-    }
-    const updates = {
-      title: this.clarifyState.nextActionTitle || task.title,
-      status: STATUS.WAITING,
-      waitingFor: delegateName,
-      context: this.clarifyState.context || task.context || PHYSICAL_CONTEXTS[0],
-      projectId: this.clarifyState.projectId || task.projectId || null,
-    };
-    this.taskManager.updateTask(task.id, updates);
-    this.taskManager.notify("info", "Delegated and moved to Waiting.");
-    this.closeClarifyModal();
-    this.setActivePanel("inbox");
+    this.clarifyState.statusTarget = STATUS.WAITING;
+    this.clarifyState.waitingFor = delegateName;
+    this.showClarifyStep("dates");
   }
 
   handleClarifyMetadata({ skip = false } = {}) {
@@ -2405,12 +2411,36 @@ export class UIController {
     this.finalizeClarifyRouting();
   }
 
+  handleClarifyPreviewEdit(commitEmpty = false) {
+    const preview = this.elements.clarifyPreviewText;
+    if (!preview || !this.clarifyState.taskId) return;
+    const text = preview.textContent?.trim() || "";
+    if (!text) {
+      if (commitEmpty) {
+        preview.textContent = this.clarifyState.previewText || "(No details captured)";
+      }
+      return;
+    }
+    const previousText = this.clarifyState.previewText;
+    if (text === previousText) return;
+    this.clarifyState.previewText = text;
+    document.querySelectorAll(".clarify-preview").forEach((el) => {
+      el.textContent = text;
+    });
+    if (this.elements.clarifyActionInput && this.elements.clarifyActionInput.value.trim() === previousText) {
+      this.elements.clarifyActionInput.value = text;
+    }
+    const field = this.clarifyState.previewField || "title";
+    this.taskManager.updateTask(this.clarifyState.taskId, { [field]: text });
+  }
+
   finalizeClarifyRouting({ early = false } = {}) {
     const task = this.taskManager.getTaskById(this.clarifyState.taskId);
     if (!task) {
       this.closeClarifyModal();
       return;
     }
+    const statusTarget = this.clarifyState.statusTarget || STATUS.NEXT;
     const updates = {
       title: this.clarifyState.nextActionTitle || task.title,
       description: task.description,
@@ -2420,8 +2450,8 @@ export class UIController {
       projectId: this.clarifyState.projectId || null,
       calendarDate: null,
       dueDate: null,
-      waitingFor: null,
-      status: STATUS.NEXT,
+      waitingFor: statusTarget === STATUS.WAITING ? this.clarifyState.waitingFor || task.waitingFor || null : null,
+      status: statusTarget,
     };
     if (this.clarifyState.dueType === "calendar" && this.clarifyState.calendarDate) {
       updates.calendarDate = this.clarifyState.calendarTime

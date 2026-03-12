@@ -103,6 +103,9 @@ const DEFAULT_CUSTOM_THEME = Object.freeze({
   accent: "#0f766e",
   signal: "#b45309",
 });
+const DEFAULT_FEATURE_FLAGS = Object.freeze({
+  showFiltersCard: true,
+});
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -141,6 +144,13 @@ const EMPTY_STATE = {
   completedProjects: [],
 };
 
+const defaultSettings = (projects = [], completedProjects = []) => ({
+  theme: DEFAULT_THEME,
+  customTheme: { ...DEFAULT_CUSTOM_THEME },
+  areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
+  featureFlags: { ...DEFAULT_FEATURE_FLAGS },
+});
+
 const defaultState = () => ({
   tasks: [],
   reference: [],
@@ -163,11 +173,7 @@ const defaultState = () => ({
       { week: "Week 12", complete: 16, remaining: 5 },
     ],
   },
-  settings: {
-    theme: DEFAULT_THEME,
-    customTheme: { ...DEFAULT_CUSTOM_THEME },
-    areaOptions: [...PROJECT_AREAS],
-  },
+  settings: defaultSettings(),
 });
 
 function hydrateState(raw = {}) {
@@ -192,6 +198,7 @@ function hydrateState(raw = {}) {
       nextState.projects,
       nextState.completedProjects
     ),
+    featureFlags: normalizeFeatureFlags(nextState.settings?.featureFlags),
   };
   return nextState;
 }
@@ -490,6 +497,8 @@ export class TaskManager extends EventTarget {
     energies,
     time,
     times,
+    myDayDate,
+    myDayDates,
     includeCompleted = false,
     includeFutureScheduled = true,
   } = {}) {
@@ -500,6 +509,7 @@ export class TaskManager extends EventTarget {
       waitingFor: waitingFors ?? waitingFor,
       energy: energies ?? energy,
       time: times ?? time,
+      myDayDate: myDayDates ?? myDayDate,
       searchTerm,
     };
     return this.state.tasks.filter((task) => {
@@ -525,8 +535,23 @@ export class TaskManager extends EventTarget {
     return this.state.tasks.find((task) => task.id === id);
   }
 
+  getCompletedTaskById(id, { includeDeleted = false } = {}) {
+    const resolved = this.resolveCompletedTaskEntry(id);
+    if (!resolved) return null;
+    const entry = normalizeCompletionEntry(resolved.list[resolved.index]);
+    if (!entry) return null;
+    if (!includeDeleted && entry.archiveType === "deleted") return null;
+    return entry;
+  }
+
   addTask(payload) {
     const id = generateId("task");
+    const createdAt = new Date().toISOString();
+    const linkedSchedule = normalizeLinkedSchedule({
+      calendarDate: payload.calendarDate,
+      myDayDate: payload.myDayDate,
+      calendarTime: payload.calendarTime,
+    });
     const task = {
       id,
       title: payload.title.trim(),
@@ -537,17 +562,19 @@ export class TaskManager extends EventTarget {
           ? payload.context.trim()
           : null,
       dueDate: payload.dueDate || null,
+      myDayDate: linkedSchedule.myDayDate,
       areaOfFocus:
         typeof payload.areaOfFocus === "string" && payload.areaOfFocus.trim()
           ? payload.areaOfFocus.trim()
           : null,
       projectId: payload.projectId || null,
-      createdAt: new Date().toISOString(),
+      createdAt,
       waitingFor: payload.waitingFor || null,
-      calendarDate: payload.calendarDate || null,
-      calendarTime: sanitizeTime(payload.calendarTime) || null,
+      calendarDate: linkedSchedule.calendarDate,
+      calendarTime: linkedSchedule.calendarTime,
       completedAt: payload.completedAt || null,
       closureNotes: payload.closureNotes?.trim() || null,
+      notes: normalizeTaskNotes(payload.notes, { fallbackCreatedAt: createdAt }),
       updatedAt: nowIso(),
       recurrenceRule: normalizeRecurrenceRule(payload.recurrenceRule),
       slug: normalizeSlug(payload.slug, id),
@@ -579,7 +606,19 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Task not found.");
       return null;
     }
-    const draft = normalizeTask({ ...task, ...updates });
+    const nextUpdates = { ...(updates || {}) };
+    const hasCalendarDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "calendarDate");
+    const hasMyDayDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "myDayDate");
+    if (hasCalendarDateUpdate && !hasMyDayDateUpdate) {
+      nextUpdates.myDayDate = nextUpdates.calendarDate || null;
+    }
+    if (hasMyDayDateUpdate && !hasCalendarDateUpdate) {
+      nextUpdates.calendarDate = nextUpdates.myDayDate || null;
+    }
+    if ((hasCalendarDateUpdate || hasMyDayDateUpdate) && !nextUpdates.calendarDate) {
+      nextUpdates.calendarTime = null;
+    }
+    const draft = normalizeTask({ ...task, ...nextUpdates });
     const enforceContext = draft.status !== STATUS.INBOX;
     normalizeTaskTags(draft, { enforceContext });
     const tagError = validateTaskTags(draft, { requireContext: enforceContext });
@@ -591,6 +630,114 @@ export class TaskManager extends EventTarget {
     task.updatedAt = nowIso();
     this.emitChange();
     return task;
+  }
+
+  updateCompletedTask(id, updates = {}) {
+    const resolved = this.resolveCompletedTaskEntry(id);
+    if (!resolved) {
+      this.notify("error", "Completed task not found.");
+      return null;
+    }
+    const current = normalizeCompletionEntry(resolved.list[resolved.index]);
+    if (!current) {
+      this.notify("error", "Completed task could not be loaded.");
+      return null;
+    }
+
+    const nextUpdates = { ...(updates || {}) };
+    const hasCalendarDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "calendarDate");
+    const hasMyDayDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "myDayDate");
+    if (hasCalendarDateUpdate && !hasMyDayDateUpdate) {
+      nextUpdates.myDayDate = nextUpdates.calendarDate || null;
+    }
+    if (hasMyDayDateUpdate && !hasCalendarDateUpdate) {
+      nextUpdates.calendarDate = nextUpdates.myDayDate || null;
+    }
+    if ((hasCalendarDateUpdate || hasMyDayDateUpdate) && !nextUpdates.calendarDate) {
+      nextUpdates.calendarTime = null;
+    }
+
+    const draft = normalizeCompletionEntry({
+      ...current,
+      ...nextUpdates,
+      updatedAt: nowIso(),
+    });
+    if (!draft?.title || !draft.title.trim()) {
+      this.notify("warn", "Task title cannot be empty.");
+      return null;
+    }
+    normalizeTaskTags(draft, { enforceContext: false });
+    resolved.list[resolved.index] = draft;
+    this.emitChange();
+    return draft;
+  }
+
+  addTaskNote(id, text, { createdAt } = {}) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return null;
+    }
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) {
+      this.notify("warn", "Note cannot be empty.");
+      return null;
+    }
+    const noteTimestamp = sanitizeIsoTimestamp(createdAt) || nowIso();
+    const note = {
+      id: generateId("note"),
+      text: trimmed,
+      createdAt: noteTimestamp,
+    };
+    task.notes = normalizeTaskNotes([...(task.notes || []), note], { fallbackCreatedAt: noteTimestamp });
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return note;
+  }
+
+  addCompletedTaskNote(id, text, { createdAt } = {}) {
+    const resolved = this.resolveCompletedTaskEntry(id);
+    if (!resolved) {
+      this.notify("error", "Completed task not found.");
+      return null;
+    }
+    const entry = normalizeCompletionEntry(resolved.list[resolved.index]);
+    if (!entry) {
+      this.notify("error", "Completed task could not be loaded.");
+      return null;
+    }
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) {
+      this.notify("warn", "Note cannot be empty.");
+      return null;
+    }
+    const noteTimestamp = sanitizeIsoTimestamp(createdAt) || nowIso();
+    const note = {
+      id: generateId("note"),
+      text: trimmed,
+      createdAt: noteTimestamp,
+    };
+    entry.notes = normalizeTaskNotes([...(entry.notes || []), note], { fallbackCreatedAt: noteTimestamp });
+    entry.updatedAt = nowIso();
+    resolved.list[resolved.index] = entry;
+    this.emitChange();
+    return note;
+  }
+
+  resolveCompletedTaskEntry(id) {
+    if (!id) return null;
+    const match = (entry) => entry?.id === id || entry?.sourceId === id;
+    const reference = Array.isArray(this.state.reference) ? this.state.reference : [];
+    const referenceIndex = reference.findIndex(match);
+    if (referenceIndex !== -1) {
+      return { list: reference, index: referenceIndex, archiveType: "reference" };
+    }
+    const log = Array.isArray(this.state.completionLog) ? this.state.completionLog : [];
+    const logIndex = log.findIndex(match);
+    if (logIndex !== -1) {
+      return { list: log, index: logIndex, archiveType: "deleted" };
+    }
+    return null;
   }
 
   moveTask(id, nextStatus) {
@@ -610,6 +757,43 @@ export class TaskManager extends EventTarget {
     }
     task.updatedAt = nowIso();
     this.emitChange();
+  }
+
+  reorderProjectNextTask(sourceId, targetId, { before = true } = {}) {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      return false;
+    }
+    const sourceIndex = this.state.tasks.findIndex((task) => task.id === sourceId);
+    const targetIndex = this.state.tasks.findIndex((task) => task.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return false;
+    }
+    const sourceTask = this.state.tasks[sourceIndex];
+    const targetTask = this.state.tasks[targetIndex];
+    if (
+      !sourceTask ||
+      !targetTask ||
+      sourceTask.status !== STATUS.NEXT ||
+      targetTask.status !== STATUS.NEXT ||
+      !sourceTask.projectId ||
+      sourceTask.projectId !== targetTask.projectId
+    ) {
+      return false;
+    }
+
+    const [moved] = this.state.tasks.splice(sourceIndex, 1);
+    let adjustedTargetIndex = this.state.tasks.findIndex((task) => task.id === targetId);
+    if (adjustedTargetIndex === -1) {
+      this.state.tasks.splice(sourceIndex, 0, moved);
+      return false;
+    }
+    const placeBefore = before !== false;
+    if (!placeBefore) {
+      adjustedTargetIndex += 1;
+    }
+    this.state.tasks.splice(adjustedTargetIndex, 0, moved);
+    this.emitChange();
+    return true;
   }
 
   completeTask(id, { archive = "reference", closureNotes } = {}) {
@@ -659,6 +843,8 @@ export class TaskManager extends EventTarget {
       archiveType: null,
       closureNotes: null,
       waitingFor: null,
+      myDayDate: null,
+      notes: [],
       slug: null,
     };
     clone.calendarTime = sanitizeTime(template.calendarTime) || null;
@@ -717,11 +903,13 @@ export class TaskManager extends EventTarget {
       projectId: entry.projectId || null,
       waitingFor: entry.waitingFor || null,
       dueDate: entry.dueDate || null,
+      myDayDate: sanitizeIsoDate(entry.myDayDate) || null,
       calendarDate: entry.calendarDate || null,
       calendarTime: sanitizeTime(entry.calendarTime) || null,
       createdAt: entry.createdAt || new Date().toISOString(),
       completedAt: null,
       closureNotes: entry.closureNotes || null,
+      notes: normalizeTaskNotes(entry.notes, { fallbackCreatedAt: entry.createdAt || nowIso() }),
       updatedAt: nowIso(),
       archiveType: archiveType,
       recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
@@ -745,12 +933,14 @@ export class TaskManager extends EventTarget {
   refreshFromStorage() {
     const previousTheme = this.getTheme();
     const previousCustomTheme = this.getCustomTheme();
+    const previousFeatureFlags = this.getFeatureFlags();
     this.load();
     if (!this.state.settings) {
       this.state.settings = {
         theme: previousTheme,
         customTheme: { ...previousCustomTheme },
         areaOptions: normalizeAreaOptions(undefined, this.state.projects, this.state.completedProjects),
+        featureFlags: normalizeFeatureFlags(undefined, previousFeatureFlags),
       };
     } else {
       this.state.settings.theme = normalizeTheme(this.state.settings.theme || previousTheme);
@@ -763,6 +953,10 @@ export class TaskManager extends EventTarget {
         this.state.projects,
         this.state.completedProjects
       );
+      this.state.settings.featureFlags = normalizeFeatureFlags(
+        this.state.settings.featureFlags,
+        previousFeatureFlags
+      );
     }
     this.emitChange();
     this.notify("info", "Reloaded saved dashboard data.");
@@ -771,9 +965,11 @@ export class TaskManager extends EventTarget {
   resetToDefaults() {
     const theme = this.getTheme();
     const customTheme = this.getCustomTheme();
+    const featureFlags = this.getFeatureFlags();
     this.state = defaultState();
     this.state.settings.theme = theme;
     this.state.settings.customTheme = { ...customTheme };
+    this.state.settings.featureFlags = { ...featureFlags };
     this.state.tasks = this.state.tasks.map((task) => normalizeTask(task));
     this.state.projects = this.state.projects.map((project) => normalizeProjectTags(project));
     this.state.reference = [];
@@ -1206,6 +1402,7 @@ export class TaskManager extends EventTarget {
         theme: DEFAULT_THEME,
         customTheme: { ...DEFAULT_CUSTOM_THEME },
         areaOptions: [...PROJECT_AREAS],
+        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
       };
     }
     if (Array.isArray(this.state.settings.areaOptions)) {
@@ -1266,7 +1463,7 @@ export class TaskManager extends EventTarget {
     return summary;
   }
 
-  getCalendarEntries({ exactDate, filters } = {}) {
+  getCalendarEntries({ exactDate, filters, includeCompleted = false } = {}) {
     const tasks = this.state.tasks.filter(
       (task) =>
         !task.completedAt &&
@@ -1291,24 +1488,26 @@ export class TaskManager extends EventTarget {
       };
     });
 
-    const completions = this.getCompletionEntries().filter(
-      (entry) => entry.completedAt && entry.archiveType !== "deleted" && matchesTaskFilters(entry, filters)
-    );
-    completions.forEach((entry) => {
-      entries.push({
-        date: entry.completedAt,
-        title: entry.title || "Completed task",
-        context: entry.context,
-        status: entry.status || "completed",
-        projectId: entry.projectId || null,
-        taskId: entry.sourceId || entry.id,
-        calendarDate: null,
-        calendarTime: null,
-        isDue: false,
-        isCompleted: true,
-        raw: entry,
+    if (includeCompleted) {
+      const completions = this.getCompletionEntries().filter(
+        (entry) => entry.completedAt && entry.archiveType !== "deleted" && matchesTaskFilters(entry, filters)
+      );
+      completions.forEach((entry) => {
+        entries.push({
+          date: entry.completedAt,
+          title: entry.title || "Completed task",
+          context: entry.context,
+          status: entry.status || "completed",
+          projectId: entry.projectId || null,
+          taskId: entry.sourceId || entry.id,
+          calendarDate: null,
+          calendarTime: null,
+          isDue: false,
+          isCompleted: true,
+          raw: entry,
+        });
       });
-    });
+    }
 
     entries.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     if (exactDate) {
@@ -1474,6 +1673,7 @@ export class TaskManager extends EventTarget {
         theme: DEFAULT_THEME,
         customTheme: { ...DEFAULT_CUSTOM_THEME },
         areaOptions: [...PROJECT_AREAS],
+        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
       };
     }
     const normalized = normalizeTheme(theme);
@@ -1490,6 +1690,7 @@ export class TaskManager extends EventTarget {
         theme: DEFAULT_THEME,
         customTheme: { ...DEFAULT_CUSTOM_THEME },
         areaOptions: [...PROJECT_AREAS],
+        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
       };
     }
     const current = normalizeCustomTheme(this.state.settings.customTheme);
@@ -1512,12 +1713,44 @@ export class TaskManager extends EventTarget {
     return next;
   }
 
+  updateFeatureFlag(flag, enabled) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_FEATURE_FLAGS, flag)) {
+      this.notify("error", `Unknown feature flag: ${flag}`);
+      return false;
+    }
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const current = normalizeFeatureFlags(this.state.settings.featureFlags);
+    const nextValue = Boolean(enabled);
+    if (current[flag] === nextValue) {
+      return false;
+    }
+    this.state.settings.featureFlags = {
+      ...current,
+      [flag]: nextValue,
+    };
+    this.emitChange();
+    return true;
+  }
+
   getTheme() {
     return normalizeTheme(this.state.settings?.theme);
   }
 
   getCustomTheme() {
     return normalizeCustomTheme(this.state.settings?.customTheme);
+  }
+
+  getFeatureFlags() {
+    return normalizeFeatureFlags(this.state.settings?.featureFlags);
+  }
+
+  getFeatureFlag(flag) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_FEATURE_FLAGS, flag)) {
+      return false;
+    }
+    return Boolean(this.getFeatureFlags()[flag]);
   }
 }
 
@@ -1551,7 +1784,19 @@ function normalizeCustomTheme(customTheme, fallbackTheme = DEFAULT_CUSTOM_THEME)
   };
 }
 
+function normalizeFeatureFlags(featureFlags, fallbackFlags = DEFAULT_FEATURE_FLAGS) {
+  const normalized = {};
+  Object.keys(DEFAULT_FEATURE_FLAGS).forEach((flag) => {
+    const fallbackValue =
+      typeof fallbackFlags?.[flag] === "boolean" ? fallbackFlags[flag] : DEFAULT_FEATURE_FLAGS[flag];
+    normalized[flag] =
+      typeof featureFlags?.[flag] === "boolean" ? featureFlags[flag] : Boolean(fallbackValue);
+  });
+  return normalized;
+}
+
 function createCompletionSnapshot(task, completedAt, archiveType = "reference") {
+  const noteFallback = completedAt || task.updatedAt || task.createdAt || nowIso();
   return {
     id: task.id,
     sourceId: task.id,
@@ -1565,6 +1810,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     projectId: task.projectId,
     waitingFor: task.waitingFor,
     dueDate: task.dueDate,
+    myDayDate: task.myDayDate || null,
     calendarDate: task.calendarDate,
     calendarTime: task.calendarTime,
     createdAt: task.createdAt,
@@ -1572,6 +1818,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     archivedAt: new Date().toISOString(),
     archiveType,
     closureNotes: task.closureNotes || null,
+    notes: normalizeTaskNotes(task.notes, { fallbackCreatedAt: noteFallback }),
     updatedAt: completedAt || nowIso(),
     recurrenceRule: normalizeRecurrenceRule(task.recurrenceRule),
     slug: task.slug || normalizeSlug(null, task.id),
@@ -1581,6 +1828,12 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
 }
 
 function normalizeTask(task) {
+  const linkedSchedule = normalizeLinkedSchedule({
+    calendarDate: task.calendarDate,
+    myDayDate: task.myDayDate,
+    calendarTime: task.calendarTime,
+  });
+  const noteFallback = task.updatedAt || task.createdAt || nowIso();
   const normalized = {
     ...task,
     completedAt: task.completedAt || null,
@@ -1589,16 +1842,19 @@ function normalizeTask(task) {
     slug: normalizeSlug(task.slug, task.id || task.sourceId || task.title || nowIso()),
     originDevice: task.originDevice || null,
     originDeviceId: task.originDeviceId || null,
-    calendarTime: sanitizeTime(task.calendarTime) || null,
+    calendarDate: linkedSchedule.calendarDate,
+    calendarTime: linkedSchedule.calendarTime,
     context: task.context ?? task.physicalContext ?? null,
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     energyLevel: task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
+    myDayDate: linkedSchedule.myDayDate,
     areaOfFocus:
       typeof task.areaOfFocus === "string" && task.areaOfFocus.trim()
         ? task.areaOfFocus.trim()
         : null,
     closureNotes: task.closureNotes ?? null,
+    notes: normalizeTaskNotes(task.notes, { fallbackCreatedAt: noteFallback }),
     updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
   const enforceContext = normalized.status && normalized.status !== STATUS.INBOX;
@@ -1607,6 +1863,7 @@ function normalizeTask(task) {
 
 function normalizeCompletionEntry(entry) {
   if (!entry) return null;
+  const noteFallback = entry.completedAt || entry.archivedAt || entry.updatedAt || entry.createdAt || nowIso();
   return {
     id: entry.id || entry.sourceId || generateId("completed"),
     title: entry.title || "Completed task",
@@ -1622,6 +1879,7 @@ function normalizeCompletionEntry(entry) {
     projectId: entry.projectId || null,
     waitingFor: entry.waitingFor || null,
     dueDate: entry.dueDate || null,
+    myDayDate: sanitizeIsoDate(entry.myDayDate) || null,
     calendarDate: entry.calendarDate || null,
     calendarTime: sanitizeTime(entry.calendarTime) || null,
     createdAt: entry.createdAt || null,
@@ -1629,6 +1887,7 @@ function normalizeCompletionEntry(entry) {
     archivedAt: entry.archivedAt || entry.completedAt || null,
     archiveType: entry.archiveType || "reference",
     closureNotes: entry.closureNotes || null,
+    notes: normalizeTaskNotes(entry.notes, { fallbackCreatedAt: noteFallback }),
     recurrenceRule: normalizeRecurrenceRule(entry.recurrenceRule),
     slug: normalizeSlug(entry.slug, entry.id || entry.sourceId),
     originDevice: entry.originDevice || null,
@@ -1757,6 +2016,52 @@ function sanitizeIsoDate(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function sanitizeIsoTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function normalizeTaskNotes(notes, { fallbackCreatedAt } = {}) {
+  if (!Array.isArray(notes)) return [];
+  const fallbackTimestamp = sanitizeIsoTimestamp(fallbackCreatedAt) || nowIso();
+  return notes
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const text = entry.trim();
+        if (!text) return null;
+        return {
+          id: generateId("note"),
+          text,
+          createdAt: fallbackTimestamp,
+        };
+      }
+      if (!entry || typeof entry !== "object") return null;
+      const text = typeof entry.text === "string" ? entry.text.trim() : "";
+      if (!text) return null;
+      const id =
+        typeof entry.id === "string" && entry.id.trim()
+          ? entry.id.trim()
+          : generateId("note");
+      const createdAt = sanitizeIsoTimestamp(entry.createdAt) || fallbackTimestamp;
+      return {
+        id,
+        text,
+        createdAt,
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractTimeFromDateValue(value) {
+  if (typeof value !== "string" || !value.includes("T")) return null;
+  const [, rawTime = ""] = value.split("T");
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)/.exec(rawTime.trim());
+  if (!match) return null;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
 function sanitizeTime(value) {
   if (!value) return null;
   const normalized = String(value).trim();
@@ -1766,6 +2071,18 @@ function sanitizeTime(value) {
   const hours = match[1].padStart(2, "0");
   const minutes = match[2];
   return `${hours}:${minutes}`;
+}
+
+function normalizeLinkedSchedule({ calendarDate, myDayDate, calendarTime } = {}) {
+  const normalizedCalendarDate = sanitizeIsoDate(calendarDate) || null;
+  const normalizedMyDayDate = sanitizeIsoDate(myDayDate) || null;
+  const linkedDate = normalizedCalendarDate || normalizedMyDayDate || null;
+  const derivedTime = sanitizeTime(calendarTime) || sanitizeTime(extractTimeFromDateValue(calendarDate));
+  return {
+    calendarDate: linkedDate,
+    myDayDate: linkedDate,
+    calendarTime: linkedDate ? derivedTime : null,
+  };
 }
 
 function normalizeAreaOptions(options, projects = [], completedProjects = []) {
@@ -1991,6 +2308,9 @@ function getWeekRange(date) {
 function matchesSearch(task, rawTerm) {
   const term = rawTerm.trim().toLowerCase();
   if (!term) return true;
+  const noteFields = Array.isArray(task.notes)
+    ? task.notes.map((note) => note?.text).filter((value) => typeof value === "string" && value)
+    : [];
   const fields = [
     task.title,
     task.description,
@@ -2001,6 +2321,7 @@ function matchesSearch(task, rawTerm) {
     task.waitingFor,
     task.slug,
     task.id,
+    ...noteFields,
   ];
   return fields.some((value) => typeof value === "string" && value.toLowerCase().includes(term));
 }
@@ -2035,6 +2356,9 @@ function matchesTaskFilters(task, filters = {}) {
     return false;
   }
   if (!matchesFilterValue(task.timeRequired, filters.times ?? filters.time)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.myDayDate, filters.myDayDates ?? filters.myDayDate)) {
     return false;
   }
   if (filters.searchTerm && !matchesSearch(task, filters.searchTerm)) {

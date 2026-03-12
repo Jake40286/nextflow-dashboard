@@ -106,6 +106,16 @@ export class UIController {
     this.connectionStatus = "online";
     this.connectionCheckTimer = null;
     this.manualSyncInFlight = false;
+    this.draggingTaskId = null;
+    this.calendarShowCompleted = false;
+    this.contextMenuTaskId = null;
+    this.contextMenuHandlersBound = false;
+    this.handleTaskMenuDismiss = null;
+    this.handleTaskMenuEscape = null;
+    this.calendarDayContextMenuDate = null;
+    this.calendarDayContextMenuHandlersBound = false;
+    this.handleCalendarDayMenuDismiss = null;
+    this.handleCalendarDayMenuEscape = null;
     this.showMissingNextOnly = false;
     this.selectedSettingsContext = null;
     this.statsLookbackDays = 30;
@@ -115,6 +125,8 @@ export class UIController {
     this.elements = mapElements();
     this.bindListeners();
     this.setupSummaryTabs();
+    this.setupTaskContextMenu();
+    this.setupCalendarDayContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
@@ -140,6 +152,7 @@ export class UIController {
       toggleMissingNextAction,
       calendarPrevMonth,
       calendarNextMonth,
+      calendarShowCompleted,
       manualSyncButton,
       waitingFilterToggle,
       waitingFilterOptions,
@@ -217,6 +230,10 @@ export class UIController {
       this.shiftCalendarMonth(1);
       this.renderCalendar();
     });
+    calendarShowCompleted?.addEventListener("change", () => {
+      this.calendarShowCompleted = calendarShowCompleted.checked;
+      this.renderCalendar();
+    });
 
     reportGrouping?.addEventListener("change", () => {
       this.reportFilters.grouping = reportGrouping.value;
@@ -285,16 +302,23 @@ export class UIController {
       if (!updated) return;
       this.renderSettings();
     });
+    this.elements.settingsFeatureFlagsList?.addEventListener("change", (event) => {
+      const input = event.target.closest("input[data-feature-flag]");
+      if (!input) return;
+      this.taskManager.updateFeatureFlag(input.dataset.featureFlag, input.checked);
+    });
 
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
       if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
       if (this.flyoutContext?.readOnly) {
-        if (this.flyoutContext.entry) {
-          this.renderTaskFlyout(this.flyoutContext.entry, { readOnly: true, entry: this.flyoutContext.entry });
-        } else {
+        const latestArchived = this.taskManager.getCompletedTaskById(this.currentFlyoutTaskId, { includeDeleted: true });
+        if (!latestArchived) {
           this.closeTaskFlyout();
+          return;
         }
+        this.flyoutContext.entry = latestArchived;
+        this.renderTaskFlyout(latestArchived, { readOnly: true, entry: latestArchived });
         return;
       }
       const latest = this.taskManager.getTaskById(this.currentFlyoutTaskId);
@@ -389,7 +413,7 @@ export class UIController {
       expandProjects,
     } = this.elements;
     const panel = this.activePanel;
-    const taskPanels = new Set(["inbox", "next", "kanban", "waiting", "someday", "projects", "calendar", "all-active"]);
+    const taskPanels = new Set(["inbox", "my-day", "next", "kanban", "waiting", "someday", "projects", "calendar", "all-active"]);
     const supportsSearch = taskPanels.has(panel);
     const supportsTaskPicker = panel === "next";
     const supportsNextFanout = panel === "next";
@@ -464,6 +488,7 @@ export class UIController {
 
   getPanelLabel(panel) {
     if (STATUS_LABELS[panel]) return STATUS_LABELS[panel];
+    if (panel === "my-day") return "My Day";
     if (panel === "kanban") return "Kanban";
     if (panel === "projects") return "Active Projects";
     if (panel === "calendar") return "Calendar";
@@ -475,6 +500,10 @@ export class UIController {
 
   getPanelCountText(panel) {
     const summary = this.summaryCache || this.taskManager.getSummary();
+    if (panel === "my-day") {
+      const myDayTasks = this.getMyDayTasks({ applyFilters: false });
+      return `${myDayTasks.length} selected today`;
+    }
     if (panel === "projects") {
       return `${summary.projects} active projects`;
     }
@@ -485,7 +514,10 @@ export class UIController {
       return `${activeKanban} cards`;
     }
     if (panel === "calendar") {
-      const entries = this.taskManager.getCalendarEntries({ exactDate: this.filters.date || undefined });
+      const entries = this.taskManager.getCalendarEntries({
+        exactDate: this.filters.date || undefined,
+        includeCompleted: this.calendarShowCompleted,
+      });
       return `${entries.length} scheduled`;
     }
     if (panel === "reports") {
@@ -502,7 +534,8 @@ export class UIController {
         THEME_OPTIONS.length +
         this.taskManager.getContexts().length +
         this.taskManager.getPeopleTags().length +
-        this.taskManager.getAreasOfFocus().length;
+        this.taskManager.getAreasOfFocus().length +
+        Object.keys(this.taskManager.getFeatureFlags()).length;
       return `${totalSettings} values`;
     }
     switch (panel) {
@@ -522,12 +555,16 @@ export class UIController {
   }
 
   renderAll() {
+    this.draggingTaskId = null;
+    this.closeTaskContextMenu();
+    this.closeCalendarDayContextMenu();
     this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     this.updateSuggestionLists();
     this.renderSummary();
     this.renderFilters();
     this.renderInbox();
+    this.renderMyDay();
     this.renderNextActions();
     this.renderKanban();
     this.renderProjects();
@@ -538,6 +575,7 @@ export class UIController {
     this.renderStatistics();
     this.renderAllActive();
     this.renderSettings();
+    this.applyFeatureFlags();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
@@ -613,6 +651,7 @@ export class UIController {
     const {
       summaryInbox,
       summaryNext,
+      summaryMyDay,
       summaryKanban,
       summaryWaiting,
       summarySomeday,
@@ -621,9 +660,13 @@ export class UIController {
       summaryCompleted,
       summaryStatistics,
       summarySettings,
+      summaryAllActive,
     } = this.elements;
     summaryInbox.textContent = summary.inbox;
     summaryNext.textContent = summary.next;
+    if (summaryMyDay) {
+      summaryMyDay.textContent = this.getMyDayTasks({ applyFilters: false }).length;
+    }
     if (summaryKanban) {
       const kanbanCount = this.taskManager
         .getTasks(this.buildTaskFilters())
@@ -646,7 +689,8 @@ export class UIController {
         THEME_OPTIONS.length +
         this.taskManager.getContexts().length +
         this.taskManager.getPeopleTags().length +
-        this.taskManager.getAreasOfFocus().length;
+        this.taskManager.getAreasOfFocus().length +
+        Object.keys(this.taskManager.getFeatureFlags()).length;
       summarySettings.textContent = settingsTotal;
     }
     if (summaryAllActive) {
@@ -832,6 +876,58 @@ export class UIController {
     }
     renderTaskList(container, tasks, (task) => this.createTaskCard(task));
     this.attachDropzone(container, STATUS.INBOX);
+  }
+
+  renderMyDay() {
+    const container = this.elements.myDayList;
+    if (!container) return;
+    const tasks = this.getMyDayTasks({ applyFilters: false });
+    container.innerHTML = "";
+    if (!tasks.length) {
+      const empty = document.createElement("div");
+      empty.className = "muted small-text";
+      empty.textContent = "No tasks in My Day yet. Use Add to My Day on any task.";
+      container.append(empty);
+      return;
+    }
+    tasks.forEach((task) => {
+      container.append(this.createTaskCard(task));
+    });
+  }
+
+  getMyDayTasks({ applyFilters = true } = {}) {
+    const filters = applyFilters ? this.buildTaskFilters() : {};
+    const todayKey = this.getTodayDateKey();
+    return this.taskManager
+      .getTasks({
+        ...filters,
+        includeCompleted: false,
+      })
+      .filter((task) => task.myDayDate === todayKey);
+  }
+
+  isTaskInMyDay(task) {
+    return Boolean(task?.myDayDate && task.myDayDate === this.getTodayDateKey());
+  }
+
+  toggleTaskMyDay(task) {
+    if (!task?.id) return;
+    const inMyDay = this.isTaskInMyDay(task);
+    const todayKey = this.getTodayDateKey();
+    const updates = inMyDay
+      ? { myDayDate: null, calendarDate: null, calendarTime: null }
+      : {
+          myDayDate: todayKey,
+          // Adding to My Day also schedules it for today on the calendar.
+          calendarDate: todayKey,
+        };
+    const updated = this.taskManager.updateTask(task.id, updates);
+    if (!updated) return;
+    if (inMyDay) {
+      this.taskManager.notify("info", `Removed "${task.title}" from My Day.`);
+    } else {
+      this.taskManager.notify("info", `Added "${task.title}" to My Day and scheduled it for today.`);
+    }
   }
 
   renderNextActions() {
@@ -1159,6 +1255,7 @@ export class UIController {
       groups.forEach((group) => {
         const section = document.createElement("section");
         section.className = "project-task-group";
+        section.dataset.projectId = project.id;
         const heading = document.createElement("h4");
         heading.textContent = group.label;
         section.append(heading);
@@ -1172,14 +1269,83 @@ export class UIController {
         } else {
           items.forEach((task, index) => {
             const card = this.createTaskCard(task);
-            if (group.status === STATUS.NEXT && index === 0) {
-              card.classList.add("task-card-primary");
+            if (group.status === STATUS.NEXT) {
+              if (index === 0) {
+                card.classList.add("task-card-primary");
+              }
+              card.addEventListener("dragover", (event) => {
+                const sourceId = this.draggingTaskId
+                  || event.dataTransfer?.getData("text/task-id")
+                  || event.dataTransfer?.getData("text/plain");
+                if (!sourceId || sourceId === task.id) {
+                  return;
+                }
+                const sourceTask = this.taskManager.getTaskById(sourceId);
+                if (
+                  !sourceTask ||
+                  sourceTask.status !== STATUS.NEXT ||
+                  sourceTask.projectId !== project.id ||
+                  task.projectId !== project.id
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = card.getBoundingClientRect();
+                const dropBefore = this.resolveProjectNextDropBefore({
+                  sourceId,
+                  targetId: task.id,
+                  projectId: project.id,
+                  clientY: event.clientY,
+                  bounds,
+                });
+                card.classList.toggle("is-drop-before", dropBefore);
+                card.classList.toggle("is-drop-after", !dropBefore);
+              });
+              card.addEventListener("dragleave", () => {
+                card.classList.remove("is-drop-before", "is-drop-after");
+              });
+              card.addEventListener("drop", (event) => {
+                const sourceId = this.draggingTaskId
+                  || event.dataTransfer?.getData("text/task-id")
+                  || event.dataTransfer?.getData("text/plain");
+                if (!sourceId || sourceId === task.id) {
+                  return;
+                }
+                const sourceTask = this.taskManager.getTaskById(sourceId);
+                if (
+                  !sourceTask ||
+                  sourceTask.status !== STATUS.NEXT ||
+                  sourceTask.projectId !== project.id ||
+                  task.projectId !== project.id
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = card.getBoundingClientRect();
+                const dropBefore = this.resolveProjectNextDropBefore({
+                  sourceId,
+                  targetId: task.id,
+                  projectId: project.id,
+                  clientY: event.clientY,
+                  bounds,
+                });
+                this.handleProjectNextReorderDrop({
+                  sourceId,
+                  targetId: task.id,
+                  projectId: project.id,
+                  before: dropBefore,
+                });
+                card.classList.remove("is-drop-before", "is-drop-after");
+              });
             }
             section.append(card);
           });
         }
 
         sectionsWrapper.append(section);
+        this.attachDropzone(section, group.status, undefined, project.id);
       });
 
       if (tagsRow.children.length) {
@@ -1375,9 +1541,13 @@ export class UIController {
   }
 
   renderCalendar() {
+    if (this.elements.calendarShowCompleted) {
+      this.elements.calendarShowCompleted.checked = this.calendarShowCompleted;
+    }
     const entries = this.taskManager.getCalendarEntries({
       exactDate: this.filters.date || undefined,
       filters: this.buildTaskFilters(),
+      includeCompleted: this.calendarShowCompleted,
     });
     this.renderCalendarGrid(entries);
     if (this.activePanel === "calendar") {
@@ -1442,6 +1612,11 @@ export class UIController {
         continue;
       }
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNumber).padStart(2, "0")}`;
+      dayContainer.dataset.date = dateKey;
+      dayContainer.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        this.openCalendarDayContextMenu(dateKey, event.clientX, event.clientY);
+      });
       const header = document.createElement("div");
       header.className = "calendar-grid-day";
       header.textContent = dayNumber;
@@ -2156,10 +2331,11 @@ export class UIController {
 
   renderSettings() {
     const themesList = this.elements.settingsThemesList;
+    const featureFlagsList = this.elements.settingsFeatureFlagsList;
     const contextsList = this.elements.settingsContextsList;
     const peopleList = this.elements.settingsPeopleList;
     const areasList = this.elements.settingsAreasList;
-    if (!themesList || !contextsList || !peopleList || !areasList) return;
+    if (!themesList || !featureFlagsList || !contextsList || !peopleList || !areasList) return;
     const contexts = this.taskManager.getContexts();
     const peopleTags = this.taskManager.getPeopleTags();
     const areas = this.taskManager.getAreasOfFocus();
@@ -2169,6 +2345,7 @@ export class UIController {
       this.selectedSettingsContext = null;
     }
     this.renderThemeSettings(themesList);
+    this.renderFeatureFlagSettings(featureFlagsList);
     this.renderSettingsList(contextsList, contexts, "context", usage.contexts);
     this.renderSettingsList(peopleList, peopleTags, "people", usage.people);
     this.renderSettingsList(areasList, areas, "area", usage.areas);
@@ -2243,17 +2420,107 @@ export class UIController {
           const colorInput = document.createElement("input");
           colorInput.type = "color";
           colorInput.id = `theme-custom-${field.key}`;
-          colorInput.value = customTheme[field.key];
+          const initialHex = normalizeThemeHexInput(customTheme[field.key]) || "#000000";
+          colorInput.value = initialHex;
+          const hexInput = document.createElement("input");
+          hexInput.type = "text";
+          hexInput.inputMode = "text";
+          hexInput.autocomplete = "off";
+          hexInput.spellcheck = false;
+          hexInput.id = `theme-custom-${field.key}-hex`;
+          hexInput.className = "settings-theme-hex-input";
+          hexInput.placeholder = "#000000";
+          hexInput.pattern = "^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$";
+          hexInput.value = initialHex;
+
+          const applyThemeHexValue = (raw) => {
+            const normalized = normalizeThemeHexInput(raw);
+            const savedHex = normalizeThemeHexInput(this.taskManager.getCustomTheme()[field.key]) || "#000000";
+            if (!normalized) {
+              hexInput.value = savedHex;
+              colorInput.value = savedHex;
+              return;
+            }
+            hexInput.value = normalized;
+            colorInput.value = normalized;
+            if (normalized !== savedHex) {
+              this.taskManager.updateCustomTheme({ [field.key]: normalized });
+            }
+          };
+
           colorInput.addEventListener("change", () => {
-            this.taskManager.updateCustomTheme({ [field.key]: colorInput.value });
+            applyThemeHexValue(colorInput.value);
           });
-          colorField.append(fieldText, colorInput);
+          hexInput.addEventListener("change", () => {
+            applyThemeHexValue(hexInput.value);
+          });
+          hexInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            applyThemeHexValue(hexInput.value);
+            hexInput.blur();
+          });
+          colorField.append(fieldText, colorInput, hexInput);
           controls.append(colorField);
         });
         item.append(controls);
       }
       container.append(item);
     });
+  }
+
+  renderFeatureFlagSettings(container) {
+    container.innerHTML = "";
+    const flags = this.taskManager.getFeatureFlags();
+    const entries = [
+      {
+        key: "showFiltersCard",
+        label: "Show Filters Sidebar Card",
+        description: "Display the Filters card in the left sidebar.",
+      },
+    ];
+    entries.forEach((entry) => {
+      const item = document.createElement("li");
+      item.className = "settings-item";
+      const main = document.createElement("div");
+      main.className = "settings-item-main";
+      const labelWrap = document.createElement("div");
+      labelWrap.className = "settings-item-label";
+      const label = document.createElement("span");
+      label.textContent = entry.label;
+      const meta = document.createElement("span");
+      meta.className = "settings-item-meta muted small-text";
+      meta.textContent = entry.description;
+      labelWrap.append(label, meta);
+      const actions = document.createElement("div");
+      actions.className = "settings-item-actions";
+      const toggle = document.createElement("label");
+      toggle.className = "settings-flag-toggle";
+      toggle.setAttribute("for", `feature-flag-${entry.key}`);
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = `feature-flag-${entry.key}`;
+      input.checked = Boolean(flags[entry.key]);
+      input.dataset.featureFlag = entry.key;
+      const text = document.createElement("span");
+      text.className = "small-text";
+      text.textContent = input.checked ? "Enabled" : "Disabled";
+      input.addEventListener("change", () => {
+        text.textContent = input.checked ? "Enabled" : "Disabled";
+      });
+      toggle.append(input, text);
+      actions.append(toggle);
+      main.append(labelWrap, actions);
+      item.append(main);
+      container.append(item);
+    });
+  }
+
+  applyFeatureFlags() {
+    const flags = this.taskManager.getFeatureFlags();
+    if (this.elements.sidebarFiltersCard) {
+      this.elements.sidebarFiltersCard.hidden = !flags.showFiltersCard;
+    }
   }
 
   buildSettingsUsageCounts() {
@@ -2870,6 +3137,9 @@ export class UIController {
     if (this.isTaskOverdue(task)) {
       metaItems.push(this.createMetaSpan("OVERDUE", "task-meta-pill task-meta-overdue"));
     }
+    if (this.isTaskInMyDay(task)) {
+      metaItems.push(this.createMetaSpan("MY DAY", "task-meta-pill task-meta-my-day"));
+    }
     metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
     if (task.context) metaItems.push(this.createMetaSpan(task.context));
     const projectName = this.getProjectName(task.projectId);
@@ -2906,6 +3176,8 @@ export class UIController {
 
     const openDetails = () => {
       if (row.classList.contains("is-dragging")) return;
+      this.closeTaskContextMenu();
+      this.closeCalendarDayContextMenu();
       this.openTaskFlyout(task.id);
     };
     row.addEventListener("click", () => openDetails());
@@ -2913,11 +3185,257 @@ export class UIController {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         openDetails();
+        return;
       }
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        event.preventDefault();
+        this.openTaskContextMenuForTask(task.id, row);
+      }
+    });
+    row.addEventListener("contextmenu", (event) => {
+      if (row.classList.contains("is-dragging")) return;
+      event.preventDefault();
+      this.openTaskContextMenu(task.id, event.clientX, event.clientY);
     });
 
     enableDrag(row, task.id);
+    row.addEventListener("dragstart", () => {
+      this.draggingTaskId = task.id;
+    });
+    row.addEventListener("dragend", () => {
+      this.draggingTaskId = null;
+      row.classList.remove("is-drop-before", "is-drop-after");
+    });
     return row;
+  }
+
+  setupTaskContextMenu() {
+    const menu = this.elements.taskContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", (event) => {
+      const actionButton = event.target.closest("[data-task-menu-action]");
+      if (!actionButton) return;
+      const task = this.contextMenuTaskId ? this.taskManager.getTaskById(this.contextMenuTaskId) : null;
+      const action = actionButton.dataset.taskMenuAction;
+      this.closeTaskContextMenu();
+      if (!task) return;
+      if (action === "open") {
+        this.openTaskFlyout(task.id);
+        return;
+      }
+      if (action === "open-project") {
+        this.openProjectFromTask(task);
+        return;
+      }
+      if (action === "my-day") {
+        this.toggleTaskMyDay(task);
+      }
+    });
+  }
+
+  openTaskContextMenuForTask(taskId, anchor) {
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const x = rect.left + Math.min(120, Math.max(20, rect.width * 0.3));
+    const y = rect.top + Math.min(rect.height, 36);
+    this.openTaskContextMenu(taskId, x, y);
+  }
+
+  openTaskContextMenu(taskId, x, y) {
+    const menu = this.elements.taskContextMenu;
+    if (!menu || !taskId) return;
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) return;
+
+    this.closeCalendarDayContextMenu();
+    this.contextMenuTaskId = taskId;
+    const myDayAction = menu.querySelector('[data-task-menu-action="my-day"]');
+    if (myDayAction) {
+      myDayAction.textContent = this.isTaskInMyDay(task) ? "Remove from My Day" : "Add to My Day";
+    }
+    const openProjectAction = menu.querySelector('[data-task-menu-action="open-project"]');
+    if (openProjectAction) {
+      const hasProject = Boolean(task.projectId);
+      openProjectAction.hidden = !hasProject;
+      openProjectAction.disabled = !hasProject;
+    }
+
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionTaskContextMenu(x, y);
+    this.bindTaskContextMenuDismiss();
+  }
+
+  positionTaskContextMenu(x, y) {
+    this.positionFloatingMenu(this.elements.taskContextMenu, x, y);
+  }
+
+  positionFloatingMenu(menu, x, y) {
+    if (!menu) return;
+    const viewportPadding = 8;
+    const rect = menu.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - viewportPadding;
+    const maxY = window.innerHeight - rect.height - viewportPadding;
+    const left = Math.max(viewportPadding, Math.min(x, maxX));
+    const top = Math.max(viewportPadding, Math.min(y, maxY));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  bindTaskContextMenuDismiss() {
+    if (this.contextMenuHandlersBound) return;
+    this.handleTaskMenuDismiss = (event) => {
+      const menu = this.elements.taskContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeTaskContextMenu();
+    };
+    this.handleTaskMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeTaskContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleTaskMenuDismiss, true);
+    document.addEventListener("scroll", this.handleTaskMenuDismiss, true);
+    window.addEventListener("resize", this.handleTaskMenuDismiss);
+    document.addEventListener("keydown", this.handleTaskMenuEscape);
+    this.contextMenuHandlersBound = true;
+  }
+
+  closeTaskContextMenu() {
+    const menu = this.elements.taskContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.contextMenuTaskId = null;
+    if (this.contextMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleTaskMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleTaskMenuDismiss, true);
+      window.removeEventListener("resize", this.handleTaskMenuDismiss);
+      document.removeEventListener("keydown", this.handleTaskMenuEscape);
+      this.contextMenuHandlersBound = false;
+    }
+  }
+
+  setupCalendarDayContextMenu() {
+    const menu = this.elements.calendarDayContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", (event) => {
+      const actionButton = event.target.closest("[data-calendar-day-action]");
+      if (!actionButton) return;
+      const dateKey = this.calendarDayContextMenuDate;
+      const action = actionButton.dataset.calendarDayAction;
+      this.closeCalendarDayContextMenu();
+      if (!dateKey) return;
+      if (action === "add-task") {
+        this.promptCalendarTaskCreate(dateKey);
+      }
+    });
+  }
+
+  openCalendarDayContextMenu(dateKey, x, y) {
+    const menu = this.elements.calendarDayContextMenu;
+    if (!menu || !dateKey) return;
+    this.closeTaskContextMenu();
+    this.calendarDayContextMenuDate = dateKey;
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindCalendarDayContextMenuDismiss();
+  }
+
+  bindCalendarDayContextMenuDismiss() {
+    if (this.calendarDayContextMenuHandlersBound) return;
+    this.handleCalendarDayMenuDismiss = (event) => {
+      const menu = this.elements.calendarDayContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeCalendarDayContextMenu();
+    };
+    this.handleCalendarDayMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeCalendarDayContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleCalendarDayMenuDismiss, true);
+    document.addEventListener("scroll", this.handleCalendarDayMenuDismiss, true);
+    window.addEventListener("resize", this.handleCalendarDayMenuDismiss);
+    document.addEventListener("keydown", this.handleCalendarDayMenuEscape);
+    this.calendarDayContextMenuHandlersBound = true;
+  }
+
+  closeCalendarDayContextMenu() {
+    const menu = this.elements.calendarDayContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.calendarDayContextMenuDate = null;
+    if (this.calendarDayContextMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleCalendarDayMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleCalendarDayMenuDismiss, true);
+      window.removeEventListener("resize", this.handleCalendarDayMenuDismiss);
+      document.removeEventListener("keydown", this.handleCalendarDayMenuEscape);
+      this.calendarDayContextMenuHandlersBound = false;
+    }
+  }
+
+  promptCalendarTaskCreate(dateKey) {
+    const dateLabel = formatFriendlyDate(dateKey);
+    const title = window.prompt(`Task title for ${dateLabel}:`);
+    if (title === null) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      this.taskManager.notify("warn", "Task title cannot be empty.");
+      return;
+    }
+    const created = this.taskManager.addTask({
+      title: trimmedTitle,
+      status: STATUS.INBOX,
+      calendarDate: dateKey,
+    });
+    if (!created) return;
+  }
+
+  openProjectFromTask(task) {
+    if (!task?.projectId) {
+      this.taskManager.notify("warn", "This task is not linked to a project.");
+      return;
+    }
+    const projectId = task.projectId;
+    const project = this.getProjectCache().find((item) => item.id === projectId);
+    if (!project) {
+      this.setActivePanel("projects");
+      this.taskManager.notify("warn", "Linked project no longer exists.");
+      return;
+    }
+    this.setActivePanel("projects");
+    if (!project.isExpanded) {
+      this.taskManager.toggleProjectExpansion(projectId, true);
+    }
+    this.focusProjectCard(projectId);
+  }
+
+  focusProjectCard(projectId) {
+    if (!projectId) return;
+    requestAnimationFrame(() => {
+      const card = document.querySelector(`.project[data-project-id="${projectId}"]`);
+      if (!card) return;
+      card.scrollIntoView({ block: "center", behavior: "smooth" });
+      const summary = card.querySelector("summary");
+      if (summary && typeof summary.focus === "function") {
+        summary.focus({ preventScroll: true });
+      }
+    });
   }
 
   setupFlyout() {
@@ -3613,6 +4131,7 @@ export class UIController {
   openTaskFlyout(taskInput, options = {}) {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
+    this.closeTaskContextMenu();
     const { readOnly = false, entry = null } = options;
     let task = typeof taskInput === "string" ? this.taskManager.getTaskById(taskInput) : taskInput;
     if (!task && entry) {
@@ -3661,6 +4180,11 @@ export class UIController {
     const description = document.createElement("p");
     description.textContent = task.description || task.title || "No description yet.";
     description.className = "muted";
+    const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
+    const notesSection = this.createTaskNotesSection(task, {
+      readOnly: readOnly && !archiveEntryId,
+      archiveEntryId,
+    });
 
     const meta = document.createElement("div");
     meta.className = "task-flyout-meta";
@@ -3669,6 +4193,12 @@ export class UIController {
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
     meta.append(this.buildMetaRow("Energy level", task.energyLevel || "—"));
     meta.append(this.buildMetaRow("Time required", task.timeRequired || "—"));
+    meta.append(
+      this.buildMetaRow(
+        "My Day",
+        this.isTaskInMyDay(task) ? "Today" : task.myDayDate ? formatFriendlyDate(task.myDayDate) : "—"
+      )
+    );
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
     meta.append(this.buildMetaRow("Calendar", this.formatCalendarMeta(task)));
     if (isCompleted) {
@@ -3691,11 +4221,19 @@ export class UIController {
         this.closeTaskFlyout();
         this.openClarifyModal(task.id);
       });
+      const myDayButton = document.createElement("button");
+      myDayButton.type = "button";
+      myDayButton.className = "btn btn-light";
+      myDayButton.textContent = this.isTaskInMyDay(task) ? "Remove from My Day" : "Add to My Day";
+      myDayButton.addEventListener("click", () => this.toggleTaskMyDay(task));
+      const inboxActions = document.createElement("div");
+      inboxActions.className = "task-flyout-actions";
+      inboxActions.append(processButton, myDayButton);
       const reminder = document.createElement("p");
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
-      inboxPanel.append(instructions, processButton, reminder);
-      content.append(description, meta, inboxPanel);
+      inboxPanel.append(instructions, inboxActions, reminder);
+      content.append(description, meta, notesSection, inboxPanel);
       return;
     }
 
@@ -3726,12 +4264,19 @@ export class UIController {
       actionToolbar.append(restoreButton, closeButton);
       const readOnlyNote = document.createElement("p");
       readOnlyNote.className = "muted";
-      readOnlyNote.textContent = "Completed tasks are read-only. Restore to make changes.";
-      content.append(description, meta, readOnlyNote, actionToolbar);
+      readOnlyNote.textContent = "Archived task. Changes are saved to the archive. Restore to reactivate it.";
+      content.append(description, meta, notesSection, readOnlyNote, actionToolbar);
+      content.append(this.createTaskForm(task, { archiveEntryId }));
       return;
     }
 
     if (!isCompleted) {
+      const myDayButton = document.createElement("button");
+      myDayButton.type = "button";
+      myDayButton.className = "btn btn-light";
+      myDayButton.textContent = this.isTaskInMyDay(task) ? "Remove from My Day" : "Add to My Day";
+      myDayButton.addEventListener("click", () => this.toggleTaskMyDay(task));
+      actionToolbar.append(myDayButton);
       transitions.forEach((transition) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -3760,9 +4305,9 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(description, meta, this.createFollowupSection(task), actionToolbar);
+      content.append(description, meta, notesSection, this.createFollowupSection(task), actionToolbar);
     } else {
-      content.append(description, meta, actionToolbar);
+      content.append(description, meta, notesSection, actionToolbar);
     }
     content.append(this.createTaskForm(task));
   }
@@ -3849,7 +4394,89 @@ export class UIController {
     return section;
   }
 
-  createTaskForm(task) {
+  createTaskNotesSection(task, { readOnly = false, archiveEntryId = null } = {}) {
+    const section = document.createElement("section");
+    section.className = "task-notes";
+
+    const header = document.createElement("div");
+    header.className = "task-notes-header";
+    const title = document.createElement("h3");
+    title.textContent = "Notes";
+    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
+    const count = document.createElement("span");
+    count.className = "muted small-text";
+    count.textContent = `${notes.length} entr${notes.length === 1 ? "y" : "ies"}`;
+    header.append(title, count);
+
+    const list = document.createElement("ul");
+    list.className = "task-notes-list";
+    if (!notes.length) {
+      const empty = document.createElement("li");
+      empty.className = "muted small-text";
+      empty.textContent = "No notes yet.";
+      list.append(empty);
+    } else {
+      notes
+        .sort((a, b) => {
+          const aTime = new Date(a?.createdAt || 0).getTime();
+          const bTime = new Date(b?.createdAt || 0).getTime();
+          return bTime - aTime;
+        })
+        .forEach((note) => {
+          const item = document.createElement("li");
+          item.className = "task-note-item";
+          const meta = document.createElement("div");
+          meta.className = "task-note-meta";
+          const timestamp = document.createElement("time");
+          timestamp.dateTime = note.createdAt || "";
+          timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
+          meta.append(timestamp);
+          const text = document.createElement("p");
+          text.className = "task-note-text";
+          text.textContent = note.text || "";
+          item.append(meta, text);
+          list.append(item);
+        });
+    }
+
+    section.append(header, list);
+    if (readOnly) {
+      const helper = document.createElement("p");
+      helper.className = "muted small-text";
+      helper.textContent = "Restore this task to add or edit notes.";
+      section.append(helper);
+      return section;
+    }
+
+    const form = document.createElement("form");
+    form.className = "task-note-form";
+    form.setAttribute("aria-label", "Add task note");
+    const input = document.createElement("textarea");
+    input.rows = 3;
+    input.placeholder = "Capture findings, blockers, and progress updates...";
+    const actions = document.createElement("div");
+    actions.className = "task-note-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "submit";
+    addButton.className = "btn btn-light";
+    addButton.textContent = "Add note";
+    actions.append(addButton);
+    form.append(input, actions);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const added = archiveEntryId
+        ? this.taskManager.addCompletedTaskNote(archiveEntryId, input.value)
+        : this.taskManager.addTaskNote(task.id, input.value);
+      if (!added) return;
+      input.value = "";
+      input.focus();
+    });
+    section.append(form);
+    return section;
+  }
+
+  createTaskForm(task, { archiveEntryId = null } = {}) {
+    const isArchivedEntry = Boolean(archiveEntryId);
     const form = document.createElement("form");
     form.className = "task-edit";
     form.setAttribute("aria-label", "Edit task");
@@ -3930,7 +4557,9 @@ export class UIController {
     statusGroup.textContent = "Status";
     const statusValue = document.createElement("div");
     statusValue.className = "muted";
-    statusValue.textContent = `${STATUS_LABELS[task.status] || task.status} (use workflow buttons to change)`;
+    statusValue.textContent = isArchivedEntry
+      ? `${STATUS_LABELS[task.status] || task.status} (archived record)`
+      : `${STATUS_LABELS[task.status] || task.status} (use workflow buttons to change)`;
     statusGroup.append(statusValue);
 
     const projectGroup = document.createElement("label");
@@ -3954,7 +4583,7 @@ export class UIController {
     createProjectButton.type = "button";
     createProjectButton.className = "btn btn-link task-project-create";
     createProjectButton.textContent = "New project";
-    createProjectButton.addEventListener("click", () => this.createProjectForTask(task));
+    createProjectButton.addEventListener("click", () => this.createProjectForTask(task, { archiveEntryId }));
     projectControls.append(projectSelect, createProjectButton);
     projectGroup.append(projectControls);
 
@@ -4080,8 +4709,10 @@ export class UIController {
         }
         return false;
       }
-      this.taskManager.updateTask(task.id, updates);
-      return true;
+      const updated = isArchivedEntry
+        ? this.taskManager.updateCompletedTask(archiveEntryId, updates)
+        : this.taskManager.updateTask(task.id, updates);
+      return Boolean(updated);
     };
 
     // Keep a lightweight auto-save so sidebar edits persist without clicking Save.
@@ -4115,18 +4746,6 @@ export class UIController {
     const actions = document.createElement("div");
     actions.className = "task-edit-actions";
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "btn btn-danger";
-    deleteButton.textContent = "Delete task";
-    deleteButton.addEventListener("click", () => {
-      const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
-      if (confirmed) {
-        this.taskManager.deleteTask(task.id);
-        this.closeTaskFlyout();
-      }
-    });
-
     const actionButtons = document.createElement("div");
     actionButtons.className = "task-edit-actions-group";
 
@@ -4137,7 +4756,22 @@ export class UIController {
     closeButton.addEventListener("click", () => this.closeTaskFlyout());
 
     actionButtons.append(closeButton);
-    actions.append(deleteButton, actionButtons);
+    if (!isArchivedEntry) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "btn btn-danger";
+      deleteButton.textContent = "Delete task";
+      deleteButton.addEventListener("click", () => {
+        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+        if (confirmed) {
+          this.taskManager.deleteTask(task.id);
+          this.closeTaskFlyout();
+        }
+      });
+      actions.append(deleteButton, actionButtons);
+    } else {
+      actions.append(actionButtons);
+    }
 
     form.append(
       titleGroup,
@@ -4163,7 +4797,7 @@ export class UIController {
     return form;
   }
 
-  createProjectForTask(task) {
+  createProjectForTask(task, { archiveEntryId = null } = {}) {
     if (!task) return;
     const proposedName = window.prompt("New project name");
     if (!proposedName || !proposedName.trim()) return;
@@ -4174,7 +4808,11 @@ export class UIController {
     }
     const project = this.taskManager.addProject(trimmedName);
     if (project) {
-      this.taskManager.updateTask(task.id, { projectId: project.id });
+      if (archiveEntryId) {
+        this.taskManager.updateCompletedTask(archiveEntryId, { projectId: project.id });
+      } else {
+        this.taskManager.updateTask(task.id, { projectId: project.id });
+      }
     }
   }
 
@@ -4225,6 +4863,19 @@ export class UIController {
     const dateText = formatFriendlyDate(task.calendarDate);
     if (!task.calendarTime) return dateText;
     return `${dateText} at ${this.formatTimeDisplay(task.calendarTime)}`;
+  }
+
+  formatTimestampDisplay(value) {
+    if (!value) return "Unknown time";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Unknown time";
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 
   formatTimeDisplay(value) {
@@ -4285,6 +4936,14 @@ export class UIController {
       this.todayStart = now;
     }
     return this.todayStart;
+  }
+
+  getTodayDateKey() {
+    const today = this.getTodayStart();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   getProjectCache() {
@@ -4402,17 +5061,18 @@ export class UIController {
     nameInput.focus();
   }
 
-  attachDropzone(element, status, context) {
+  attachDropzone(element, status, context, projectId) {
     if (!element) return;
     if (!element.dataset.dropzone) element.dataset.dropzone = status;
     if (context) element.dataset.context = context;
+    if (projectId) element.dataset.projectId = projectId;
     if (this.dropzones.includes(element)) return;
     this.dropzones.push(element);
 
     const helper = window.DragDropHelper;
     if (helper) {
       helper.setupDropzone(element, {
-        onDrop: (taskId) => this.handleDrop(taskId, status, context),
+        onDrop: (taskId) => this.handleDrop(taskId, status, context, projectId),
       });
     } else {
       element.addEventListener("dragover", (event) => {
@@ -4426,7 +5086,7 @@ export class UIController {
         event.preventDefault();
         element.classList.remove("is-drag-over");
         const taskId = event.dataTransfer?.getData("text/task-id");
-        if (taskId) this.handleDrop(taskId, status, context);
+        if (taskId) this.handleDrop(taskId, status, context, projectId);
       });
     }
   }
@@ -4457,10 +5117,14 @@ export class UIController {
     });
   }
 
-  handleDrop(taskId, status, context) {
+  handleDrop(taskId, status, context, projectId) {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) {
       this.taskManager.notify("error", "Cannot drop missing task.");
+      return;
+    }
+    if (projectId && task.projectId !== projectId) {
+      this.taskManager.notify("warn", "Only tasks from this project can be dropped here.");
       return;
     }
     if (status === STATUS.NEXT) {
@@ -4472,6 +5136,48 @@ export class UIController {
     } else {
       this.taskManager.moveTask(taskId, status);
     }
+  }
+
+  handleProjectNextReorderDrop({ sourceId, targetId, projectId, before }) {
+    if (!sourceId || !targetId || !projectId || sourceId === targetId) {
+      return;
+    }
+    const sourceTask = this.taskManager.getTaskById(sourceId);
+    const targetTask = this.taskManager.getTaskById(targetId);
+    if (!sourceTask || !targetTask) {
+      return;
+    }
+    if (
+      sourceTask.status !== STATUS.NEXT ||
+      targetTask.status !== STATUS.NEXT ||
+      sourceTask.projectId !== projectId ||
+      targetTask.projectId !== projectId
+    ) {
+      return;
+    }
+    this.taskManager.reorderProjectNextTask(sourceId, targetId, { before: before !== false });
+  }
+
+  resolveProjectNextDropBefore({ sourceId, targetId, projectId, clientY, bounds }) {
+    const fallback = Boolean(bounds) ? clientY < bounds.top + bounds.height / 2 : true;
+    if (!sourceId || !targetId || !projectId || sourceId === targetId) {
+      return fallback;
+    }
+    const orderedProjectNextTasks = this.taskManager
+      .getTasks({ status: STATUS.NEXT, includeCompleted: false })
+      .filter((task) => task.projectId === projectId);
+    const sourceIndex = orderedProjectNextTasks.findIndex((task) => task.id === sourceId);
+    const targetIndex = orderedProjectNextTasks.findIndex((task) => task.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return fallback;
+    }
+    if (sourceIndex > targetIndex) {
+      return true;
+    }
+    if (sourceIndex < targetIndex) {
+      return false;
+    }
+    return fallback;
   }
 
   handleKanbanDrop(taskId, status, area) {
@@ -4709,6 +5415,22 @@ function parseHexColor(value, fallback) {
   return [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
 }
 
+function normalizeThemeHexInput(value) {
+  if (typeof value !== "string") return null;
+  let normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (!normalized.startsWith("#")) {
+    normalized = `#${normalized}`;
+  }
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(normalized)) {
+    return null;
+  }
+  if (normalized.length === 4) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+  return normalized;
+}
+
 function mixRgb(from, to, weight = 0.5) {
   const blend = Math.max(0, Math.min(1, Number(weight) || 0));
   return from.map((channel, index) => {
@@ -4750,6 +5472,7 @@ function mapElements() {
   const byId = (id) => document.getElementById(id);
   return {
     appRoot: document.querySelector(".app"),
+    sidebarFiltersCard: document.querySelector(".filters-card"),
     alerts: document.querySelector(".alerts"),
     workspaceToolbar: document.querySelector(".workspace-toolbar"),
     toolbarSearchSection: byId("toolbarSearchSection"),
@@ -4780,6 +5503,7 @@ function mapElements() {
     clearFilters: byId("clearFilters"),
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),
+    calendarShowCompleted: byId("calendarShowCompleted"),
     calendarGrid: byId("calendarGrid"),
     calendarMonthLabel: byId("calendarMonthLabel"),
     calendarPrevMonth: byId("calendarPrevMonth"),
@@ -4820,6 +5544,8 @@ function mapElements() {
     statsPeopleList: byId("statsPeopleList"),
     manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
+    taskContextMenu: byId("taskContextMenu"),
+    calendarDayContextMenu: byId("calendarDayContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),
@@ -4829,6 +5555,7 @@ function mapElements() {
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
+    myDayList: byId("myDayList"),
     contextBoard: document.querySelector("[data-context-board]"),
     kanbanBoard: document.querySelector("[data-kanban-board]"),
     projectList: document.querySelector("[data-projects]"),
@@ -4845,6 +5572,7 @@ function mapElements() {
     overdueCount: byId("overdueCount"),
     summaryInbox: byId("summaryInbox"),
     summaryNext: byId("summaryNext"),
+    summaryMyDay: byId("summaryMyDay"),
     summaryKanban: byId("summaryKanban"),
     summaryWaiting: byId("summaryWaiting"),
     summarySomeday: byId("summarySomeday"),
@@ -4856,6 +5584,7 @@ function mapElements() {
     summarySettings: byId("summarySettings"),
     allActiveList: byId("allActiveList"),
     settingsThemesList: byId("settingsThemesList"),
+    settingsFeatureFlagsList: byId("settingsFeatureFlagsList"),
     settingsContextsList: byId("settingsContextsList"),
     settingsPeopleList: byId("settingsPeopleList"),
     settingsAreasList: byId("settingsAreasList"),

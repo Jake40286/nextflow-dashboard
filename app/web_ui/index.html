@@ -74,6 +74,10 @@
               <span class="summary-label">Next Actions</span>
               <span class="summary-value" id="summaryNext">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-my-day" data-panel-target="my-day" aria-controls="panel-my-day" aria-selected="false">
+              <span class="summary-label">My Day</span>
+              <span class="summary-value" id="summaryMyDay">0</span>
+            </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-kanban" data-panel-target="kanban" aria-controls="panel-kanban" aria-selected="false">
               <span class="summary-label">Kanban</span>
               <span class="summary-value" id="summaryKanban">0</span>
@@ -239,6 +243,13 @@
         </div>
       </section>
 
+      <section class="workspace-view" data-panel="my-day" role="tabpanel" aria-labelledby="summary-tab-my-day" id="panel-my-day" hidden>
+        <div class="panel-content">
+          <div class="panel-subheading muted">Tasks selected for today</div>
+          <div class="panel-body" id="myDayList"></div>
+        </div>
+      </section>
+
       <section class="workspace-view" data-panel="next" role="tabpanel" aria-labelledby="summary-tab-next" id="panel-next" hidden>
         <div class="panel-content">
           <div class="panel-subheading muted">Grouped by context</div>
@@ -302,6 +313,10 @@
             <label class="filter-control" for="calendarDate">Jump to date</label>
             <input id="calendarDate" type="date" aria-describedby="calendarHelp" />
             <small id="calendarHelp" class="muted">Select a date or browse upcoming events.</small>
+            <label class="toolbar-toggle" for="calendarShowCompleted">
+              <input id="calendarShowCompleted" type="checkbox" />
+              <span>Show completed tasks</span>
+            </label>
           </div>
           <div class="calendar-grid-card">
             <div class="calendar-grid-header">
@@ -465,6 +480,13 @@
           </section>
           <section class="settings-card">
             <header class="settings-card-header">
+              <h3>Feature Flags</h3>
+              <p class="muted small-text">Enable or disable optional UI behavior.</p>
+            </header>
+            <ul id="settingsFeatureFlagsList" class="settings-list" role="list"></ul>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
               <h3>Contexts</h3>
               <p class="muted small-text">Rename or delete contexts used by tasks.</p>
             </header>
@@ -488,6 +510,15 @@
       </section>
     </section>
   </main>
+
+  <div id="taskContextMenu" class="task-context-menu" role="menu" aria-label="Task actions" aria-hidden="true" hidden>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open">Open details</button>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open-project" hidden>Open project</button>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="my-day">Add to My Day</button>
+  </div>
+  <div id="calendarDayContextMenu" class="task-context-menu" role="menu" aria-label="Calendar day actions" aria-hidden="true" hidden>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-calendar-day-action="add-task">Add task</button>
+  </div>
 
   <div id="taskFlyout" class="task-flyout" aria-hidden="true">
     <div class="task-flyout-backdrop" data-close="flyout"></div>

@@ -292,6 +292,149 @@ test("custom theme stores three user colors and ignores invalid updates", () => 
   });
 });
 
+test("my day date is normalized and persisted through completion restore", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "Focus sprint",
+    myDayDate: "2026-03-12",
+  });
+
+  assert.equal(task.myDayDate, "2026-03-12");
+
+  manager.updateTask(task.id, { myDayDate: "not-a-date" });
+  assert.equal(manager.getTaskById(task.id).myDayDate, null);
+
+  manager.updateTask(task.id, { myDayDate: "2026-03-13T08:00:00.000Z" });
+  assert.equal(manager.getTaskById(task.id).myDayDate, "2026-03-13");
+
+  manager.completeTask(task.id, { archive: "reference" });
+  const restored = manager.restoreCompletedTask(task.id);
+  assert.equal(restored.myDayDate, "2026-03-13");
+});
+
+test("getTasks filters by myDayDate", () => {
+  const manager = createManager();
+  manager.addTask({ title: "Today task", myDayDate: "2026-03-12" });
+  manager.addTask({ title: "Tomorrow task", myDayDate: "2026-03-13" });
+  manager.addTask({ title: "Unscheduled task" });
+
+  const today = manager.getTasks({ myDayDate: "2026-03-12" }).map((task) => task.title);
+  assert.deepEqual(today, ["Today task"]);
+});
+
+test("my day and calendar stay linked when creating tasks", () => {
+  const manager = createManager();
+  const fromMyDay = manager.addTask({
+    title: "From My Day",
+    myDayDate: "2026-03-12",
+  });
+  assert.equal(fromMyDay.myDayDate, "2026-03-12");
+  assert.equal(fromMyDay.calendarDate, "2026-03-12");
+
+  const fromCalendar = manager.addTask({
+    title: "From Calendar",
+    calendarDate: "2026-03-13",
+  });
+  assert.equal(fromCalendar.calendarDate, "2026-03-13");
+  assert.equal(fromCalendar.myDayDate, "2026-03-13");
+});
+
+test("my day and calendar stay linked when updating tasks", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Linked task" });
+
+  manager.updateTask(task.id, { calendarDate: "2026-03-12", calendarTime: "09:30" });
+  assert.equal(task.calendarDate, "2026-03-12");
+  assert.equal(task.myDayDate, "2026-03-12");
+  assert.equal(task.calendarTime, "09:30");
+
+  manager.updateTask(task.id, { myDayDate: "2026-03-14" });
+  assert.equal(task.myDayDate, "2026-03-14");
+  assert.equal(task.calendarDate, "2026-03-14");
+  assert.equal(task.calendarTime, "09:30");
+
+  manager.updateTask(task.id, { myDayDate: null });
+  assert.equal(task.myDayDate, null);
+  assert.equal(task.calendarDate, null);
+  assert.equal(task.calendarTime, null);
+});
+
+test("task notes are timestamped and restored after completion", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Investigate regression" });
+  const note = manager.addTaskNote(task.id, "Reproduced on staging and captured logs.", {
+    createdAt: "2026-03-12T15:45:00.000Z",
+  });
+
+  assert.ok(note, "note should be created");
+  assert.equal(task.notes.length, 1);
+  assert.equal(task.notes[0].text, "Reproduced on staging and captured logs.");
+  assert.equal(task.notes[0].createdAt, "2026-03-12T15:45:00.000Z");
+
+  manager.completeTask(task.id, { archive: "reference" });
+  const restored = manager.restoreCompletedTask(task.id);
+  assert.equal(restored.notes.length, 1);
+  assert.equal(restored.notes[0].text, "Reproduced on staging and captured logs.");
+  assert.equal(restored.notes[0].createdAt, "2026-03-12T15:45:00.000Z");
+});
+
+test("search matches note text", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Prepare deployment notes" });
+  manager.addTaskNote(task.id, "Captured rollback command and smoke test steps.");
+
+  const matches = manager.getTasks({ searchTerm: "rollback command" });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].id, task.id);
+});
+
+test("completed task entries can be edited without restore", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "Postmortem draft",
+    description: "Initial description",
+    status: STATUS.NEXT,
+    context: "@Work",
+  });
+
+  manager.completeTask(task.id, { archive: "reference" });
+  const updated = manager.updateCompletedTask(task.id, {
+    title: "Postmortem draft (final)",
+    description: "Updated while archived",
+    myDayDate: "2026-03-20",
+  });
+
+  assert.ok(updated, "completed task should update");
+  assert.equal(updated.title, "Postmortem draft (final)");
+  assert.equal(updated.description, "Updated while archived");
+  assert.equal(updated.myDayDate, "2026-03-20");
+  assert.equal(updated.calendarDate, "2026-03-20");
+
+  const fetched = manager.getCompletedTaskById(task.id);
+  assert.equal(fetched.title, "Postmortem draft (final)");
+  assert.equal(fetched.description, "Updated while archived");
+  assert.equal(fetched.calendarDate, "2026-03-20");
+});
+
+test("can append notes to archived tasks", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "QA checklist",
+    status: STATUS.NEXT,
+    context: "@Work",
+  });
+  manager.completeTask(task.id, { archive: "reference" });
+  const note = manager.addCompletedTaskNote(task.id, "Validated final checklist and attached evidence.", {
+    createdAt: "2026-03-12T18:30:00.000Z",
+  });
+
+  assert.ok(note);
+  const archived = manager.getCompletedTaskById(task.id);
+  assert.equal(archived.notes.length, 1);
+  assert.equal(archived.notes[0].text, "Validated final checklist and attached evidence.");
+  assert.equal(archived.notes[0].createdAt, "2026-03-12T18:30:00.000Z");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

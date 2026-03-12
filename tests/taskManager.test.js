@@ -29,10 +29,8 @@ function createManager(initialState = {}) {
       theme: "light",
       customTheme: {
         canvas: "#f5efe2",
-        surface: "#fff9ef",
         accent: "#0f766e",
         signal: "#b45309",
-        success: "#15803d",
       },
       areaOptions: ["Work", "Personal", "Home", "Finance", "Health"],
     },
@@ -270,33 +268,27 @@ test("updateTheme accepts known themes and normalizes invalid values to light", 
   assert.equal(manager.getTheme(), "light");
 });
 
-test("custom theme stores five user colors and ignores invalid updates", () => {
+test("custom theme stores three user colors and ignores invalid updates", () => {
   const manager = createManager();
   manager.updateTheme("custom");
 
   manager.updateCustomTheme({
     canvas: "#112233",
-    surface: "#1b2633",
     accent: "#336699",
     signal: "#ff8800",
-    success: "#22aa55",
   });
 
   assert.deepEqual(manager.getCustomTheme(), {
     canvas: "#112233",
-    surface: "#1b2633",
     accent: "#336699",
     signal: "#ff8800",
-    success: "#22aa55",
   });
 
   manager.updateCustomTheme({ canvas: "not-a-color" });
   assert.deepEqual(manager.getCustomTheme(), {
     canvas: "#112233",
-    surface: "#1b2633",
     accent: "#336699",
     signal: "#ff8800",
-    success: "#22aa55",
   });
 });
 

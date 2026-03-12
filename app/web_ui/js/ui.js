@@ -2389,13 +2389,7 @@ export class UIController {
       const swatches = document.createElement("span");
       swatches.className = "settings-theme-swatches";
       const colors = theme.id === "custom"
-        ? [
-            customTheme.canvas,
-            customTheme.surface,
-            customTheme.accent,
-            customTheme.signal,
-            customTheme.success,
-          ]
+        ? [customTheme.canvas, customTheme.accent, customTheme.signal]
         : Array.isArray(theme.swatches)
           ? theme.swatches.slice(0, 3)
           : [];
@@ -2413,10 +2407,8 @@ export class UIController {
         controls.className = "settings-theme-custom-controls";
         const customFields = [
           { key: "canvas", label: "Canvas" },
-          { key: "surface", label: "Surface" },
           { key: "accent", label: "Accent" },
           { key: "signal", label: "Highlight" },
-          { key: "success", label: "Success" },
         ];
         customFields.forEach((field) => {
           const colorField = document.createElement("label");
@@ -5363,29 +5355,25 @@ function applyCustomThemeVariables(root, customTheme) {
 
 function buildCustomThemeVariables(customTheme) {
   const canvas = parseHexColor(customTheme?.canvas, [245, 239, 226]);
-  const canvasLuminance = relativeLuminance(canvas);
-  const isDarkCanvas = canvasLuminance < 0.45;
-  const derivedSurface = mixRgb(canvas, [255, 255, 255], isDarkCanvas ? 0.1 : 0.18);
-  const surface = parseHexColor(customTheme?.surface, derivedSurface);
   const accent = parseHexColor(customTheme?.accent, [15, 118, 110]);
   const signal = parseHexColor(customTheme?.signal, [180, 83, 9]);
-  const success = parseHexColor(customTheme?.success, [21, 128, 61]);
-  const surfaceLuminance = relativeLuminance(surface);
-  const isDarkSurface = surfaceLuminance < 0.45;
-  const surfaceTwo = mixRgb(surface, accent, isDarkSurface ? 0.15 : 0.08);
-  const surfaceThree = mixRgb(surface, signal, isDarkSurface ? 0.2 : 0.14);
-  const line = mixRgb(surface, accent, isDarkSurface ? 0.42 : 0.27);
-  const lineStrong = mixRgb(surface, accent, isDarkSurface ? 0.58 : 0.43);
-  const text = isDarkSurface ? mixRgb([248, 252, 255], accent, 0.09) : mixRgb([24, 30, 36], accent, 0.18);
-  const textMuted = mixRgb(text, surface, isDarkSurface ? 0.46 : 0.5);
-  const accentStrong = isDarkSurface ? mixRgb(accent, [255, 255, 255], 0.2) : mixRgb(accent, [0, 0, 0], 0.22);
+  const canvasLuminance = relativeLuminance(canvas);
+  const isDarkCanvas = canvasLuminance < 0.45;
+  const surface = mixRgb(canvas, [255, 255, 255], isDarkCanvas ? 0.1 : 0.18);
+  const surfaceTwo = mixRgb(canvas, accent, isDarkCanvas ? 0.15 : 0.08);
+  const surfaceThree = mixRgb(canvas, signal, isDarkCanvas ? 0.2 : 0.14);
+  const line = mixRgb(canvas, accent, isDarkCanvas ? 0.42 : 0.27);
+  const lineStrong = mixRgb(canvas, accent, isDarkCanvas ? 0.58 : 0.43);
+  const text = isDarkCanvas ? mixRgb([248, 252, 255], accent, 0.09) : mixRgb([24, 30, 36], accent, 0.18);
+  const textMuted = mixRgb(text, canvas, isDarkCanvas ? 0.46 : 0.5);
+  const accentStrong = isDarkCanvas ? mixRgb(accent, [255, 255, 255], 0.2) : mixRgb(accent, [0, 0, 0], 0.22);
   const accentContrast = relativeLuminance(accent) > 0.5 ? "#0f1c24" : "#f5fffe";
   const danger = mixRgb(signal, [220, 38, 38], 0.52);
-  const ok = success;
-  const shadowBase = isDarkCanvas ? [0, 0, 0] : mixRgb(surface, [49, 31, 11], 0.78);
+  const ok = mixRgb(accent, [22, 163, 74], 0.5);
+  const shadowBase = isDarkCanvas ? [0, 0, 0] : mixRgb(canvas, [49, 31, 11], 0.78);
   return {
     "--bg": rgbToHex(canvas),
-    "--bg-alt": rgbToHex(mixRgb(canvas, surface, isDarkCanvas ? 0.22 : 0.16)),
+    "--bg-alt": rgbToHex(mixRgb(canvas, accent, isDarkCanvas ? 0.2 : 0.14)),
     "--surface": rgbToHex(surface),
     "--surface-2": rgbToHex(surfaceTwo),
     "--surface-3": rgbToHex(surfaceThree),

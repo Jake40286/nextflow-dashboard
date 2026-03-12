@@ -91,7 +91,7 @@ export const THEME_OPTIONS = Object.freeze([
   Object.freeze({
     id: "custom",
     label: "Custom",
-    description: "Choose your own 3-color or 5-color palette.",
+    description: "Choose your own canvas, accent, and highlight colors.",
     icon: "✎",
     swatches: Object.freeze(["#f5efe2", "#0f766e", "#b45309"]),
   }),
@@ -100,10 +100,8 @@ const DEFAULT_THEME = "light";
 const THEME_IDS = new Set(THEME_OPTIONS.map((theme) => theme.id));
 const DEFAULT_CUSTOM_THEME = Object.freeze({
   canvas: "#f5efe2",
-  surface: "#fff9ef",
   accent: "#0f766e",
   signal: "#b45309",
-  success: "#15803d",
 });
 const DEFAULT_FEATURE_FLAGS = Object.freeze({
   showFiltersCard: true,
@@ -1705,10 +1703,8 @@ export class TaskManager extends EventTarget {
     );
     const unchanged =
       current.canvas === next.canvas &&
-      current.surface === next.surface &&
       current.accent === next.accent &&
-      current.signal === next.signal &&
-      current.success === next.success;
+      current.signal === next.signal;
     if (unchanged) {
       return current;
     }
@@ -1775,86 +1771,16 @@ function normalizeThemeColor(value, fallback) {
   return normalized;
 }
 
-function parseThemeHexColor(value, fallback = [0, 0, 0]) {
-  if (typeof value !== "string") return [...fallback];
-  let hex = value.trim().toLowerCase();
-  if (!hex) return [...fallback];
-  if (hex.startsWith("#")) {
-    hex = hex.slice(1);
-  }
-  if (hex.length === 3) {
-    hex = hex
-      .split("")
-      .map((char) => `${char}${char}`)
-      .join("");
-  }
-  if (!/^[0-9a-f]{6}$/.test(hex)) return [...fallback];
-  return [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
-}
-
-function rgbToThemeHex(rgb) {
-  const values = Array.isArray(rgb) ? rgb : [0, 0, 0];
-  const hex = values
-    .slice(0, 3)
-    .map((channel) => {
-      const parsed = Number(channel);
-      const value = Number.isFinite(parsed) ? Math.max(0, Math.min(255, Math.round(parsed))) : 0;
-      return value.toString(16).padStart(2, "0");
-    })
-    .join("");
-  return `#${hex}`;
-}
-
-function mixThemeHex(fromHex, toRgb, weight = 0.5) {
-  const base = parseThemeHexColor(fromHex);
-  const target = Array.isArray(toRgb) ? toRgb : [0, 0, 0];
-  const blend = Math.max(0, Math.min(1, Number(weight) || 0));
-  const mixed = base.map((channel, index) => {
-    const targetChannel = Number(target[index]);
-    const clampedTarget = Number.isFinite(targetChannel) ? Math.max(0, Math.min(255, targetChannel)) : 0;
-    return channel + (clampedTarget - channel) * blend;
-  });
-  return rgbToThemeHex(mixed);
-}
-
-function deriveThemeSurfaceColor(canvasColor) {
-  return mixThemeHex(canvasColor, [255, 255, 255], 0.18);
-}
-
-function deriveThemeSuccessColor(accentColor) {
-  return mixThemeHex(accentColor, [22, 163, 74], 0.5);
-}
-
 function normalizeCustomTheme(customTheme, fallbackTheme = DEFAULT_CUSTOM_THEME) {
-  const fallbackCanvas = normalizeThemeColor(fallbackTheme?.canvas, DEFAULT_CUSTOM_THEME.canvas);
-  const fallbackAccent = normalizeThemeColor(fallbackTheme?.accent, DEFAULT_CUSTOM_THEME.accent);
   const fallback = {
-    canvas: fallbackCanvas,
-    surface: normalizeThemeColor(
-      fallbackTheme?.surface,
-      deriveThemeSurfaceColor(fallbackCanvas || DEFAULT_CUSTOM_THEME.canvas)
-    ),
-    accent: fallbackAccent,
+    canvas: normalizeThemeColor(fallbackTheme?.canvas, DEFAULT_CUSTOM_THEME.canvas),
+    accent: normalizeThemeColor(fallbackTheme?.accent, DEFAULT_CUSTOM_THEME.accent),
     signal: normalizeThemeColor(fallbackTheme?.signal, DEFAULT_CUSTOM_THEME.signal),
-    success: normalizeThemeColor(
-      fallbackTheme?.success,
-      deriveThemeSuccessColor(fallbackAccent || DEFAULT_CUSTOM_THEME.accent)
-    ),
   };
-  const hasSurface = Object.prototype.hasOwnProperty.call(customTheme || {}, "surface");
-  const hasSuccess = Object.prototype.hasOwnProperty.call(customTheme || {}, "success");
-  const canvas = normalizeThemeColor(customTheme?.canvas, fallback.canvas);
-  const accent = normalizeThemeColor(customTheme?.accent, fallback.accent);
   return {
-    canvas,
-    surface: hasSurface
-      ? normalizeThemeColor(customTheme?.surface, fallback.surface)
-      : deriveThemeSurfaceColor(canvas),
-    accent,
+    canvas: normalizeThemeColor(customTheme?.canvas, fallback.canvas),
+    accent: normalizeThemeColor(customTheme?.accent, fallback.accent),
     signal: normalizeThemeColor(customTheme?.signal, fallback.signal),
-    success: hasSuccess
-      ? normalizeThemeColor(customTheme?.success, fallback.success)
-      : deriveThemeSuccessColor(accent),
   };
 }
 

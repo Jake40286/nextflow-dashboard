@@ -12,6 +12,7 @@ import {
 
 const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
 const NEXT_FANOUT_KEY = "gtd-dashboard-next-fanout";
+const NEXT_HIDE_SCHEDULED_KEY = "gtd-dashboard-next-hide-scheduled";
 
 const TRANSITIONS = {
   [STATUS.INBOX]: [
@@ -82,6 +83,7 @@ export class UIController {
     this.panels = [];
     this.activePanel = loadStoredPanel() || "inbox";
     this.allowMultipleNextPerProject = loadNextFanoutPreference();
+    this.hideScheduledNextActions = loadNextHideScheduledPreference();
     this.summaryCache = null;
     this.reportFilters = {
       grouping: "week",
@@ -118,6 +120,7 @@ export class UIController {
     this.handleCalendarDayMenuEscape = null;
     this.showMissingNextOnly = false;
     this.selectedSettingsContext = null;
+    this.customPaletteDraftName = "";
     this.statsLookbackDays = 30;
   }
 
@@ -158,6 +161,7 @@ export class UIController {
       waitingFilterOptions,
       summaryAllActive,
       toggleNextProjectFanout,
+      toggleHideScheduledNext,
     } = this.elements;
 
     searchTasks.addEventListener("input", (event) => {
@@ -199,6 +203,17 @@ export class UIController {
       toggleNextProjectFanout.addEventListener("change", () => {
         this.allowMultipleNextPerProject = toggleNextProjectFanout.checked;
         storeNextFanoutPreference(this.allowMultipleNextPerProject);
+        this.renderNextActions();
+        if (this.activePanel === "next") {
+          this.updateActivePanelMeta();
+        }
+      });
+    }
+    if (toggleHideScheduledNext) {
+      toggleHideScheduledNext.checked = this.hideScheduledNextActions;
+      toggleHideScheduledNext.addEventListener("change", () => {
+        this.hideScheduledNextActions = toggleHideScheduledNext.checked;
+        storeNextHideScheduledPreference(this.hideScheduledNextActions);
         this.renderNextActions();
         if (this.activePanel === "next") {
           this.updateActivePanelMeta();
@@ -409,6 +424,7 @@ export class UIController {
       toolbarActionsTitle,
       toolbarActionsNote,
       nextProjectFanoutControl,
+      nextHideScheduledControl,
       clearFilters,
       expandProjects,
     } = this.elements;
@@ -429,6 +445,9 @@ export class UIController {
     if (nextProjectFanoutControl) {
       nextProjectFanoutControl.hidden = !supportsNextFanout;
     }
+    if (nextHideScheduledControl) {
+      nextHideScheduledControl.hidden = !supportsNextFanout;
+    }
     if (expandProjects) {
       expandProjects.hidden = !supportsExpandProjects;
     }
@@ -438,6 +457,7 @@ export class UIController {
 
     const hasActions =
       Boolean(nextProjectFanoutControl && !nextProjectFanoutControl.hidden) ||
+      Boolean(nextHideScheduledControl && !nextHideScheduledControl.hidden) ||
       Boolean(clearFilters && !clearFilters.hidden) ||
       Boolean(expandProjects && !expandProjects.hidden);
 
@@ -502,7 +522,11 @@ export class UIController {
     const summary = this.summaryCache || this.taskManager.getSummary();
     if (panel === "my-day") {
       const myDayTasks = this.getMyDayTasks({ applyFilters: false });
-      return `${myDayTasks.length} selected today`;
+      const pastScheduled = this.getPastScheduledIncompleteTasks({ applyFilters: false }).length;
+      if (!pastScheduled) {
+        return `${myDayTasks.length} selected today`;
+      }
+      return `${myDayTasks.length} today • ${pastScheduled} past scheduled`;
     }
     if (panel === "projects") {
       return `${summary.projects} active projects`;
@@ -687,6 +711,7 @@ export class UIController {
     if (summarySettings) {
       const settingsTotal =
         THEME_OPTIONS.length +
+        this.taskManager.getCustomThemePalettes().length +
         this.taskManager.getContexts().length +
         this.taskManager.getPeopleTags().length +
         this.taskManager.getAreasOfFocus().length +
@@ -882,17 +907,44 @@ export class UIController {
     const container = this.elements.myDayList;
     if (!container) return;
     const tasks = this.getMyDayTasks({ applyFilters: false });
+    const pastScheduledTasks = this.getPastScheduledIncompleteTasks({ applyFilters: false });
     container.innerHTML = "";
-    if (!tasks.length) {
+    if (!tasks.length && !pastScheduledTasks.length) {
       const empty = document.createElement("div");
       empty.className = "muted small-text";
       empty.textContent = "No tasks in My Day yet. Use Add to My Day on any task.";
       container.append(empty);
       return;
     }
-    tasks.forEach((task) => {
-      container.append(this.createTaskCard(task));
-    });
+    if (tasks.length) {
+      tasks.forEach((task) => {
+        container.append(this.createTaskCard(task));
+      });
+    } else {
+      const emptyToday = document.createElement("p");
+      emptyToday.className = "muted small-text";
+      emptyToday.textContent = "No tasks selected for today.";
+      container.append(emptyToday);
+    }
+
+    if (pastScheduledTasks.length) {
+      const section = document.createElement("section");
+      section.className = "my-day-past-section";
+
+      const title = document.createElement("h3");
+      title.className = "my-day-past-title";
+      title.textContent = "Past scheduled tasks";
+
+      const note = document.createElement("p");
+      note.className = "my-day-past-note muted small-text";
+      note.textContent = "Incomplete tasks scheduled before today. Choose what to do next.";
+
+      section.append(title, note);
+      pastScheduledTasks.forEach((task) => {
+        section.append(this.createMyDayPastScheduledItem(task));
+      });
+      container.append(section);
+    }
   }
 
   getMyDayTasks({ applyFilters = true } = {}) {
@@ -906,8 +958,106 @@ export class UIController {
       .filter((task) => task.myDayDate === todayKey);
   }
 
+  getPastScheduledIncompleteTasks({ applyFilters = true } = {}) {
+    const filters = applyFilters ? this.buildTaskFilters() : {};
+    const todayKey = this.getTodayDateKey();
+    return this.taskManager
+      .getTasks({
+        ...filters,
+        includeCompleted: false,
+      })
+      .filter((task) => this.isTaskScheduledInPast(task, todayKey))
+      .sort((a, b) => {
+        const dateA = a.calendarDate || "";
+        const dateB = b.calendarDate || "";
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+        return (a.title || "").localeCompare(b.title || "");
+      });
+  }
+
+  isTaskScheduledInPast(task, todayKey = this.getTodayDateKey()) {
+    if (!task?.calendarDate) return false;
+    return task.calendarDate < todayKey;
+  }
+
   isTaskInMyDay(task) {
     return Boolean(task?.myDayDate && task.myDayDate === this.getTodayDateKey());
+  }
+
+  createMyDayPastScheduledItem(task) {
+    const item = document.createElement("article");
+    item.className = "my-day-past-item";
+    item.append(this.createTaskCard(task));
+
+    const actions = document.createElement("div");
+    actions.className = "my-day-past-actions";
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "btn btn-light btn-small";
+    addButton.textContent = "Add to My Day";
+    addButton.addEventListener("click", () => {
+      this.addPastScheduledTaskToMyDay(task);
+    });
+
+    const rescheduleButton = document.createElement("button");
+    rescheduleButton.type = "button";
+    rescheduleButton.className = "btn btn-light btn-small";
+    rescheduleButton.textContent = "Re-schedule";
+    rescheduleButton.addEventListener("click", () => {
+      this.promptRescheduleTask(task);
+    });
+
+    const unscheduleButton = document.createElement("button");
+    unscheduleButton.type = "button";
+    unscheduleButton.className = "btn btn-danger btn-small";
+    unscheduleButton.textContent = "Unschedule";
+    unscheduleButton.addEventListener("click", () => {
+      this.unscheduleTask(task);
+    });
+
+    actions.append(addButton, rescheduleButton, unscheduleButton);
+    item.append(actions);
+    return item;
+  }
+
+  addPastScheduledTaskToMyDay(task) {
+    if (!task?.id) return;
+    const todayKey = this.getTodayDateKey();
+    const updated = this.taskManager.updateTask(task.id, {
+      myDayDate: todayKey,
+      calendarDate: todayKey,
+    });
+    if (!updated) return;
+    this.taskManager.notify("info", `Added "${task.title}" to My Day and scheduled it for today.`);
+  }
+
+  promptRescheduleTask(task) {
+    if (!task?.id) return;
+    const fallbackDate = task.calendarDate || this.getTodayDateKey();
+    const candidate = window.prompt(`Re-schedule "${task.title}" to (YYYY-MM-DD):`, fallbackDate);
+    if (candidate === null) return;
+    const nextDate = candidate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      this.taskManager.notify("warn", "Enter a date in YYYY-MM-DD format.");
+      return;
+    }
+    const updated = this.taskManager.updateTask(task.id, { calendarDate: nextDate });
+    if (!updated) return;
+    this.taskManager.notify("info", `Re-scheduled "${task.title}" for ${formatFriendlyDate(nextDate)}.`);
+  }
+
+  unscheduleTask(task) {
+    if (!task?.id) return;
+    const updated = this.taskManager.updateTask(task.id, {
+      myDayDate: null,
+      calendarDate: null,
+      calendarTime: null,
+    });
+    if (!updated) return;
+    this.taskManager.notify("info", `Removed schedule from "${task.title}".`);
   }
 
   toggleTaskMyDay(task) {
@@ -934,7 +1084,7 @@ export class UIController {
     const allNextTasks = this.taskManager.getTasks({
       ...this.buildTaskFilters(),
       status: STATUS.NEXT,
-      includeFutureScheduled: false,
+      includeFutureScheduled: !this.hideScheduledNextActions,
     });
     const tasks = this.allowMultipleNextPerProject ? allNextTasks : this.filterNextTasksByProject(allNextTasks);
     const board = this.elements.contextBoard;
@@ -2355,6 +2505,7 @@ export class UIController {
     container.innerHTML = "";
     const activeTheme = this.taskManager.getTheme();
     const customTheme = this.taskManager.getCustomTheme();
+    const customPalettes = this.taskManager.getCustomThemePalettes();
     THEME_OPTIONS.forEach((theme) => {
       const item = document.createElement("li");
       item.className = "settings-item settings-theme-option";
@@ -2463,7 +2614,113 @@ export class UIController {
           colorField.append(fieldText, colorInput, hexInput);
           controls.append(colorField);
         });
+        const paletteManager = document.createElement("section");
+        paletteManager.className = "settings-theme-palette-manager";
+        const paletteSaveRow = document.createElement("div");
+        paletteSaveRow.className = "settings-theme-palette-save-row";
+        const paletteNameInput = document.createElement("input");
+        paletteNameInput.type = "text";
+        paletteNameInput.className = "settings-theme-palette-name";
+        paletteNameInput.placeholder = "Palette name";
+        paletteNameInput.maxLength = 40;
+        paletteNameInput.value = this.customPaletteDraftName;
+        paletteNameInput.addEventListener("input", () => {
+          this.customPaletteDraftName = paletteNameInput.value;
+        });
+
+        const savePaletteButton = document.createElement("button");
+        savePaletteButton.type = "button";
+        savePaletteButton.className = "btn btn-light btn-small";
+        savePaletteButton.textContent = "Save Palette";
+        const handlePaletteSave = () => {
+          const draftName = this.customPaletteDraftName;
+          this.customPaletteDraftName = "";
+          const saved = this.taskManager.saveCustomThemePalette(draftName);
+          if (!saved) {
+            this.customPaletteDraftName = draftName;
+          }
+          if (paletteNameInput.isConnected) {
+            paletteNameInput.value = this.customPaletteDraftName;
+          }
+        };
+        savePaletteButton.addEventListener("click", handlePaletteSave);
+        paletteNameInput.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          handlePaletteSave();
+        });
+        paletteSaveRow.append(paletteNameInput, savePaletteButton);
+
+        const paletteMeta = document.createElement("p");
+        paletteMeta.className = "settings-theme-palette-meta muted small-text";
+        const paletteCount = customPalettes.length;
+        paletteMeta.textContent = `${paletteCount} saved palette${paletteCount === 1 ? "" : "s"}`;
+
+        const paletteList = document.createElement("ul");
+        paletteList.className = "settings-list settings-theme-palette-list";
+        paletteList.setAttribute("role", "list");
+        if (!customPalettes.length) {
+          const empty = document.createElement("li");
+          empty.className = "muted small-text";
+          empty.textContent = "No saved palettes yet.";
+          paletteList.append(empty);
+        } else {
+          customPalettes.forEach((palette) => {
+            const paletteItem = document.createElement("li");
+            paletteItem.className = "settings-item settings-theme-palette-item";
+
+            const main = document.createElement("div");
+            main.className = "settings-item-main";
+            const labelWrap = document.createElement("div");
+            labelWrap.className = "settings-item-label";
+            const label = document.createElement("span");
+            label.textContent = palette.name;
+            const detail = document.createElement("span");
+            detail.className = "settings-item-meta muted small-text";
+            detail.textContent = palette.updatedAt
+              ? `Updated ${formatFriendlyDate(palette.updatedAt)}`
+              : "Saved palette";
+            labelWrap.append(label, detail);
+
+            const actions = document.createElement("div");
+            actions.className = "settings-item-actions";
+            const applyButton = document.createElement("button");
+            applyButton.type = "button";
+            applyButton.className = "btn btn-light btn-small";
+            applyButton.textContent = "Apply";
+            applyButton.addEventListener("click", () => {
+              this.taskManager.applyCustomThemePalette(palette.id);
+            });
+
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "btn btn-danger btn-small";
+            deleteButton.textContent = "Delete";
+            deleteButton.addEventListener("click", () => {
+              const confirmed = window.confirm(`Delete palette "${palette.name}"?`);
+              if (!confirmed) return;
+              this.taskManager.deleteCustomThemePalette(palette.id);
+            });
+
+            actions.append(applyButton, deleteButton);
+            main.append(labelWrap, actions);
+
+            const swatchesRow = document.createElement("div");
+            swatchesRow.className = "settings-theme-swatches";
+            [palette.customTheme.canvas, palette.customTheme.accent, palette.customTheme.signal].forEach((color) => {
+              const swatch = document.createElement("span");
+              swatch.className = "settings-theme-swatch";
+              swatch.style.setProperty("--swatch-color", color);
+              swatchesRow.append(swatch);
+            });
+            paletteItem.append(main, swatchesRow);
+            paletteList.append(paletteItem);
+          });
+        }
+
+        paletteManager.append(paletteSaveRow, paletteMeta, paletteList);
         item.append(controls);
+        item.append(paletteManager);
       }
       container.append(item);
     });
@@ -3078,7 +3335,7 @@ export class UIController {
       ...filters,
       status: STATUS.NEXT,
       includeCompleted: false,
-      includeFutureScheduled: false,
+      includeFutureScheduled: !this.hideScheduledNextActions,
     });
     if (!tasks.length) {
       this.taskManager.notify("warn", contextValue === "all" ? "No next actions available." : `No next actions found for ${contextValue}.`);
@@ -5481,6 +5738,7 @@ function mapElements() {
     toolbarActionsTitle: byId("toolbarActionsTitle"),
     toolbarActionsNote: byId("toolbarActionsNote"),
     nextProjectFanoutControl: byId("nextProjectFanoutControl"),
+    nextHideScheduledControl: byId("nextHideScheduledControl"),
     contextFilterPicker: byId("contextFilterPicker"),
     contextFilterToggle: byId("contextFilterToggle"),
     contextFilterOptions: byId("contextFilterOptions"),
@@ -5600,6 +5858,7 @@ function mapElements() {
     randomContext: byId("randomContext"),
     pickRandomTask: byId("pickRandomTask"),
     toggleNextProjectFanout: document.getElementById("toggleNextProjectFanout"),
+    toggleHideScheduledNext: document.getElementById("toggleHideScheduledNext"),
     clarifyModal: document.getElementById("clarifyModal"),
     clarifyBackdrop: document.querySelector("#clarifyModal .modal-backdrop"),
     closeClarifyModal: byId("closeClarifyModal"),
@@ -5721,6 +5980,24 @@ function loadNextFanoutPreference() {
 function storeNextFanoutPreference(value) {
   try {
     localStorage.setItem(NEXT_FANOUT_KEY, String(Boolean(value)));
+  } catch (error) {
+    /* noop */
+  }
+}
+
+function loadNextHideScheduledPreference() {
+  try {
+    const stored = localStorage.getItem(NEXT_HIDE_SCHEDULED_KEY);
+    if (stored === null) return true;
+    return stored === "true";
+  } catch (error) {
+    return true;
+  }
+}
+
+function storeNextHideScheduledPreference(value) {
+  try {
+    localStorage.setItem(NEXT_HIDE_SCHEDULED_KEY, String(Boolean(value)));
   } catch (error) {
     /* noop */
   }

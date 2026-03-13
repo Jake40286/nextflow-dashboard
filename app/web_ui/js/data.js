@@ -103,6 +103,8 @@ const DEFAULT_CUSTOM_THEME = Object.freeze({
   accent: "#0f766e",
   signal: "#b45309",
 });
+const CUSTOM_THEME_PALETTE_DEFAULT_NAME = "Custom Palette";
+const CUSTOM_THEME_PALETTE_NAME_MAX = 40;
 const DEFAULT_FEATURE_FLAGS = Object.freeze({
   showFiltersCard: true,
 });
@@ -147,6 +149,7 @@ const EMPTY_STATE = {
 const defaultSettings = (projects = [], completedProjects = []) => ({
   theme: DEFAULT_THEME,
   customTheme: { ...DEFAULT_CUSTOM_THEME },
+  customThemePalettes: [],
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
 });
@@ -193,6 +196,7 @@ function hydrateState(raw = {}) {
   nextState.settings = {
     theme: normalizeTheme(nextState.settings?.theme),
     customTheme: normalizeCustomTheme(nextState.settings?.customTheme),
+    customThemePalettes: normalizeCustomThemePalettes(nextState.settings?.customThemePalettes),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
       nextState.projects,
@@ -933,12 +937,14 @@ export class TaskManager extends EventTarget {
   refreshFromStorage() {
     const previousTheme = this.getTheme();
     const previousCustomTheme = this.getCustomTheme();
+    const previousCustomThemePalettes = this.getCustomThemePalettes();
     const previousFeatureFlags = this.getFeatureFlags();
     this.load();
     if (!this.state.settings) {
       this.state.settings = {
         theme: previousTheme,
         customTheme: { ...previousCustomTheme },
+        customThemePalettes: [...previousCustomThemePalettes],
         areaOptions: normalizeAreaOptions(undefined, this.state.projects, this.state.completedProjects),
         featureFlags: normalizeFeatureFlags(undefined, previousFeatureFlags),
       };
@@ -947,6 +953,10 @@ export class TaskManager extends EventTarget {
       this.state.settings.customTheme = normalizeCustomTheme(
         this.state.settings.customTheme,
         previousCustomTheme
+      );
+      this.state.settings.customThemePalettes = normalizeCustomThemePalettes(
+        this.state.settings.customThemePalettes,
+        previousCustomThemePalettes
       );
       this.state.settings.areaOptions = normalizeAreaOptions(
         this.state.settings.areaOptions,
@@ -965,10 +975,12 @@ export class TaskManager extends EventTarget {
   resetToDefaults() {
     const theme = this.getTheme();
     const customTheme = this.getCustomTheme();
+    const customThemePalettes = this.getCustomThemePalettes();
     const featureFlags = this.getFeatureFlags();
     this.state = defaultState();
     this.state.settings.theme = theme;
     this.state.settings.customTheme = { ...customTheme };
+    this.state.settings.customThemePalettes = [...customThemePalettes];
     this.state.settings.featureFlags = { ...featureFlags };
     this.state.tasks = this.state.tasks.map((task) => normalizeTask(task));
     this.state.projects = this.state.projects.map((project) => normalizeProjectTags(project));
@@ -1398,12 +1410,7 @@ export class TaskManager extends EventTarget {
       PROJECT_AREAS[0];
     let changed = false;
     if (!this.state.settings) {
-      this.state.settings = {
-        theme: DEFAULT_THEME,
-        customTheme: { ...DEFAULT_CUSTOM_THEME },
-        areaOptions: [...PROJECT_AREAS],
-        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
-      };
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
     }
     if (Array.isArray(this.state.settings.areaOptions)) {
       const before = this.state.settings.areaOptions.length;
@@ -1669,12 +1676,7 @@ export class TaskManager extends EventTarget {
 
   updateTheme(theme) {
     if (!this.state.settings) {
-      this.state.settings = {
-        theme: DEFAULT_THEME,
-        customTheme: { ...DEFAULT_CUSTOM_THEME },
-        areaOptions: [...PROJECT_AREAS],
-        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
-      };
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
     }
     const normalized = normalizeTheme(theme);
     if (this.state.settings.theme === normalized) {
@@ -1686,12 +1688,7 @@ export class TaskManager extends EventTarget {
 
   updateCustomTheme(nextCustomTheme = {}) {
     if (!this.state.settings) {
-      this.state.settings = {
-        theme: DEFAULT_THEME,
-        customTheme: { ...DEFAULT_CUSTOM_THEME },
-        areaOptions: [...PROJECT_AREAS],
-        featureFlags: { ...DEFAULT_FEATURE_FLAGS },
-      };
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
     }
     const current = normalizeCustomTheme(this.state.settings.customTheme);
     const next = normalizeCustomTheme(
@@ -1711,6 +1708,99 @@ export class TaskManager extends EventTarget {
     this.state.settings.customTheme = next;
     this.emitChange();
     return next;
+  }
+
+  saveCustomThemePalette(name, paletteTheme) {
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentTheme = normalizeCustomTheme(this.state.settings.customTheme);
+    const nextTheme = normalizeCustomTheme(paletteTheme, currentTheme);
+    const currentPalettes = normalizeCustomThemePalettes(this.state.settings.customThemePalettes);
+    const requestedName = normalizeCustomThemePaletteName(name);
+    const resolvedName = requestedName || nextCustomThemePaletteName(currentPalettes);
+    const existingIndex = currentPalettes.findIndex(
+      (entry) => entry.name.toLowerCase() === resolvedName.toLowerCase()
+    );
+    const timestamp = nowIso();
+    if (existingIndex !== -1) {
+      const existing = currentPalettes[existingIndex];
+      const unchanged =
+        existing.customTheme.canvas === nextTheme.canvas &&
+        existing.customTheme.accent === nextTheme.accent &&
+        existing.customTheme.signal === nextTheme.signal;
+      if (unchanged) {
+        return existing;
+      }
+      currentPalettes[existingIndex] = {
+        ...existing,
+        name: resolvedName,
+        customTheme: { ...nextTheme },
+        updatedAt: timestamp,
+      };
+      this.state.settings.customThemePalettes = currentPalettes;
+      this.emitChange();
+      this.notify("info", `Updated palette "${resolvedName}".`);
+      return currentPalettes[existingIndex];
+    }
+    const palette = {
+      id: generateId("palette"),
+      name: resolvedName,
+      customTheme: { ...nextTheme },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    this.state.settings.customThemePalettes = [palette, ...currentPalettes];
+    this.emitChange();
+    this.notify("info", `Saved palette "${resolvedName}".`);
+    return palette;
+  }
+
+  applyCustomThemePalette(id) {
+    const paletteId = typeof id === "string" ? id.trim() : "";
+    if (!paletteId) return null;
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentPalettes = normalizeCustomThemePalettes(this.state.settings.customThemePalettes);
+    const palette = currentPalettes.find((entry) => entry.id === paletteId);
+    if (!palette) {
+      this.notify("error", "Palette not found.");
+      return null;
+    }
+    const currentTheme = normalizeCustomTheme(this.state.settings.customTheme);
+    const nextTheme = normalizeCustomTheme(palette.customTheme, currentTheme);
+    const colorsChanged =
+      currentTheme.canvas !== nextTheme.canvas ||
+      currentTheme.accent !== nextTheme.accent ||
+      currentTheme.signal !== nextTheme.signal;
+    const themeChanged = normalizeTheme(this.state.settings.theme) !== "custom";
+    if (!colorsChanged && !themeChanged) {
+      return palette;
+    }
+    this.state.settings.customTheme = nextTheme;
+    this.state.settings.theme = "custom";
+    this.emitChange();
+    this.notify("info", `Applied palette "${palette.name}".`);
+    return palette;
+  }
+
+  deleteCustomThemePalette(id) {
+    const paletteId = typeof id === "string" ? id.trim() : "";
+    if (!paletteId) return false;
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentPalettes = normalizeCustomThemePalettes(this.state.settings.customThemePalettes);
+    const index = currentPalettes.findIndex((entry) => entry.id === paletteId);
+    if (index === -1) {
+      return false;
+    }
+    const [removed] = currentPalettes.splice(index, 1);
+    this.state.settings.customThemePalettes = currentPalettes;
+    this.emitChange();
+    this.notify("info", `Deleted palette "${removed.name}".`);
+    return true;
   }
 
   updateFeatureFlag(flag, enabled) {
@@ -1740,6 +1830,10 @@ export class TaskManager extends EventTarget {
 
   getCustomTheme() {
     return normalizeCustomTheme(this.state.settings?.customTheme);
+  }
+
+  getCustomThemePalettes() {
+    return normalizeCustomThemePalettes(this.state.settings?.customThemePalettes);
   }
 
   getFeatureFlags() {
@@ -1782,6 +1876,70 @@ function normalizeCustomTheme(customTheme, fallbackTheme = DEFAULT_CUSTOM_THEME)
     accent: normalizeThemeColor(customTheme?.accent, fallback.accent),
     signal: normalizeThemeColor(customTheme?.signal, fallback.signal),
   };
+}
+
+function normalizeCustomThemePaletteName(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return "";
+  return normalized.slice(0, CUSTOM_THEME_PALETTE_NAME_MAX);
+}
+
+function nextCustomThemePaletteName(existingPalettes = []) {
+  const existing = new Set(
+    (Array.isArray(existingPalettes) ? existingPalettes : [])
+      .map((entry) => (typeof entry?.name === "string" ? entry.name.trim().toLowerCase() : ""))
+      .filter(Boolean)
+  );
+  let index = existing.size + 1;
+  let candidate = `${CUSTOM_THEME_PALETTE_DEFAULT_NAME} ${index}`;
+  while (existing.has(candidate.toLowerCase())) {
+    index += 1;
+    candidate = `${CUSTOM_THEME_PALETTE_DEFAULT_NAME} ${index}`;
+  }
+  return candidate;
+}
+
+function normalizeCustomThemePalette(palette) {
+  if (!palette || typeof palette !== "object") return null;
+  const name = normalizeCustomThemePaletteName(palette.name);
+  if (!name) return null;
+  const id = typeof palette.id === "string" ? palette.id.trim() : "";
+  const customTheme = normalizeCustomTheme(palette.customTheme || palette.colors);
+  const createdAt = sanitizeIsoTimestamp(palette.createdAt) || nowIso();
+  const updatedAt = sanitizeIsoTimestamp(palette.updatedAt) || createdAt;
+  return {
+    id,
+    name,
+    customTheme,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeCustomThemePalettes(palettes, fallbackPalettes = []) {
+  const source = Array.isArray(palettes) ? palettes : fallbackPalettes;
+  const normalized = [];
+  const seenIds = new Set();
+  (Array.isArray(source) ? source : []).forEach((palette, index) => {
+    const next = normalizeCustomThemePalette(palette);
+    if (!next) return;
+    if (!next.id) {
+      next.id = `palette-${normalizeSlug(null, `${next.name}-${index + 1}`)}`;
+    }
+    if (seenIds.has(next.id)) {
+      next.id = `palette-${normalizeSlug(
+        null,
+        `${next.name}-${index + 1}-${next.updatedAt || next.createdAt || nowIso()}`
+      )}`;
+    }
+    if (seenIds.has(next.id)) {
+      next.id = generateId("palette");
+    }
+    seenIds.add(next.id);
+    normalized.push(next);
+  });
+  return normalized;
 }
 
 function normalizeFeatureFlags(featureFlags, fallbackFlags = DEFAULT_FEATURE_FLAGS) {

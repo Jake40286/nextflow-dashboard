@@ -32,7 +32,11 @@ function createManager(initialState = {}) {
         accent: "#0f766e",
         signal: "#b45309",
       },
+      customThemePalettes: [],
       areaOptions: ["Work", "Personal", "Home", "Finance", "Health"],
+      featureFlags: {
+        showFiltersCard: true,
+      },
     },
     ...initialState,
   };
@@ -290,6 +294,65 @@ test("custom theme stores three user colors and ignores invalid updates", () => 
     accent: "#336699",
     signal: "#ff8800",
   });
+});
+
+test("custom theme palettes can be saved, applied, and deleted", () => {
+  const manager = createManager();
+  manager.updateCustomTheme({
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
+
+  const saved = manager.saveCustomThemePalette("Focus");
+  assert.ok(saved, "palette should be saved");
+  assert.equal(saved.name, "Focus");
+  assert.deepEqual(saved.customTheme, {
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
+
+  manager.updateCustomTheme({
+    canvas: "#000000",
+    accent: "#111111",
+    signal: "#222222",
+  });
+  const applied = manager.applyCustomThemePalette(saved.id);
+  assert.ok(applied, "palette should apply");
+  assert.equal(manager.getTheme(), "custom");
+  assert.deepEqual(manager.getCustomTheme(), {
+    canvas: "#112233",
+    accent: "#336699",
+    signal: "#ff8800",
+  });
+
+  const deleted = manager.deleteCustomThemePalette(saved.id);
+  assert.equal(deleted, true);
+  assert.equal(manager.getCustomThemePalettes().length, 0);
+});
+
+test("saving palettes with blank and duplicate names is handled safely", () => {
+  const manager = createManager();
+  const first = manager.saveCustomThemePalette("");
+  const second = manager.saveCustomThemePalette("");
+  assert.equal(first.name, "Custom Palette 1");
+  assert.equal(second.name, "Custom Palette 2");
+
+  manager.updateCustomTheme({
+    canvas: "#abcdef",
+    accent: "#456789",
+    signal: "#123456",
+  });
+  const updated = manager.saveCustomThemePalette("custom palette 1");
+  assert.equal(updated.id, first.id);
+  assert.equal(updated.name, "custom palette 1");
+  assert.deepEqual(updated.customTheme, {
+    canvas: "#abcdef",
+    accent: "#456789",
+    signal: "#123456",
+  });
+  assert.equal(manager.getCustomThemePalettes().length, 2);
 });
 
 test("my day date is normalized and persisted through completion restore", () => {

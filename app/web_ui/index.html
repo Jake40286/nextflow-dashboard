@@ -58,6 +58,41 @@
 
     <div class="alerts" role="status" aria-live="assertive"></div>
 
+    <div id="associationFlyout" class="association-flyout" aria-label="Association filters">
+      <button
+        id="associationFlyoutToggle"
+        class="association-flyout-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="associationFlyoutPanel"
+        aria-label="Show association filters"
+      >
+        <span id="associationFlyoutToggleGlyph" aria-hidden="true">▸</span>
+      </button>
+      <aside id="associationFlyoutPanel" class="association-flyout-panel" aria-labelledby="associationFlyoutTitle">
+        <header class="association-flyout-header">
+          <h2 id="associationFlyoutTitle">Association Filters</h2>
+          <p class="muted small-text">Within a category selections use OR. Between categories they use AND.</p>
+          <p id="associationFlyoutSummary" class="association-flyout-summary small-text">All tasks</p>
+        </header>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutPeopleLabel">
+          <h3 id="associationFlyoutPeopleLabel">People</h3>
+          <div id="associationPeopleOptions" class="association-flyout-options"></div>
+        </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutContextLabel">
+          <h3 id="associationFlyoutContextLabel">Contexts</h3>
+          <div id="associationContextOptions" class="association-flyout-options"></div>
+        </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutProjectLabel">
+          <h3 id="associationFlyoutProjectLabel">Projects</h3>
+          <div id="associationProjectOptions" class="association-flyout-options"></div>
+        </section>
+        <div class="association-flyout-actions">
+          <button id="associationFlyoutClear" class="btn btn-light btn-small" type="button">Clear association filters</button>
+        </div>
+      </aside>
+    </div>
+
     <main class="layout" id="dashboardLayout">
       <aside class="sidebar" aria-label="Summary and filters">
         <section class="card summary-card" aria-labelledby="summaryHeading">

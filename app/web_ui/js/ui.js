@@ -115,6 +115,7 @@ export class UIController {
     this.contextMenuHandlersBound = false;
     this.handleTaskMenuDismiss = null;
     this.handleTaskMenuEscape = null;
+    this.associationFlyoutOpen = false;
     this.noteContextMenuState = null;
     this.noteContextMenuHandlersBound = false;
     this.handleNoteMenuDismiss = null;
@@ -138,6 +139,7 @@ export class UIController {
     this.bindListeners();
     this.setupEntityMentionAutocomplete();
     this.setupSummaryTabs();
+    this.setupAssociationFlyout();
     this.setupTaskContextMenu();
     this.setupTaskNoteContextMenu();
     this.setupCalendarDayContextMenu();
@@ -592,12 +594,14 @@ export class UIController {
   renderAll() {
     this.draggingTaskId = null;
     this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
     this.closeCalendarDayContextMenu();
     this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     this.updateSuggestionLists();
     this.renderSummary();
     this.renderFilters();
+    this.renderAssociationFlyout();
     this.renderInbox();
     this.renderMyDay();
     this.renderNextActions();
@@ -881,6 +885,238 @@ export class UIController {
       return;
     }
     toggle.textContent = `${selections.length} selected`;
+  }
+
+  setupAssociationFlyout() {
+    const toggle = this.elements.associationFlyoutToggle;
+    const panel = this.elements.associationFlyoutPanel;
+    if (!toggle || !panel) return;
+
+    toggle.addEventListener("click", () => {
+      this.associationFlyoutOpen = !this.associationFlyoutOpen;
+      this.applyAssociationFlyoutState();
+    });
+
+    panel.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("input[data-association-filter-key][data-association-filter-value]");
+      if (!checkbox) return;
+      const key = checkbox.dataset.associationFilterKey;
+      const value = checkbox.dataset.associationFilterValue;
+      if (!key || value === undefined) return;
+      this.updateFilterSelection(key, value, checkbox.checked);
+      if (this.hasAssociationSelections() && this.activePanel !== "all-active") {
+        this.setActivePanel("all-active", { focus: false });
+      }
+      this.renderAll();
+    });
+
+    this.elements.associationFlyoutClear?.addEventListener("click", () => {
+      this.filters.context = ["all"];
+      this.filters.project = ["all"];
+      this.filters.person = ["all"];
+      this.renderAll();
+    });
+
+    this.applyAssociationFlyoutState();
+  }
+
+  applyAssociationFlyoutState() {
+    const wrapper = this.elements.associationFlyout;
+    const toggle = this.elements.associationFlyoutToggle;
+    const glyph = this.elements.associationFlyoutToggleGlyph;
+    if (!wrapper || !toggle) return;
+    wrapper.classList.toggle("is-open", this.associationFlyoutOpen);
+    toggle.setAttribute("aria-expanded", this.associationFlyoutOpen ? "true" : "false");
+    toggle.setAttribute(
+      "aria-label",
+      this.associationFlyoutOpen ? "Hide association filters" : "Show association filters"
+    );
+    if (glyph) {
+      glyph.textContent = this.associationFlyoutOpen ? "◂" : "▸";
+    }
+  }
+
+  hasAssociationSelections() {
+    return ["person", "context", "project"].some((key) => {
+      const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
+      return selections.length > 0 && !selections.includes("all");
+    });
+  }
+
+  getFilterSelections(key) {
+    const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
+    return selections.filter((value) => value && value !== "all");
+  }
+
+  formatAssociationExpression() {
+    const clauses = [];
+    const people = this.getFilterSelections("person");
+    if (people.length) {
+      clauses.push(`(${people.join(" OR ")})`);
+    }
+    const contexts = this.getFilterSelections("context");
+    if (contexts.length) {
+      clauses.push(`(${contexts.join(" OR ")})`);
+    }
+    const projects = this.getFilterSelections("project").map((projectId) => {
+      return this.projectLookup.get(projectId)?.name || "Unknown project";
+    });
+    if (projects.length) {
+      clauses.push(`(${projects.join(" OR ")})`);
+    }
+    if (!clauses.length) {
+      return "All tasks";
+    }
+    return clauses.join(" AND ");
+  }
+
+  renderAssociationFlyout() {
+    const contextContainer = this.elements.associationContextOptions;
+    const peopleContainer = this.elements.associationPeopleOptions;
+    const projectContainer = this.elements.associationProjectOptions;
+    if (!contextContainer || !peopleContainer || !projectContainer) return;
+
+    const contexts = this.taskManager
+      .getContexts()
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value }));
+    const people = this.taskManager
+      .getPeopleTags()
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value }));
+    const projects = (this.projectCache || [])
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((project) => ({
+        value: project.id,
+        label: project.name + (project.someday ? " (Someday)" : ""),
+      }));
+
+    this.renderAssociationFlyoutGroup("person", peopleContainer, people, "No people tags yet.");
+    this.renderAssociationFlyoutGroup("context", contextContainer, contexts, "No contexts yet.");
+    this.renderAssociationFlyoutGroup("project", projectContainer, projects, "No projects yet.");
+
+    if (this.elements.associationFlyoutSummary) {
+      this.elements.associationFlyoutSummary.textContent = this.formatAssociationExpression();
+    }
+    this.applyAssociationFlyoutState();
+  }
+
+  renderAssociationFlyoutGroup(key, container, options, emptyMessage) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!options.length) {
+      const empty = document.createElement("p");
+      empty.className = "association-flyout-empty";
+      empty.textContent = emptyMessage;
+      container.append(empty);
+      return;
+    }
+    options.forEach((option, index) => {
+      const idSafe = option.value.toString().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "option";
+      const id = `association-${key}-${idSafe}-${index}`;
+      const label = document.createElement("label");
+      label.setAttribute("for", id);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = id;
+      checkbox.value = option.value;
+      checkbox.dataset.associationFilterKey = key;
+      checkbox.dataset.associationFilterValue = option.value;
+      checkbox.checked = this.isFilterValueSelected(key, option.value);
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      container.append(label);
+    });
+  }
+
+  extractEntityMentionTokens(rawText) {
+    const source = typeof rawText === "string" ? rawText : "";
+    if (!source) return [];
+    const matches = [];
+    const tokenRegex = /(?:^|[\s([{,;])([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
+    let match = tokenRegex.exec(source);
+    while (match) {
+      matches.push(match[1]);
+      match = tokenRegex.exec(source);
+    }
+    const seen = new Set();
+    return matches.filter((token) => {
+      const key = token.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  formatProjectNameFromMentionToken(token) {
+    if (typeof token !== "string" || !token.startsWith("#")) return "";
+    const raw = token.slice(1).replace(/[_-]+/g, " ").trim();
+    if (!raw) return "";
+    return raw.replace(/\s+/g, " ");
+  }
+
+  ensureMentionedEntitiesExist(rawText) {
+    const tokens = this.extractEntityMentionTokens(rawText);
+    if (!tokens.length) return;
+
+    const contextSet = new Set(this.taskManager.getContexts().map((value) => value.toLowerCase()));
+    const peopleSet = new Set(
+      this.taskManager.getPeopleTags({ includeNoteMentions: false }).map((value) => value.toLowerCase())
+    );
+    let addedContexts = 0;
+    let addedPeople = 0;
+
+    tokens.forEach((token) => {
+      if (token.startsWith("+")) {
+        const key = token.toLowerCase();
+        if (peopleSet.has(key)) return;
+        const confirmed = window.confirm(`Create people tag "${token}" from this note mention?`);
+        if (!confirmed) return;
+        const added = this.taskManager.addPeopleTagOption(token, { notify: false });
+        if (!added) return;
+        peopleSet.add(added.toLowerCase());
+        addedPeople += 1;
+        return;
+      }
+
+      if (token.startsWith("@")) {
+        const key = token.toLowerCase();
+        if (contextSet.has(key)) return;
+        const confirmed = window.confirm(`Create context "${token}" from this note mention?`);
+        if (!confirmed) return;
+        const added = this.taskManager.addContextOption(token, { notify: false });
+        if (!added) return;
+        contextSet.add(added.toLowerCase());
+        addedContexts += 1;
+        return;
+      }
+
+      if (token.startsWith("#")) {
+        const key = this.normalizeProjectTagKey(token.slice(1));
+        if (!key) return;
+        if (this.findProjectByTagKey(key)) return;
+        const suggestedName = this.formatProjectNameFromMentionToken(token);
+        if (!suggestedName) return;
+        const confirmed = window.confirm(`Create project "${suggestedName}" from note mention "${token}"?`);
+        if (!confirmed) return;
+        this.taskManager.addProject(suggestedName);
+      }
+    });
+
+    const messages = [];
+    if (addedPeople) {
+      messages.push(`added ${addedPeople} people tag${addedPeople === 1 ? "" : "s"}`);
+    }
+    if (addedContexts) {
+      messages.push(`added ${addedContexts} context${addedContexts === 1 ? "" : "s"}`);
+    }
+    if (messages.length) {
+      this.taskManager.notify("info", `Mention sync: ${messages.join(" and ")}.`);
+    }
   }
 
   buildTaskFilters(overrides = {}) {
@@ -3620,6 +3856,7 @@ export class UIController {
           ? this.taskManager.updateCompletedTaskNote(context.archiveEntryId, context.note.id, trimmed)
           : this.taskManager.updateTaskNote(context.taskId, context.note.id, trimmed);
         if (updated) {
+          this.ensureMentionedEntitiesExist(trimmed);
           this.taskManager.notify("info", "Note updated.");
         }
         return;
@@ -4882,10 +5119,12 @@ export class UIController {
     form.append(input, actions);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      const noteText = input.value;
       const added = archiveEntryId
-        ? this.taskManager.addCompletedTaskNote(archiveEntryId, input.value)
-        : this.taskManager.addTaskNote(task.id, input.value);
+        ? this.taskManager.addCompletedTaskNote(archiveEntryId, noteText)
+        : this.taskManager.addTaskNote(task.id, noteText);
       if (!added) return;
+      this.ensureMentionedEntitiesExist(noteText);
       input.value = "";
       input.focus();
     });
@@ -6284,6 +6523,15 @@ function mapElements() {
   const byId = (id) => document.getElementById(id);
   return {
     appRoot: document.querySelector(".app"),
+    associationFlyout: byId("associationFlyout"),
+    associationFlyoutToggle: byId("associationFlyoutToggle"),
+    associationFlyoutToggleGlyph: byId("associationFlyoutToggleGlyph"),
+    associationFlyoutPanel: byId("associationFlyoutPanel"),
+    associationFlyoutSummary: byId("associationFlyoutSummary"),
+    associationFlyoutClear: byId("associationFlyoutClear"),
+    associationContextOptions: byId("associationContextOptions"),
+    associationPeopleOptions: byId("associationPeopleOptions"),
+    associationProjectOptions: byId("associationProjectOptions"),
     sidebarFiltersCard: document.querySelector(".filters-card"),
     alerts: document.querySelector(".alerts"),
     workspaceToolbar: document.querySelector(".workspace-toolbar"),

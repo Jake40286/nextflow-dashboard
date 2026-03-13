@@ -438,6 +438,25 @@ test("people tags use + prefix and migrate legacy @ values", () => {
   assert.deepEqual(manager.getPeopleTags(), ["+Jamie", "+Pat"]);
 });
 
+test("context and people options can be added without assigning to tasks", () => {
+  const manager = createManager();
+  const addedContext = manager.addContextOption("@DeepWork");
+  assert.equal(addedContext, "@DeepWork");
+  assert.ok(manager.getContexts().includes("@DeepWork"));
+
+  const addedPeople = manager.addPeopleTagOption("+Reviewer_A");
+  assert.equal(addedPeople, "+Reviewer_A");
+  assert.ok(manager.getPeopleTags().includes("+Reviewer_A"));
+
+  const duplicateContext = manager.addContextOption("@deepwork");
+  assert.equal(duplicateContext, "@deepwork");
+  assert.equal(manager.getContexts().filter((value) => value.toLowerCase() === "@deepwork").length, 1);
+
+  const legacyPeople = manager.addPeopleTagOption("@Reviewer_B");
+  assert.equal(legacyPeople, "+Reviewer_B");
+  assert.ok(manager.getPeopleTags().includes("+Reviewer_B"));
+});
+
 test("task notes are timestamped and restored after completion", () => {
   const manager = createManager();
   const task = manager.addTask({ title: "Investigate regression" });
@@ -483,6 +502,28 @@ test("search matches note text", () => {
   const matches = manager.getTasks({ searchTerm: "rollback command" });
   assert.equal(matches.length, 1);
   assert.equal(matches[0].id, task.id);
+});
+
+test("people mentions in notes behave like people tags for filters", () => {
+  const manager = createManager();
+  const tagged = manager.addTask({ title: "Stakeholder follow-up", status: STATUS.NEXT });
+  manager.addTaskNote(tagged.id, "Shared update with +John_S and captured next steps.");
+  const untagged = manager.addTask({ title: "Solo task", status: STATUS.NEXT });
+
+  const peopleTags = manager.getPeopleTags();
+  assert.ok(peopleTags.includes("+John_S"));
+
+  const personMatches = manager.getTasks({ person: "+John_S" });
+  assert.equal(personMatches.length, 1);
+  assert.equal(personMatches[0].id, tagged.id);
+
+  const noneMatches = manager.getTasks({ person: "none" }).map((task) => task.id);
+  assert.ok(!noneMatches.includes(tagged.id));
+  assert.ok(noneMatches.includes(untagged.id));
+
+  const searchMatches = manager.getTasks({ searchTerm: "+John_S" });
+  assert.equal(searchMatches.length, 1);
+  assert.equal(searchMatches[0].id, tagged.id);
 });
 
 test("completed task entries can be edited without restore", () => {

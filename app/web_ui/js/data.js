@@ -150,6 +150,8 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   theme: DEFAULT_THEME,
   customTheme: { ...DEFAULT_CUSTOM_THEME },
   customThemePalettes: [],
+  contextOptions: normalizeContextOptions(),
+  peopleOptions: normalizePeopleOptions(),
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
 });
@@ -197,6 +199,18 @@ function hydrateState(raw = {}) {
     theme: normalizeTheme(nextState.settings?.theme),
     customTheme: normalizeCustomTheme(nextState.settings?.customTheme),
     customThemePalettes: normalizeCustomThemePalettes(nextState.settings?.customThemePalettes),
+    contextOptions: normalizeContextOptions(
+      nextState.settings?.contextOptions,
+      nextState.tasks,
+      nextState.reference,
+      nextState.completionLog
+    ),
+    peopleOptions: normalizePeopleOptions(
+      nextState.settings?.peopleOptions,
+      nextState.tasks,
+      nextState.reference,
+      nextState.completionLog
+    ),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
       nextState.projects,
@@ -1065,12 +1079,26 @@ export class TaskManager extends EventTarget {
     const previousCustomTheme = this.getCustomTheme();
     const previousCustomThemePalettes = this.getCustomThemePalettes();
     const previousFeatureFlags = this.getFeatureFlags();
+    const previousContextOptions = this.getContexts();
+    const previousPeopleOptions = this.getPeopleTags();
     this.load();
     if (!this.state.settings) {
       this.state.settings = {
         theme: previousTheme,
         customTheme: { ...previousCustomTheme },
         customThemePalettes: [...previousCustomThemePalettes],
+        contextOptions: normalizeContextOptions(
+          previousContextOptions,
+          this.state.tasks,
+          this.state.reference,
+          this.state.completionLog
+        ),
+        peopleOptions: normalizePeopleOptions(
+          previousPeopleOptions,
+          this.state.tasks,
+          this.state.reference,
+          this.state.completionLog
+        ),
         areaOptions: normalizeAreaOptions(undefined, this.state.projects, this.state.completedProjects),
         featureFlags: normalizeFeatureFlags(undefined, previousFeatureFlags),
       };
@@ -1083,6 +1111,18 @@ export class TaskManager extends EventTarget {
       this.state.settings.customThemePalettes = normalizeCustomThemePalettes(
         this.state.settings.customThemePalettes,
         previousCustomThemePalettes
+      );
+      this.state.settings.contextOptions = normalizeContextOptions(
+        this.state.settings.contextOptions || previousContextOptions,
+        this.state.tasks,
+        this.state.reference,
+        this.state.completionLog
+      );
+      this.state.settings.peopleOptions = normalizePeopleOptions(
+        this.state.settings.peopleOptions || previousPeopleOptions,
+        this.state.tasks,
+        this.state.reference,
+        this.state.completionLog
       );
       this.state.settings.areaOptions = normalizeAreaOptions(
         this.state.settings.areaOptions,
@@ -1313,9 +1353,10 @@ export class TaskManager extends EventTarget {
     const contexts = new Set();
     const addContext = (value) => {
       if (typeof value !== "string") return;
-      const normalized = value.trim();
+      const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
       if (normalized) contexts.add(normalized);
     };
+    (this.state.settings?.contextOptions || []).forEach((value) => addContext(value));
     this.state.tasks.forEach((task) => addContext(task.context));
     (this.state.reference || []).forEach((entry) => addContext(entry.context));
     (this.state.completionLog || []).forEach((entry) => addContext(entry.context));
@@ -1325,17 +1366,83 @@ export class TaskManager extends EventTarget {
     return Array.from(contexts).sort((a, b) => a.localeCompare(b));
   }
 
-  getPeopleTags() {
+  getPeopleTags({ includeNoteMentions = true } = {}) {
     const tags = new Set();
     const addTag = (value) => {
       if (typeof value !== "string") return;
       const normalized = sanitizePeopleTag(value);
       if (normalized) tags.add(normalized);
     };
-    this.state.tasks.forEach((task) => addTag(task.peopleTag));
-    (this.state.reference || []).forEach((entry) => addTag(entry.peopleTag));
-    (this.state.completionLog || []).forEach((entry) => addTag(entry.peopleTag));
+    const addEntryTags = (entry) => {
+      collectEntryPeopleTags(entry, { includeNoteMentions }).forEach((tag) => addTag(tag));
+    };
+    (this.state.settings?.peopleOptions || []).forEach((value) => addTag(value));
+    this.state.tasks.forEach((task) => addEntryTags(task));
+    (this.state.reference || []).forEach((entry) => addEntryTags(entry));
+    (this.state.completionLog || []).forEach((entry) => addEntryTags(entry));
     return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }
+
+  addContextOption(value, { notify = true } = {}) {
+    const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
+    if (!normalized) {
+      if (notify) {
+        this.notify("warn", "Context must start with @ and contain text.");
+      }
+      return null;
+    }
+    const existing = this.getContexts();
+    if (existing.some((context) => context.toLowerCase() === normalized.toLowerCase())) {
+      return normalized;
+    }
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? this.state.settings.contextOptions
+      : [];
+    this.state.settings.contextOptions = normalizeContextOptions(
+      [...currentOptions, normalized],
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
+    this.emitChange();
+    if (notify) {
+      this.notify("info", `Added context "${normalized}".`);
+    }
+    return normalized;
+  }
+
+  addPeopleTagOption(value, { notify = true } = {}) {
+    const normalized = sanitizePeopleTag(value);
+    if (!normalized) {
+      if (notify) {
+        this.notify("warn", "People tag must start with + and contain text.");
+      }
+      return null;
+    }
+    const existing = this.getPeopleTags({ includeNoteMentions: false });
+    if (existing.some((tag) => tag.toLowerCase() === normalized.toLowerCase())) {
+      return normalized;
+    }
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? this.state.settings.peopleOptions
+      : [];
+    this.state.settings.peopleOptions = normalizePeopleOptions(
+      [...currentOptions, normalized],
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
+    this.emitChange();
+    if (notify) {
+      this.notify("info", `Added people tag "${normalized}".`);
+    }
+    return normalized;
   }
 
   getAreasOfFocus() {
@@ -1350,8 +1457,8 @@ export class TaskManager extends EventTarget {
   }
 
   renameContext(fromValue, toValue) {
-    const from = typeof fromValue === "string" ? fromValue.trim() : "";
-    const to = typeof toValue === "string" ? toValue.trim() : "";
+    const from = sanitizePhysicalContext(fromValue, { allowEmpty: false }) || "";
+    const to = sanitizePhysicalContext(toValue, { allowEmpty: false }) || "";
     if (!from || !to) {
       this.notify("warn", "Context rename requires both current and new values.");
       return false;
@@ -1379,6 +1486,20 @@ export class TaskManager extends EventTarget {
         changed = true;
       }
     });
+    const contextOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? [...this.state.settings.contextOptions]
+      : [];
+    const optionIndex = contextOptions.findIndex((value) => value.toLowerCase() === from.toLowerCase());
+    if (optionIndex !== -1) {
+      contextOptions[optionIndex] = to;
+      this.state.settings.contextOptions = normalizeContextOptions(
+        contextOptions,
+        this.state.tasks,
+        this.state.reference,
+        this.state.completionLog
+      );
+      changed = true;
+    }
     if (!changed) return false;
     this.emitChange();
     this.notify("info", `Renamed context "${from}" to "${to}".`);
@@ -1386,7 +1507,7 @@ export class TaskManager extends EventTarget {
   }
 
   deleteContext(value) {
-    const target = typeof value === "string" ? value.trim() : "";
+    const target = sanitizePhysicalContext(value, { allowEmpty: false }) || "";
     if (!target) return false;
     const fallback =
       this.getContexts().find((context) => context !== target) || PHYSICAL_CONTEXTS[0];
@@ -1411,6 +1532,19 @@ export class TaskManager extends EventTarget {
         changed = true;
       }
     });
+    const contextOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? this.state.settings.contextOptions
+      : [];
+    const normalizedOptions = normalizeContextOptions(
+      contextOptions.filter((context) => context.toLowerCase() !== target.toLowerCase()),
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
+    if (normalizedOptions.length !== contextOptions.length) {
+      this.state.settings.contextOptions = normalizedOptions;
+      changed = true;
+    }
     if (!changed) return false;
     this.emitChange();
     this.notify("info", `Deleted context "${target}".`);
@@ -1447,6 +1581,20 @@ export class TaskManager extends EventTarget {
         changed = true;
       }
     });
+    const peopleOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? [...this.state.settings.peopleOptions]
+      : [];
+    const optionIndex = peopleOptions.findIndex((value) => value.toLowerCase() === from.toLowerCase());
+    if (optionIndex !== -1) {
+      peopleOptions[optionIndex] = to;
+      this.state.settings.peopleOptions = normalizePeopleOptions(
+        peopleOptions,
+        this.state.tasks,
+        this.state.reference,
+        this.state.completionLog
+      );
+      changed = true;
+    }
     if (!changed) return false;
     this.emitChange();
     this.notify("info", `Renamed people tag "${from}" to "${to}".`);
@@ -1478,6 +1626,19 @@ export class TaskManager extends EventTarget {
         changed = true;
       }
     });
+    const peopleOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? this.state.settings.peopleOptions
+      : [];
+    const normalizedOptions = normalizePeopleOptions(
+      peopleOptions.filter((tag) => tag.toLowerCase() !== target.toLowerCase()),
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
+    if (normalizedOptions.length !== peopleOptions.length) {
+      this.state.settings.peopleOptions = normalizedOptions;
+      changed = true;
+    }
     if (!changed) return false;
     this.emitChange();
     this.notify("info", `Deleted people tag "${target}".`);
@@ -2370,6 +2531,84 @@ function normalizeLinkedSchedule({ calendarDate, myDayDate, calendarTime } = {})
   };
 }
 
+function normalizeContextOptions(options, tasks = [], reference = [], completionLog = []) {
+  const values = new Set(PHYSICAL_CONTEXTS);
+  const addContext = (value) => {
+    const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
+    if (normalized) {
+      values.add(normalized);
+    }
+  };
+  (Array.isArray(options) ? options : []).forEach((value) => addContext(value));
+  (Array.isArray(tasks) ? tasks : []).forEach((entry) => addContext(entry?.context));
+  (Array.isArray(reference) ? reference : []).forEach((entry) => addContext(entry?.context));
+  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => addContext(entry?.context));
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizePeopleOptions(options, tasks = [], reference = [], completionLog = []) {
+  const values = new Set();
+  const addTag = (value) => {
+    const normalized = sanitizePeopleTag(value);
+    if (normalized) {
+      values.add(normalized);
+    }
+  };
+  const addEntryTags = (entry) => {
+    collectEntryPeopleTags(entry).forEach((tag) => addTag(tag));
+  };
+  (Array.isArray(options) ? options : []).forEach((value) => addTag(value));
+  (Array.isArray(tasks) ? tasks : []).forEach((entry) => addEntryTags(entry));
+  (Array.isArray(reference) ? reference : []).forEach((entry) => addEntryTags(entry));
+  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => addEntryTags(entry));
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizePeopleTagCollection(values = []) {
+  const result = [];
+  const seen = new Set();
+  (Array.isArray(values) ? values : []).forEach((value) => {
+    const normalized = sanitizePeopleTag(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
+  return result;
+}
+
+function extractPeopleMentionTagsFromText(rawText) {
+  if (typeof rawText !== "string" || !rawText) return [];
+  const matches = [];
+  const tokenRegex = /(?:^|[\s([{,;])(\+[A-Za-z0-9][A-Za-z0-9_-]*)/g;
+  let match = tokenRegex.exec(rawText);
+  while (match) {
+    matches.push(match[1]);
+    match = tokenRegex.exec(rawText);
+  }
+  return normalizePeopleTagCollection(matches);
+}
+
+function extractPeopleMentionTagsFromNotes(notes) {
+  if (!Array.isArray(notes)) return [];
+  const mentions = [];
+  notes.forEach((note) => {
+    if (typeof note?.text !== "string" || !note.text) return;
+    mentions.push(...extractPeopleMentionTagsFromText(note.text));
+  });
+  return normalizePeopleTagCollection(mentions);
+}
+
+function collectEntryPeopleTags(entry, { includeNoteMentions = true } = {}) {
+  if (!entry || typeof entry !== "object") return [];
+  const values = [entry.peopleTag];
+  if (includeNoteMentions) {
+    values.push(...extractPeopleMentionTagsFromNotes(entry.notes));
+  }
+  return normalizePeopleTagCollection(values);
+}
+
 function normalizeAreaOptions(options, projects = [], completedProjects = []) {
   const values = new Set(
     (Array.isArray(options) ? options : [])
@@ -2623,6 +2862,22 @@ function matchesFilterValue(value, filter) {
   });
 }
 
+function matchesPeopleFilter(task, filter) {
+  if (!filter) return true;
+  const list = Array.isArray(filter) ? filter : [filter];
+  if (!list.length || list.includes("all")) return true;
+  const taskPeopleTags = collectEntryPeopleTags(task);
+  return list.some((item) => {
+    if (item === "none") {
+      return taskPeopleTags.length === 0;
+    }
+    const normalized = sanitizePeopleTag(item);
+    if (!normalized) return false;
+    const target = normalized.toLowerCase();
+    return taskPeopleTags.some((tag) => tag.toLowerCase() === target);
+  });
+}
+
 function matchesTaskFilters(task, filters = {}) {
   if (!filters) return true;
   if (!matchesFilterValue(task.context, filters.contexts ?? filters.context)) {
@@ -2631,7 +2886,7 @@ function matchesTaskFilters(task, filters = {}) {
   if (!matchesFilterValue(task.projectId, filters.projectIds ?? filters.projectId)) {
     return false;
   }
-  if (!matchesFilterValue(task.peopleTag, filters.people ?? filters.person)) {
+  if (!matchesPeopleFilter(task, filters.people ?? filters.person)) {
     return false;
   }
   if (!matchesFilterValue(task.waitingFor, filters.waitingFors ?? filters.waitingFor)) {

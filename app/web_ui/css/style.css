@@ -546,6 +546,138 @@ button.meta-item:hover {
   align-items: start;
 }
 
+.association-flyout {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.association-flyout-toggle {
+  pointer-events: auto;
+  width: 30px;
+  min-height: 92px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 85%, var(--line));
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--surface-2) 95%, var(--surface));
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition-fast), border var(--transition-fast), transform var(--transition-fast);
+}
+
+.association-flyout-toggle:hover {
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.association-flyout-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.association-flyout-panel {
+  pointer-events: auto;
+  width: min(330px, calc(100vw - 44px));
+  max-height: min(74vh, 720px);
+  overflow: auto;
+  margin-left: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+  transform: translateX(calc(-100% - 18px));
+  opacity: 0;
+  visibility: hidden;
+  transition: transform var(--transition-base), opacity var(--transition-base), visibility var(--transition-base);
+}
+
+.association-flyout.is-open .association-flyout-panel {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+}
+
+.association-flyout-header {
+  display: grid;
+  gap: 4px;
+}
+
+.association-flyout-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.association-flyout-summary {
+  margin: 0;
+  padding: 7px 8px;
+  border: 1px dashed color-mix(in srgb, var(--line-strong) 74%, var(--line));
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--surface));
+  color: var(--text-muted);
+}
+
+.association-flyout-group {
+  display: grid;
+  gap: 6px;
+}
+
+.association-flyout-group h3 {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.association-flyout-options {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.association-flyout-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.84rem;
+}
+
+.association-flyout-options input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.association-flyout-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.association-flyout-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .sidebar {
   display: grid;
   gap: var(--space-4);
@@ -2779,6 +2911,22 @@ textarea:focus-visible,
 }
 
 @media (max-width: 860px) {
+  .association-flyout {
+    top: auto;
+    bottom: 14px;
+    transform: none;
+    align-items: flex-end;
+  }
+
+  .association-flyout-toggle {
+    min-height: 72px;
+  }
+
+  .association-flyout-panel {
+    width: min(86vw, 320px);
+    max-height: min(68vh, 520px);
+  }
+
   .app {
     padding: 12px;
     gap: var(--space-4);

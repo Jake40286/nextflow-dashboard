@@ -1285,6 +1285,78 @@ button.meta-item:hover {
   text-overflow: ellipsis;
 }
 
+.inline-tag-link {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.inline-tag-link:hover {
+  color: var(--accent);
+}
+
+.inline-tag-link:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--ring);
+}
+
+.task-row-title .inline-tag-link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration-color: color-mix(in srgb, var(--line-strong) 55%, transparent);
+}
+
+.task-row-title .inline-tag-link:hover {
+  color: var(--accent-strong);
+}
+
+.mention-autocomplete-menu {
+  position: fixed;
+  z-index: 240;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  padding: 4px;
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+}
+
+.mention-autocomplete-item {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.mention-autocomplete-item:hover,
+.mention-autocomplete-item.is-active {
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-2));
+}
+
+.mention-autocomplete-label {
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.mention-autocomplete-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
 .task-row-meta {
   min-width: 0;
   display: flex;
@@ -1378,6 +1450,15 @@ button.meta-item:hover {
 .task-context-menu-item:focus-visible {
   outline: none;
   box-shadow: var(--ring);
+}
+
+.task-context-menu-item.is-danger {
+  color: var(--danger);
+}
+
+.task-context-menu-item.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
 }
 
 .report-controls {

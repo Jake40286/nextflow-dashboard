@@ -10,7 +10,7 @@ export const STATUS = Object.freeze({
 });
 
 export const PHYSICAL_CONTEXTS = ["@Phone", "@Office", "@Home", "@Errands", "@Lab", "@Work", "@Team", "@Desk"];
-export const PEOPLE_TAG_PATTERN = /^@[A-Za-z0-9][A-Za-z0-9_-]*$/;
+export const PEOPLE_TAG_PATTERN = /^\+[A-Za-z0-9][A-Za-z0-9_-]*$/;
 export const ENERGY_LEVELS = ["low", "medium", "high"];
 export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", "30min+"];
 export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
@@ -699,6 +699,63 @@ export class TaskManager extends EventTarget {
     return note;
   }
 
+  updateTaskNote(id, noteId, text) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return null;
+    }
+    const targetNoteId = typeof noteId === "string" ? noteId.trim() : "";
+    if (!targetNoteId) {
+      this.notify("warn", "Note not found.");
+      return null;
+    }
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) {
+      this.notify("warn", "Note cannot be empty.");
+      return null;
+    }
+    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
+    const noteIndex = notes.findIndex((note) => note?.id === targetNoteId);
+    if (noteIndex === -1) {
+      this.notify("warn", "Note not found.");
+      return null;
+    }
+    const updatedNote = {
+      ...notes[noteIndex],
+      text: trimmed,
+    };
+    notes[noteIndex] = updatedNote;
+    task.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: updatedNote.createdAt || nowIso() });
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return task.notes.find((note) => note.id === targetNoteId) || null;
+  }
+
+  deleteTaskNote(id, noteId) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return false;
+    }
+    const targetNoteId = typeof noteId === "string" ? noteId.trim() : "";
+    if (!targetNoteId) {
+      this.notify("warn", "Note not found.");
+      return false;
+    }
+    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
+    const noteIndex = notes.findIndex((note) => note?.id === targetNoteId);
+    if (noteIndex === -1) {
+      this.notify("warn", "Note not found.");
+      return false;
+    }
+    notes.splice(noteIndex, 1);
+    task.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: nowIso() });
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return true;
+  }
+
   addCompletedTaskNote(id, text, { createdAt } = {}) {
     const resolved = this.resolveCompletedTaskEntry(id);
     if (!resolved) {
@@ -726,6 +783,75 @@ export class TaskManager extends EventTarget {
     resolved.list[resolved.index] = entry;
     this.emitChange();
     return note;
+  }
+
+  updateCompletedTaskNote(id, noteId, text) {
+    const resolved = this.resolveCompletedTaskEntry(id);
+    if (!resolved) {
+      this.notify("error", "Completed task not found.");
+      return null;
+    }
+    const entry = normalizeCompletionEntry(resolved.list[resolved.index]);
+    if (!entry) {
+      this.notify("error", "Completed task could not be loaded.");
+      return null;
+    }
+    const targetNoteId = typeof noteId === "string" ? noteId.trim() : "";
+    if (!targetNoteId) {
+      this.notify("warn", "Note not found.");
+      return null;
+    }
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) {
+      this.notify("warn", "Note cannot be empty.");
+      return null;
+    }
+    const notes = Array.isArray(entry.notes) ? [...entry.notes] : [];
+    const noteIndex = notes.findIndex((note) => note?.id === targetNoteId);
+    if (noteIndex === -1) {
+      this.notify("warn", "Note not found.");
+      return null;
+    }
+    const updatedNote = {
+      ...notes[noteIndex],
+      text: trimmed,
+    };
+    notes[noteIndex] = updatedNote;
+    entry.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: updatedNote.createdAt || nowIso() });
+    entry.updatedAt = nowIso();
+    resolved.list[resolved.index] = entry;
+    this.emitChange();
+    return entry.notes.find((note) => note.id === targetNoteId) || null;
+  }
+
+  deleteCompletedTaskNote(id, noteId) {
+    const resolved = this.resolveCompletedTaskEntry(id);
+    if (!resolved) {
+      this.notify("error", "Completed task not found.");
+      return false;
+    }
+    const entry = normalizeCompletionEntry(resolved.list[resolved.index]);
+    if (!entry) {
+      this.notify("error", "Completed task could not be loaded.");
+      return false;
+    }
+    const targetNoteId = typeof noteId === "string" ? noteId.trim() : "";
+    if (!targetNoteId) {
+      this.notify("warn", "Note not found.");
+      return false;
+    }
+    const notes = Array.isArray(entry.notes) ? [...entry.notes] : [];
+    const noteIndex = notes.findIndex((note) => note?.id === targetNoteId);
+    if (noteIndex === -1) {
+      this.notify("warn", "Note not found.");
+      return false;
+    }
+    notes.splice(noteIndex, 1);
+    entry.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: nowIso() });
+    entry.updatedAt = nowIso();
+    resolved.list[resolved.index] = entry;
+    this.emitChange();
+    return true;
   }
 
   resolveCompletedTaskEntry(id) {
@@ -1295,7 +1421,7 @@ export class TaskManager extends EventTarget {
     const from = sanitizePeopleTag(fromValue);
     const to = sanitizePeopleTag(toValue);
     if (!from || !to) {
-      this.notify("warn", "People tag rename requires valid @tag values.");
+      this.notify("warn", "People tag rename requires valid +tag values.");
       return false;
     }
     if (from === to) return false;
@@ -2102,7 +2228,7 @@ function validateTaskTags(task, { requireContext = true } = {}) {
     return `Task requires a physical context such as ${PHYSICAL_CONTEXTS.join(", ")}.`;
   }
   if (task.peopleTag && !PEOPLE_TAG_PATTERN.test(task.peopleTag)) {
-    return "People context must start with @ and contain only letters, numbers, underscores, or dashes.";
+    return "People tag must start with + and contain only letters, numbers, underscores, or dashes.";
   }
   return null;
 }
@@ -2160,11 +2286,12 @@ function sanitizePeopleTag(value) {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (!PEOPLE_TAG_PATTERN.test(trimmed)) return null;
-  if (PHYSICAL_CONTEXTS.some((context) => context.toLowerCase() === trimmed.toLowerCase())) {
+  const normalized = trimmed.startsWith("@") ? `+${trimmed.slice(1)}` : trimmed;
+  if (!PEOPLE_TAG_PATTERN.test(normalized)) return null;
+  if (PHYSICAL_CONTEXTS.some((context) => context.toLowerCase() === normalized.toLowerCase())) {
     return null;
   }
-  return trimmed;
+  return normalized;
 }
 
 function sanitizeIsoDate(value) {

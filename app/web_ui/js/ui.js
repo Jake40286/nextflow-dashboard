@@ -13,6 +13,7 @@ import {
 const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
 const NEXT_FANOUT_KEY = "gtd-dashboard-next-fanout";
 const NEXT_HIDE_SCHEDULED_KEY = "gtd-dashboard-next-hide-scheduled";
+const ENTITY_LINK_TOKEN_PATTERN = /([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
 
 const TRANSITIONS = {
   [STATUS.INBOX]: [
@@ -114,6 +115,10 @@ export class UIController {
     this.contextMenuHandlersBound = false;
     this.handleTaskMenuDismiss = null;
     this.handleTaskMenuEscape = null;
+    this.noteContextMenuState = null;
+    this.noteContextMenuHandlersBound = false;
+    this.handleNoteMenuDismiss = null;
+    this.handleNoteMenuEscape = null;
     this.calendarDayContextMenuDate = null;
     this.calendarDayContextMenuHandlersBound = false;
     this.handleCalendarDayMenuDismiss = null;
@@ -122,13 +127,19 @@ export class UIController {
     this.selectedSettingsContext = null;
     this.customPaletteDraftName = "";
     this.statsLookbackDays = 30;
+    this.entityMentionAutocompleteState = null;
+    this.boundEntityMentionInputs = new WeakSet();
+    this.entityMentionDismissHandler = null;
+    this.entityMentionRepositionHandler = null;
   }
 
   init() {
     this.elements = mapElements();
     this.bindListeners();
+    this.setupEntityMentionAutocomplete();
     this.setupSummaryTabs();
     this.setupTaskContextMenu();
+    this.setupTaskNoteContextMenu();
     this.setupCalendarDayContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
@@ -3386,7 +3397,7 @@ export class UIController {
 
     const title = document.createElement("span");
     title.className = "task-row-title";
-    title.textContent = task.title || "Untitled task";
+    this.setEntityLinkedText(title, task.title || "Untitled task");
 
     const meta = document.createElement("div");
     meta.className = "task-row-meta";
@@ -3486,6 +3497,12 @@ export class UIController {
       }
       if (action === "my-day") {
         this.toggleTaskMyDay(task);
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+        if (!confirmed) return;
+        this.taskManager.deleteTask(task.id);
       }
     });
   }
@@ -3504,6 +3521,7 @@ export class UIController {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) return;
 
+    this.closeTaskNoteContextMenu();
     this.closeCalendarDayContextMenu();
     this.contextMenuTaskId = taskId;
     const myDayAction = menu.querySelector('[data-task-menu-action="my-day"]');
@@ -3579,6 +3597,128 @@ export class UIController {
     }
   }
 
+  setupTaskNoteContextMenu() {
+    const menu = this.elements.taskNoteContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", (event) => {
+      const actionButton = event.target.closest("[data-note-menu-action]");
+      if (!actionButton) return;
+      const action = actionButton.dataset.noteMenuAction;
+      const context = this.resolveTaskNoteContext();
+      this.closeTaskNoteContextMenu();
+      if (!context) return;
+      if (action === "edit") {
+        const nextText = window.prompt("Edit note", context.note.text || "");
+        if (nextText === null) return;
+        const trimmed = nextText.trim();
+        if (!trimmed) {
+          this.taskManager.notify("warn", "Note cannot be empty.");
+          return;
+        }
+        if (trimmed === context.note.text) return;
+        const updated = context.isArchived
+          ? this.taskManager.updateCompletedTaskNote(context.archiveEntryId, context.note.id, trimmed)
+          : this.taskManager.updateTaskNote(context.taskId, context.note.id, trimmed);
+        if (updated) {
+          this.taskManager.notify("info", "Note updated.");
+        }
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = window.confirm("Delete this note? This cannot be undone.");
+        if (!confirmed) return;
+        const deleted = context.isArchived
+          ? this.taskManager.deleteCompletedTaskNote(context.archiveEntryId, context.note.id)
+          : this.taskManager.deleteTaskNote(context.taskId, context.note.id);
+        if (deleted) {
+          this.taskManager.notify("info", "Note deleted.");
+        }
+      }
+    });
+  }
+
+  resolveTaskNoteContext() {
+    const state = this.noteContextMenuState;
+    if (!state?.noteId) return null;
+    if (state.archiveEntryId) {
+      const entry = this.taskManager.getCompletedTaskById(state.archiveEntryId, { includeDeleted: true });
+      if (!entry) return null;
+      const note = Array.isArray(entry.notes) ? entry.notes.find((item) => item?.id === state.noteId) : null;
+      if (!note) return null;
+      return {
+        ...state,
+        note,
+        isArchived: true,
+      };
+    }
+    const task = state.taskId ? this.taskManager.getTaskById(state.taskId) : null;
+    if (!task) return null;
+    const note = Array.isArray(task.notes) ? task.notes.find((item) => item?.id === state.noteId) : null;
+    if (!note) return null;
+    return {
+      ...state,
+      note,
+      isArchived: false,
+    };
+  }
+
+  openTaskNoteContextMenu(noteContext, x, y) {
+    const menu = this.elements.taskNoteContextMenu;
+    if (!menu || !noteContext?.noteId) return;
+    if (!noteContext.taskId && !noteContext.archiveEntryId) return;
+    this.closeTaskContextMenu();
+    this.closeCalendarDayContextMenu();
+    this.noteContextMenuState = {
+      taskId: noteContext.taskId || null,
+      archiveEntryId: noteContext.archiveEntryId || null,
+      noteId: noteContext.noteId,
+    };
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindTaskNoteContextMenuDismiss();
+  }
+
+  bindTaskNoteContextMenuDismiss() {
+    if (this.noteContextMenuHandlersBound) return;
+    this.handleNoteMenuDismiss = (event) => {
+      const menu = this.elements.taskNoteContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeTaskNoteContextMenu();
+    };
+    this.handleNoteMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeTaskNoteContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleNoteMenuDismiss, true);
+    document.addEventListener("scroll", this.handleNoteMenuDismiss, true);
+    window.addEventListener("resize", this.handleNoteMenuDismiss);
+    document.addEventListener("keydown", this.handleNoteMenuEscape);
+    this.noteContextMenuHandlersBound = true;
+  }
+
+  closeTaskNoteContextMenu() {
+    const menu = this.elements.taskNoteContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.noteContextMenuState = null;
+    if (this.noteContextMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleNoteMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleNoteMenuDismiss, true);
+      window.removeEventListener("resize", this.handleNoteMenuDismiss);
+      document.removeEventListener("keydown", this.handleNoteMenuEscape);
+      this.noteContextMenuHandlersBound = false;
+    }
+  }
+
   setupCalendarDayContextMenu() {
     const menu = this.elements.calendarDayContextMenu;
     if (!menu) return;
@@ -3598,6 +3738,7 @@ export class UIController {
   openCalendarDayContextMenu(dateKey, x, y) {
     const menu = this.elements.calendarDayContextMenu;
     if (!menu || !dateKey) return;
+    this.closeTaskNoteContextMenu();
     this.closeTaskContextMenu();
     this.calendarDayContextMenuDate = dateKey;
     menu.hidden = false;
@@ -4389,6 +4530,7 @@ export class UIController {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
     this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
     const { readOnly = false, entry = null } = options;
     let task = typeof taskInput === "string" ? this.taskManager.getTaskById(taskInput) : taskInput;
     if (!task && entry) {
@@ -4413,6 +4555,7 @@ export class UIController {
   closeTaskFlyout() {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
+    this.closeTaskNoteContextMenu();
     flyout.classList.remove("is-open");
     flyout.setAttribute("aria-hidden", "true");
     this.isFlyoutOpen = false;
@@ -4425,17 +4568,18 @@ export class UIController {
 
   renderTaskFlyout(task, options = {}) {
     const { readOnly = false, entry = null } = options;
+    this.closeTaskNoteContextMenu();
     const content = this.elements.taskFlyoutContent;
     if (!content) return;
     const isCompleted = Boolean(task.completedAt);
     const titleEl = this.elements.taskFlyoutTitle;
     const statusEl = this.elements.taskFlyoutStatus;
-    if (titleEl) titleEl.textContent = task.title || "Untitled task";
+    if (titleEl) this.setEntityLinkedText(titleEl, task.title || "Untitled task");
     if (statusEl) statusEl.textContent = STATUS_LABELS[task.status] || task.status;
     content.innerHTML = "";
 
     const description = document.createElement("p");
-    description.textContent = task.description || task.title || "No description yet.";
+    this.setEntityLinkedText(description, task.description || task.title || "No description yet.");
     description.className = "muted";
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
     const notesSection = this.createTaskNotesSection(task, {
@@ -4682,6 +4826,22 @@ export class UIController {
         .forEach((note) => {
           const item = document.createElement("li");
           item.className = "task-note-item";
+          if (!readOnly) {
+            item.dataset.noteId = note.id;
+            item.addEventListener("contextmenu", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              this.openTaskNoteContextMenu(
+                {
+                  taskId: task.id,
+                  archiveEntryId: archiveEntryId || null,
+                  noteId: note.id,
+                },
+                event.clientX,
+                event.clientY
+              );
+            });
+          }
           const meta = document.createElement("div");
           meta.className = "task-note-meta";
           const timestamp = document.createElement("time");
@@ -4690,7 +4850,7 @@ export class UIController {
           meta.append(timestamp);
           const text = document.createElement("p");
           text.className = "task-note-text";
-          text.textContent = note.text || "";
+          this.setEntityLinkedText(text, note.text || "");
           item.append(meta, text);
           list.append(item);
         });
@@ -4711,6 +4871,7 @@ export class UIController {
     const input = document.createElement("textarea");
     input.rows = 3;
     input.placeholder = "Capture findings, blockers, and progress updates...";
+    this.attachEntityMentionAutocomplete(input);
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
     const addButton = document.createElement("button");
@@ -4745,6 +4906,7 @@ export class UIController {
     titleInput.type = "text";
     titleInput.value = task.title || "";
     titleInput.required = true;
+    this.attachEntityMentionAutocomplete(titleInput);
     titleGroup.append(titleInput);
 
     const descriptionGroup = document.createElement("label");
@@ -4753,6 +4915,7 @@ export class UIController {
     const descriptionInput = document.createElement("textarea");
     descriptionInput.rows = 3;
     descriptionInput.value = task.description || "";
+    this.attachEntityMentionAutocomplete(descriptionInput);
     descriptionGroup.append(descriptionInput);
 
     const slugGroup = document.createElement("label");
@@ -4873,6 +5036,7 @@ export class UIController {
     waitingInput.type = "text";
     waitingInput.placeholder = "Person or dependency";
     waitingInput.value = task.waitingFor || "";
+    this.attachEntityMentionAutocomplete(waitingInput);
     waitingGroup.append(waitingInput);
 
     const closureGroup = document.createElement("label");
@@ -4882,6 +5046,7 @@ export class UIController {
     closureInput.rows = 3;
     closureInput.placeholder = "Optional wrap-up notes when completing this task.";
     closureInput.value = task.closureNotes || "";
+    this.attachEntityMentionAutocomplete(closureInput);
     closureGroup.append(closureInput);
 
     const recurrenceGroup = document.createElement("label");
@@ -5070,6 +5235,396 @@ export class UIController {
       } else {
         this.taskManager.updateTask(task.id, { projectId: project.id });
       }
+    }
+  }
+
+  setupEntityMentionAutocomplete() {
+    this.ensureEntityMentionMenu();
+    [
+      this.elements.quickAddInput,
+      this.elements.quickAddDescription,
+      this.elements.closureNotesInput,
+    ].forEach((input) => this.attachEntityMentionAutocomplete(input));
+  }
+
+  ensureEntityMentionMenu() {
+    if (this.entityMentionAutocompleteState?.menu) return;
+    const menu = document.createElement("div");
+    menu.className = "mention-autocomplete-menu";
+    menu.hidden = true;
+    menu.setAttribute("role", "listbox");
+    document.body.append(menu);
+
+    this.entityMentionAutocompleteState = {
+      menu,
+      input: null,
+      suggestions: [],
+      activeIndex: 0,
+      tokenStart: 0,
+      tokenEnd: 0,
+      trigger: null,
+    };
+
+    if (!this.entityMentionDismissHandler) {
+      this.entityMentionDismissHandler = (event) => {
+        const state = this.entityMentionAutocompleteState;
+        if (!state?.menu || state.menu.hidden) return;
+        if (state.menu.contains(event.target)) return;
+        if (state.input && state.input.contains && state.input.contains(event.target)) return;
+        if (state.input === event.target) return;
+        this.closeEntityMentionMenu();
+      };
+      document.addEventListener("pointerdown", this.entityMentionDismissHandler, true);
+    }
+    if (!this.entityMentionRepositionHandler) {
+      this.entityMentionRepositionHandler = () => {
+        this.positionEntityMentionMenu();
+      };
+      window.addEventListener("resize", this.entityMentionRepositionHandler);
+      window.addEventListener("scroll", this.entityMentionRepositionHandler, true);
+    }
+  }
+
+  attachEntityMentionAutocomplete(input) {
+    if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return;
+    if (input.readOnly || input.disabled) return;
+    if (this.boundEntityMentionInputs.has(input)) return;
+    this.boundEntityMentionInputs.add(input);
+
+    const refresh = () => this.refreshEntityMentionMenu(input);
+    input.addEventListener("input", refresh);
+    input.addEventListener("click", refresh);
+    input.addEventListener("keyup", (event) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
+        refresh();
+      }
+    });
+    input.addEventListener("keydown", (event) => {
+      this.handleEntityMentionKeydown(event, input);
+    });
+    input.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        if (this.entityMentionAutocompleteState?.input !== input) return;
+        this.closeEntityMentionMenu();
+      }, 120);
+    });
+  }
+
+  handleEntityMentionKeydown(event, input) {
+    const state = this.entityMentionAutocompleteState;
+    if (!state || state.menu.hidden || state.input !== input) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      this.moveEntityMentionSelection(1);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      this.moveEntityMentionSelection(-1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      this.applyEntityMentionSelection(state.activeIndex);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.closeEntityMentionMenu();
+    }
+  }
+
+  moveEntityMentionSelection(delta) {
+    const state = this.entityMentionAutocompleteState;
+    if (!state || !state.suggestions.length) return;
+    const count = state.suggestions.length;
+    state.activeIndex = (state.activeIndex + delta + count) % count;
+    this.renderEntityMentionMenu();
+  }
+
+  refreshEntityMentionMenu(input) {
+    const query = this.getEntityMentionQueryAtCaret(input);
+    if (!query) {
+      this.closeEntityMentionMenu();
+      return;
+    }
+    const suggestions = this.getEntityMentionSuggestions(query.trigger, query.term);
+    if (!suggestions.length) {
+      this.closeEntityMentionMenu();
+      return;
+    }
+    const state = this.entityMentionAutocompleteState;
+    if (!state) return;
+    state.input = input;
+    state.suggestions = suggestions.slice(0, 8);
+    state.activeIndex = 0;
+    state.tokenStart = query.tokenStart;
+    state.tokenEnd = query.tokenEnd;
+    state.trigger = query.trigger;
+    this.renderEntityMentionMenu();
+    this.positionEntityMentionMenu();
+  }
+
+  getEntityMentionQueryAtCaret(input) {
+    if (!input || typeof input.selectionStart !== "number" || typeof input.selectionEnd !== "number") return null;
+    if (input.selectionStart !== input.selectionEnd) return null;
+    const caret = input.selectionStart;
+    const before = input.value.slice(0, caret);
+    const match = before.match(/(?:^|[\s([{,;])([@#+][A-Za-z0-9_-]*)$/);
+    if (!match) return null;
+    const token = match[1] || "";
+    if (!token || token.length < 1) return null;
+    const trigger = token[0];
+    if (trigger !== "@" && trigger !== "+" && trigger !== "#") return null;
+    return {
+      trigger,
+      term: token.slice(1).toLowerCase(),
+      tokenStart: caret - token.length,
+      tokenEnd: caret,
+    };
+  }
+
+  getEntityMentionSuggestions(trigger, term = "") {
+    const query = term.toLowerCase();
+    if (trigger === "@") {
+      return this.taskManager
+        .getContexts()
+        .map((value) => ({
+          key: value.toLowerCase(),
+          label: value,
+          value,
+          kind: "Context",
+        }))
+        .filter((entry) => !query || entry.label.toLowerCase().includes(query))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    if (trigger === "+") {
+      return this.taskManager
+        .getPeopleTags()
+        .map((value) => ({
+          key: value.toLowerCase(),
+          label: value,
+          value,
+          kind: "Person",
+        }))
+        .filter((entry) => !query || entry.label.toLowerCase().includes(query))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    if (trigger === "#") {
+      const projects = this.taskManager.getProjects({ includeSomeday: true });
+      const seen = new Set();
+      return projects
+        .map((project) => {
+          const token = `#${this.normalizeProjectTagKey(project.name)}`;
+          return {
+            key: token.toLowerCase(),
+            label: token,
+            value: token,
+            kind: "Project",
+            detail: project.name,
+          };
+        })
+        .filter((entry) => {
+          if (!entry.value || seen.has(entry.key)) return false;
+          const matchesQuery =
+            !query ||
+            entry.label.toLowerCase().includes(query) ||
+            entry.detail.toLowerCase().includes(query);
+          if (!matchesQuery) return false;
+          seen.add(entry.key);
+          return true;
+        })
+        .sort((a, b) => a.detail.localeCompare(b.detail));
+    }
+    return [];
+  }
+
+  renderEntityMentionMenu() {
+    const state = this.entityMentionAutocompleteState;
+    if (!state?.menu) return;
+    const { menu, suggestions, activeIndex } = state;
+    menu.innerHTML = "";
+    suggestions.forEach((suggestion, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mention-autocomplete-item";
+      if (index === activeIndex) {
+        button.classList.add("is-active");
+      }
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", index === activeIndex ? "true" : "false");
+      button.dataset.suggestionIndex = String(index);
+
+      const label = document.createElement("span");
+      label.className = "mention-autocomplete-label";
+      label.textContent = suggestion.label;
+      const meta = document.createElement("span");
+      meta.className = "mention-autocomplete-meta";
+      meta.textContent = suggestion.detail ? `${suggestion.kind} • ${suggestion.detail}` : suggestion.kind;
+
+      button.append(label, meta);
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        this.applyEntityMentionSelection(index);
+      });
+      menu.append(button);
+    });
+    menu.hidden = !suggestions.length;
+  }
+
+  positionEntityMentionMenu() {
+    const state = this.entityMentionAutocompleteState;
+    if (!state?.menu || state.menu.hidden || !state.input) return;
+    const rect = state.input.getBoundingClientRect();
+    const estimatedHeight = Math.min(240, Math.max(120, state.suggestions.length * 46));
+    const preferTop = rect.bottom + estimatedHeight > window.innerHeight - 8 && rect.top > estimatedHeight;
+    const top = preferTop ? Math.max(8, rect.top - estimatedHeight - 6) : Math.min(window.innerHeight - 8, rect.bottom + 6);
+    const width = Math.max(220, Math.min(360, rect.width));
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left));
+    state.menu.style.top = `${top}px`;
+    state.menu.style.left = `${left}px`;
+    state.menu.style.width = `${width}px`;
+  }
+
+  applyEntityMentionSelection(index) {
+    const state = this.entityMentionAutocompleteState;
+    if (!state || !state.input || !state.suggestions.length) return;
+    const suggestion = state.suggestions[index];
+    if (!suggestion) return;
+    const input = state.input;
+    const value = input.value || "";
+    const before = value.slice(0, state.tokenStart);
+    const after = value.slice(state.tokenEnd);
+    const nextChar = after.slice(0, 1);
+    const spacer = !nextChar || /[\s.,!?;:)\]}]/.test(nextChar) ? "" : " ";
+    input.value = `${before}${suggestion.value}${spacer}${after}`;
+    const caret = before.length + suggestion.value.length + spacer.length;
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    this.closeEntityMentionMenu();
+    input.focus();
+  }
+
+  closeEntityMentionMenu() {
+    const state = this.entityMentionAutocompleteState;
+    if (!state?.menu) return;
+    state.menu.hidden = true;
+    state.menu.innerHTML = "";
+    state.input = null;
+    state.suggestions = [];
+    state.activeIndex = 0;
+  }
+
+  setEntityLinkedText(element, text) {
+    if (!element) return;
+    const source = typeof text === "string" ? text : "";
+    element.textContent = "";
+    element.append(this.createEntityLinkFragment(source));
+  }
+
+  createEntityLinkFragment(text) {
+    const fragment = document.createDocumentFragment();
+    const source = typeof text === "string" ? text : "";
+    if (!source) return fragment;
+
+    const parts = source.split(ENTITY_LINK_TOKEN_PATTERN);
+    parts.forEach((part) => {
+      if (!part) return;
+      const target = this.resolveEntityLinkTarget(part);
+      if (!target) {
+        fragment.append(document.createTextNode(part));
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = "#";
+      link.className = `inline-tag-link inline-tag-link-${target.type}`;
+      link.textContent = part;
+      link.addEventListener("click", (event) => {
+        this.activateEntityLinkTarget(target, event);
+      });
+      fragment.append(link);
+    });
+    return fragment;
+  }
+
+  resolveEntityLinkTarget(token) {
+    if (typeof token !== "string" || token.length < 2) return null;
+    const normalizedToken = token.toLowerCase();
+    if (token.startsWith("@")) {
+      const context = this.taskManager
+        .getContexts()
+        .find((value) => typeof value === "string" && value.toLowerCase() === normalizedToken);
+      if (context) {
+        return { type: "context", value: context };
+      }
+      return null;
+    }
+    if (token.startsWith("+")) {
+      const person = this.taskManager
+        .getPeopleTags()
+        .find((value) => typeof value === "string" && value.toLowerCase() === normalizedToken);
+      if (person) {
+        return { type: "person", value: person };
+      }
+      return null;
+    }
+    if (token.startsWith("#")) {
+      const key = this.normalizeProjectTagKey(token.slice(1));
+      if (!key) return null;
+      const project = this.findProjectByTagKey(key);
+      if (!project) return null;
+      return { type: "project", value: project.id };
+    }
+    return null;
+  }
+
+  normalizeProjectTagKey(value) {
+    if (typeof value !== "string") return "";
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  findProjectByTagKey(key) {
+    if (!key) return null;
+    return this.getProjectCache().find((project) => this.normalizeProjectTagKey(project.name) === key) || null;
+  }
+
+  activateEntityLinkTarget(target, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!target?.type) return;
+
+    if (target.type === "context") {
+      this.filters.context = [target.value];
+      this.setActivePanel("next");
+      this.renderAll();
+      this.taskManager.notify("info", `Filtered by context ${target.value}.`);
+      return;
+    }
+    if (target.type === "person") {
+      this.filters.person = [target.value];
+      this.setActivePanel("all-active");
+      this.renderAll();
+      this.taskManager.notify("info", `Filtered by person ${target.value}.`);
+      return;
+    }
+    if (target.type === "project") {
+      const project = this.getProjectCache().find((item) => item.id === target.value);
+      if (!project) {
+        this.taskManager.notify("warn", "Linked project no longer exists.");
+        return;
+      }
+      this.setActivePanel("projects");
+      if (!project.isExpanded) {
+        this.taskManager.toggleProjectExpansion(project.id, true);
+      }
+      this.focusProjectCard(project.id);
     }
   }
 
@@ -5757,6 +6312,8 @@ function mapElements() {
     timeFilterPicker: byId("timeFilterPicker"),
     timeFilterToggle: byId("timeFilterToggle"),
     timeFilterOptions: byId("timeFilterOptions"),
+    quickAddInput: byId("quickAddInput"),
+    quickAddDescription: byId("quickAddDescription"),
     searchTasks: byId("searchTasks"),
     clearFilters: byId("clearFilters"),
     expandProjects: byId("expandProjects"),
@@ -5803,6 +6360,7 @@ function mapElements() {
     manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
     taskContextMenu: byId("taskContextMenu"),
+    taskNoteContextMenu: byId("taskNoteContextMenu"),
     calendarDayContextMenu: byId("calendarDayContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),

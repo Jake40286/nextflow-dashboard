@@ -499,7 +499,7 @@
           <section class="settings-card">
             <header class="settings-card-header">
               <h3>People Tags</h3>
-              <p class="muted small-text">Manage @people tags for delegation and coordination.</p>
+              <p class="muted small-text">Manage +people tags for delegation and coordination.</p>
             </header>
             <ul id="settingsPeopleList" class="settings-list" role="list"></ul>
           </section>
@@ -519,6 +519,11 @@
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open">Open details</button>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open-project" hidden>Open project</button>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="my-day">Add to My Day</button>
+    <button class="task-context-menu-item is-danger" type="button" role="menuitem" data-task-menu-action="delete">Delete task</button>
+  </div>
+  <div id="taskNoteContextMenu" class="task-context-menu" role="menu" aria-label="Task note actions" aria-hidden="true" hidden>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-note-menu-action="edit">Edit note</button>
+    <button class="task-context-menu-item is-danger" type="button" role="menuitem" data-note-menu-action="delete">Delete note</button>
   </div>
   <div id="calendarDayContextMenu" class="task-context-menu" role="menu" aria-label="Calendar day actions" aria-hidden="true" hidden>
     <button class="task-context-menu-item" type="button" role="menuitem" data-calendar-day-action="add-task">Add task</button>

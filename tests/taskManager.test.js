@@ -422,6 +422,22 @@ test("my day and calendar stay linked when updating tasks", () => {
   assert.equal(task.calendarTime, null);
 });
 
+test("people tags use + prefix and migrate legacy @ values", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Coordinate launch" });
+
+  const plusTag = manager.updateTask(task.id, { peopleTag: "+Alex" });
+  assert.ok(plusTag, "task should update with +person tag");
+  assert.equal(plusTag.peopleTag, "+Alex");
+
+  const migrated = manager.updateTask(task.id, { peopleTag: "@Jamie" });
+  assert.ok(migrated, "legacy @person tag should still be accepted");
+  assert.equal(migrated.peopleTag, "+Jamie");
+
+  manager.state.reference.push({ id: "done-1", title: "Archived handoff", peopleTag: "@Pat" });
+  assert.deepEqual(manager.getPeopleTags(), ["+Jamie", "+Pat"]);
+});
+
 test("task notes are timestamped and restored after completion", () => {
   const manager = createManager();
   const task = manager.addTask({ title: "Investigate regression" });
@@ -439,6 +455,24 @@ test("task notes are timestamped and restored after completion", () => {
   assert.equal(restored.notes.length, 1);
   assert.equal(restored.notes[0].text, "Reproduced on staging and captured logs.");
   assert.equal(restored.notes[0].createdAt, "2026-03-12T15:45:00.000Z");
+});
+
+test("active task notes can be edited and deleted", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Write status update" });
+  const note = manager.addTaskNote(task.id, "Drafted initial bullet points.", {
+    createdAt: "2026-03-12T16:00:00.000Z",
+  });
+  assert.ok(note);
+
+  const updated = manager.updateTaskNote(task.id, note.id, "Drafted and shared final bullet points.");
+  assert.ok(updated);
+  assert.equal(updated.text, "Drafted and shared final bullet points.");
+  assert.equal(updated.createdAt, "2026-03-12T16:00:00.000Z");
+
+  const deleted = manager.deleteTaskNote(task.id, note.id);
+  assert.equal(deleted, true);
+  assert.equal(task.notes.length, 0);
 });
 
 test("search matches note text", () => {
@@ -496,6 +530,30 @@ test("can append notes to archived tasks", () => {
   assert.equal(archived.notes.length, 1);
   assert.equal(archived.notes[0].text, "Validated final checklist and attached evidence.");
   assert.equal(archived.notes[0].createdAt, "2026-03-12T18:30:00.000Z");
+});
+
+test("archived task notes can be edited and deleted", () => {
+  const manager = createManager();
+  const task = manager.addTask({
+    title: "Release checklist",
+    status: STATUS.NEXT,
+    context: "@Work",
+  });
+  manager.completeTask(task.id, { archive: "reference" });
+  const note = manager.addCompletedTaskNote(task.id, "Initial archived note.", {
+    createdAt: "2026-03-12T19:00:00.000Z",
+  });
+  assert.ok(note);
+
+  const updated = manager.updateCompletedTaskNote(task.id, note.id, "Updated archived note.");
+  assert.ok(updated);
+  assert.equal(updated.text, "Updated archived note.");
+  assert.equal(updated.createdAt, "2026-03-12T19:00:00.000Z");
+
+  const deleted = manager.deleteCompletedTaskNote(task.id, note.id);
+  assert.equal(deleted, true);
+  const archived = manager.getCompletedTaskById(task.id);
+  assert.equal(archived.notes.length, 0);
 });
 
 test.after(() => {

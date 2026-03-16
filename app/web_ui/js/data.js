@@ -562,6 +562,49 @@ export class TaskManager extends EventTarget {
     return entry;
   }
 
+  parseTaskReferences(waitingFor) {
+    if (!waitingFor || typeof waitingFor !== "string") return { text: waitingFor, referencedTaskIds: [] };
+    const text = waitingFor.trim();
+    const referencedTaskIds = [];
+    // Match patterns like "task:abc123", "slug:myslug", or just task IDs/slugs at the start
+    const patterns = [
+      /^task:([a-z0-9_]+)/i,
+      /^([a-z0-9_]+)(?:\s|$)/,
+    ];
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const id = match[1];
+        const task = this.getTaskById(id) || this.state.tasks.find((t) => t.slug === id);
+        if (task) {
+          referencedTaskIds.push(task.id);
+          break;
+        }
+      }
+    }
+    return { text, referencedTaskIds };
+  }
+
+  getReferencedTask(waitingFor) {
+    const { referencedTaskIds } = this.parseTaskReferences(waitingFor);
+    if (referencedTaskIds.length === 0) return null;
+    return this.getTaskById(referencedTaskIds[0]);
+  }
+
+  searchTasksForReference(searchTerm = "", { excludeTaskId = null } = {}) {
+    if (!searchTerm || typeof searchTerm !== "string") return [];
+    const term = searchTerm.trim().toLowerCase();
+    if (term.length < 2) return [];
+    return this.state.tasks
+      .filter((task) => {
+        if (excludeTaskId && task.id === excludeTaskId) return false;
+        const matchesId = task.id.toLowerCase().includes(term) || (task.slug && task.slug.toLowerCase().includes(term));
+        const matchesTitle = task.title.toLowerCase().includes(term);
+        return matchesId || matchesTitle;
+      })
+      .slice(0, 10);
+  }
+
   addTask(payload) {
     const id = generateId("task");
     const createdAt = new Date().toISOString();

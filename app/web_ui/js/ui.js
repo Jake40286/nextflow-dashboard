@@ -1574,7 +1574,8 @@ export class UIController {
       });
       actions.append(deleteButton);
 
-      const projectTasks = filteredTasks
+      const allProjectTasks = this.taskManager.getTasks(this.buildTaskFilters());
+      let projectTasks = allProjectTasks
         .filter((task) => task.projectId === project.id)
         .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
 
@@ -3648,7 +3649,14 @@ export class UIController {
     if (task.context) metaItems.push(this.createMetaSpan(task.context));
     const projectName = this.getProjectName(task.projectId);
     if (projectName) metaItems.push(this.createMetaSpan(projectName));
-    if (task.waitingFor) metaItems.push(this.createMetaSpan(`Waiting For: ${task.waitingFor}`));
+    if (task.waitingFor) {
+      const referencedTask = this.taskManager.getReferencedTask(task.waitingFor);
+      if (referencedTask) {
+        metaItems.push(this.createMetaSpan(`Blocking: ${referencedTask.slug || referencedTask.id}`));
+      } else {
+        metaItems.push(this.createMetaSpan(`Waiting For: ${task.waitingFor}`));
+      }
+    }
     if (task.energyLevel) metaItems.push(this.createMetaSpan(`Energy: ${task.energyLevel}`));
     if (task.timeRequired) metaItems.push(this.createMetaSpan(`Time: ${task.timeRequired}`));
     if (task.dueDate) {
@@ -4839,8 +4847,17 @@ export class UIController {
     );
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
     meta.append(this.buildMetaRow("Calendar", this.formatCalendarMeta(task)));
-    if (isCompleted) {
-      meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
+    if (isCompleted && task.waitingFor) {
+      const referencedTask = this.taskManager.getReferencedTask(task.waitingFor);
+      if (referencedTask) {
+        const linkedTaskEl = this.buildMetaRow(
+          "Waiting on task",
+          `${referencedTask.slug || referencedTask.id} — ${referencedTask.title} [${STATUS_LABELS[referencedTask.status] || referencedTask.status}]`
+        );
+        meta.append(linkedTaskEl);
+      } else {
+        meta.append(this.buildMetaRow("Waiting on", task.waitingFor || "—"));
+      }
     }
     meta.append(this.buildMetaRow("Completed", task.completedAt ? formatFriendlyDate(task.completedAt) : "—"));
     meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
@@ -4963,9 +4980,60 @@ export class UIController {
     waitingField.textContent = "Waiting on";
     const waitingInput = document.createElement("input");
     waitingInput.type = "text";
-    waitingInput.placeholder = "Person or response";
+    waitingInput.placeholder = "Person, response, or task ID (e.g., task:abc123)";
     waitingInput.value = task.waitingFor || "";
     waitingField.append(waitingInput);
+
+    // Task reference suggestion list
+    const suggestionList = document.createElement("div");
+    suggestionList.className = "task-reference-suggestions";
+    suggestionList.style.display = "none";
+    suggestionList.style.maxHeight = "200px";
+    suggestionList.style.overflowY = "auto";
+    suggestionList.style.border = "1px solid var(--line)";
+    suggestionList.style.borderRadius = "4px";
+    suggestionList.style.marginTop = "4px";
+    suggestionList.style.background = "var(--surface)";
+    suggestionList.style.zIndex = "10";
+
+    waitingInput.addEventListener("input", () => {
+      const value = waitingInput.value.trim();
+      if (value.length < 2) {
+        suggestionList.style.display = "none";
+        suggestionList.innerHTML = "";
+        return;
+      }
+      const suggestions = this.taskManager.searchTasksForReference(value, { excludeTaskId: task.id });
+      if (suggestions.length === 0) {
+        suggestionList.style.display = "none";
+        suggestionList.innerHTML = "";
+        return;
+      }
+      suggestionList.innerHTML = "";
+      suggestionList.style.display = "block";
+      suggestions.forEach((suggestionTask) => {
+        const item = document.createElement("div");
+        item.style.padding = "8px";
+        item.style.borderBottom = "1px solid var(--line)";
+        item.style.cursor = "pointer";
+        item.style.fontSize = "0.9em";
+        item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
+        item.addEventListener("click", () => {
+          waitingInput.value = `task:${suggestionTask.id}`;
+          suggestionList.style.display = "none";
+          suggestionList.innerHTML = "";
+        });
+        item.addEventListener("mouseover", () => {
+          item.style.background = "var(--surface-2)";
+        });
+        item.addEventListener("mouseout", () => {
+          item.style.background = "transparent";
+        });
+        suggestionList.append(item);
+      });
+    });
+
+    waitingField.append(suggestionList);
 
     const timingField = document.createElement("label");
     timingField.className = "task-edit-field";
@@ -5273,10 +5341,20 @@ export class UIController {
     waitingGroup.textContent = "Waiting on";
     const waitingInput = document.createElement("input");
     waitingInput.type = "text";
-    waitingInput.placeholder = "Person or dependency";
+    waitingInput.placeholder = "Person or task reference (e.g., task:abc123)";
     waitingInput.value = task.waitingFor || "";
     this.attachEntityMentionAutocomplete(waitingInput);
     waitingGroup.append(waitingInput);
+
+    // Show referenced task info if applicable
+    const referencedTask = this.taskManager.getReferencedTask(task.waitingFor);
+    if (referencedTask) {
+      const refInfo = document.createElement("p");
+      refInfo.className = "muted small-text";
+      refInfo.style.marginTop = "4px";
+      refInfo.textContent = `→ Waiting for: ${referencedTask.slug || referencedTask.id} "${referencedTask.title}" [${STATUS_LABELS[referencedTask.status]}]`;
+      waitingGroup.append(refInfo);
+    }
 
     const closureGroup = document.createElement("label");
     closureGroup.className = "task-edit-field";

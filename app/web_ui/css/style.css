@@ -2546,6 +2546,23 @@ button.meta-item:hover {
   font-size: 0.95em;
 }
 
+.clarify-answered-summary {
+  margin-bottom: var(--space-3);
+}
+
+.clarify-preview-compact {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  font-size: 0.9em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .clarify-modal-body blockquote {
   margin: 0 0 var(--space-3) 0;
   border-left: 3px solid var(--accent);
@@ -2558,6 +2575,23 @@ button.meta-item:hover {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+.modal-dialog-sm {
+  max-width: 420px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.prompt-modal-input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .modal {

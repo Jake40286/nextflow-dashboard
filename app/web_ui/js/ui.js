@@ -1078,7 +1078,7 @@ export class UIController {
     return raw.replace(/\s+/g, " ");
   }
 
-  ensureMentionedEntitiesExist(rawText) {
+  async ensureMentionedEntitiesExist(rawText) {
     const tokens = this.extractEntityMentionTokens(rawText);
     if (!tokens.length) return;
 
@@ -1089,42 +1089,42 @@ export class UIController {
     let addedContexts = 0;
     let addedPeople = 0;
 
-    tokens.forEach((token) => {
+    for (const token of tokens) {
       if (token.startsWith("+")) {
         const key = token.toLowerCase();
-        if (peopleSet.has(key)) return;
-        const confirmed = window.confirm(`Create people tag "${token}" from this note mention?`);
-        if (!confirmed) return;
+        if (peopleSet.has(key)) continue;
+        const confirmed = await this.showConfirm(`Create people tag "${token}" from this note mention?`, { okLabel: "Create tag" });
+        if (!confirmed) continue;
         const added = this.taskManager.addPeopleTagOption(token, { notify: false });
-        if (!added) return;
+        if (!added) continue;
         peopleSet.add(added.toLowerCase());
         addedPeople += 1;
-        return;
+        continue;
       }
 
       if (token.startsWith("@")) {
         const key = token.toLowerCase();
-        if (contextSet.has(key)) return;
-        const confirmed = window.confirm(`Create context "${token}" from this note mention?`);
-        if (!confirmed) return;
+        if (contextSet.has(key)) continue;
+        const confirmed = await this.showConfirm(`Create context "${token}" from this note mention?`, { okLabel: "Create context" });
+        if (!confirmed) continue;
         const added = this.taskManager.addContextOption(token, { notify: false });
-        if (!added) return;
+        if (!added) continue;
         contextSet.add(added.toLowerCase());
         addedContexts += 1;
-        return;
+        continue;
       }
 
       if (token.startsWith("#")) {
         const key = this.normalizeProjectTagKey(token.slice(1));
-        if (!key) return;
-        if (this.findProjectByTagKey(key)) return;
+        if (!key) continue;
+        if (this.findProjectByTagKey(key)) continue;
         const suggestedName = this.formatProjectNameFromMentionToken(token);
-        if (!suggestedName) return;
-        const confirmed = window.confirm(`Create project "${suggestedName}" from note mention "${token}"?`);
-        if (!confirmed) return;
+        if (!suggestedName) continue;
+        const confirmed = await this.showConfirm(`Create project "${suggestedName}" from note mention?`, { okLabel: "Create project" });
+        if (!confirmed) continue;
         this.taskManager.addProject(suggestedName);
       }
-    });
+    }
 
     const messages = [];
     if (addedPeople) {
@@ -1300,10 +1300,10 @@ export class UIController {
     this.taskManager.notify("info", `Added "${task.title}" to My Day and scheduled it for today.`);
   }
 
-  promptRescheduleTask(task) {
+  async promptRescheduleTask(task) {
     if (!task?.id) return;
     const fallbackDate = task.calendarDate || this.getTodayDateKey();
-    const candidate = window.prompt(`Re-schedule "${task.title}" to (YYYY-MM-DD):`, fallbackDate);
+    const candidate = await this.showPrompt(`Re-schedule "${task.title}" to (YYYY-MM-DD):`, fallbackDate);
     if (candidate === null) return;
     const nextDate = candidate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
@@ -1588,8 +1588,8 @@ export class UIController {
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger";
       deleteButton.textContent = "Delete project";
-      deleteButton.addEventListener("click", () => {
-        const confirmed = window.confirm(`Delete project "${project.name}"? Tasks will remain but lose this project link.`);
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = await this.showConfirm(`Delete project "${project.name}"? Tasks will remain but lose their project link.`, { title: "Delete project", okLabel: "Delete", danger: true });
         if (confirmed) {
           this.taskManager.deleteProject(project.id);
         }
@@ -2987,8 +2987,8 @@ export class UIController {
             deleteButton.type = "button";
             deleteButton.className = "btn btn-danger btn-small";
             deleteButton.textContent = "Delete";
-            deleteButton.addEventListener("click", () => {
-              const confirmed = window.confirm(`Delete palette "${palette.name}"?`);
+            deleteButton.addEventListener("click", async () => {
+              const confirmed = await this.showConfirm(`Delete palette "${palette.name}"?`, { title: "Delete palette", okLabel: "Delete", danger: true });
               if (!confirmed) return;
               this.taskManager.deleteCustomThemePalette(palette.id);
             });
@@ -3309,10 +3309,10 @@ export class UIController {
     return wrapper;
   }
 
-  handleSettingsAction({ action, type, value }) {
+  async handleSettingsAction({ action, type, value }) {
     if (!action || !type || !value) return;
     if (action === "rename") {
-      const candidate = window.prompt(`Rename "${value}" to:`, value);
+      const candidate = await this.showPrompt(`Rename "${value}" to:`, value);
       if (!candidate || !candidate.trim()) return;
       const nextValue = candidate.trim();
       if (nextValue === value) return;
@@ -3327,7 +3327,7 @@ export class UIController {
       return;
     }
     if (action === "delete") {
-      const confirmed = window.confirm(`Delete "${value}"?`);
+      const confirmed = await this.showConfirm(`Delete "${value}"?`, { title: "Delete option", okLabel: "Delete", danger: true });
       if (!confirmed) return;
       if (type === "context") {
         const changed = this.taskManager.deleteContext(value);
@@ -3767,7 +3767,7 @@ export class UIController {
   setupTaskContextMenu() {
     const menu = this.elements.taskContextMenu;
     if (!menu) return;
-    menu.addEventListener("click", (event) => {
+    menu.addEventListener("click", async (event) => {
       const actionButton = event.target.closest("[data-task-menu-action]");
       if (!actionButton) return;
       const task = this.contextMenuTaskId ? this.taskManager.getTaskById(this.contextMenuTaskId) : null;
@@ -3787,7 +3787,7 @@ export class UIController {
         return;
       }
       if (action === "delete") {
-        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+        const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
         if (!confirmed) return;
         this.taskManager.deleteTask(task.id);
       }
@@ -3887,7 +3887,7 @@ export class UIController {
   setupTaskNoteContextMenu() {
     const menu = this.elements.taskNoteContextMenu;
     if (!menu) return;
-    menu.addEventListener("click", (event) => {
+    menu.addEventListener("click", async (event) => {
       const actionButton = event.target.closest("[data-note-menu-action]");
       if (!actionButton) return;
       const action = actionButton.dataset.noteMenuAction;
@@ -3895,7 +3895,7 @@ export class UIController {
       this.closeTaskNoteContextMenu();
       if (!context) return;
       if (action === "edit") {
-        const nextText = window.prompt("Edit note", context.note.text || "");
+        const nextText = await this.showPrompt("Edit note", context.note.text || "");
         if (nextText === null) return;
         const trimmed = nextText.trim();
         if (!trimmed) {
@@ -3913,7 +3913,7 @@ export class UIController {
         return;
       }
       if (action === "delete") {
-        const confirmed = window.confirm("Delete this note? This cannot be undone.");
+        const confirmed = await this.showConfirm("Delete this note?", { title: "Delete note", okLabel: "Delete", danger: true });
         if (!confirmed) return;
         const deleted = context.isArchived
           ? this.taskManager.deleteCompletedTaskNote(context.archiveEntryId, context.note.id)
@@ -4075,9 +4075,9 @@ export class UIController {
     }
   }
 
-  promptCalendarTaskCreate(dateKey) {
+  async promptCalendarTaskCreate(dateKey) {
     const dateLabel = formatFriendlyDate(dateKey);
-    const title = window.prompt(`Task title for ${dateLabel}:`);
+    const title = await this.showPrompt(`New task for ${dateLabel}:`);
     if (title === null) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -4198,12 +4198,17 @@ export class UIController {
       );
     });
 
-    // Actionable Yes — reveal the rest of the form
+    // Actionable Yes — collapse the question, show the form
     clarifyActionableYes?.addEventListener("click", () => {
       this.handleClarifyActionableChoice(true);
       const fields = document.getElementById("clarifyActionableFields");
       if (fields) fields.hidden = false;
-      clarifyActionableYes.classList.add("is-selected");
+      const question = document.getElementById("clarifyActionableQuestion");
+      if (question) question.hidden = true;
+      const summary = document.getElementById("clarifyActionableSummary");
+      const summaryText = document.getElementById("clarifyPreviewTextSummary");
+      if (summaryText) summaryText.textContent = this.clarifyState.previewText || "";
+      if (summary) summary.hidden = false;
     });
 
     // Project section
@@ -4400,6 +4405,10 @@ export class UIController {
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
+    const actionableQuestion = document.getElementById("clarifyActionableQuestion");
+    if (actionableQuestion) actionableQuestion.hidden = false;
+    const actionableSummary = document.getElementById("clarifyActionableSummary");
+    if (actionableSummary) actionableSummary.hidden = true;
     const normalFields = document.getElementById("clarifyNormalActionFields");
     if (normalFields) normalFields.hidden = false;
     const delegateRow = document.getElementById("clarifyDelegateRow");
@@ -4573,12 +4582,12 @@ export class UIController {
     if (!this.clarifyState.taskId || !isActionable) return;
   }
 
-  handleClarifyNonAction(destination) {
+  async handleClarifyNonAction(destination) {
     if (!this.clarifyState.taskId || !destination) return;
     if (destination === "trash") {
       const task = this.taskManager.getTaskById(this.clarifyState.taskId);
       const label = task?.title || "this capture";
-      const confirmed = window.confirm(`Delete "${label}"? This cannot be undone.`);
+      const confirmed = await this.showConfirm(`Delete "${label}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
       if (!confirmed) {
         return;
       }
@@ -4601,9 +4610,9 @@ export class UIController {
     }
   }
 
-  handleClarifyConvertToProject() {
+  async handleClarifyConvertToProject() {
     if (!this.clarifyState.taskId) return;
-    const projectName = window.prompt("Project name");
+    const projectName = await this.showPrompt("New project name:");
     if (!projectName || !projectName.trim()) {
       return;
     }
@@ -4681,8 +4690,8 @@ export class UIController {
     this.showClarifyStep("metadata");
   }
 
-  handleClarifyAddContext() {
-    const nextContext = window.prompt("New context name (include @ if desired)");
+  async handleClarifyAddContext() {
+    const nextContext = await this.showPrompt("New context name (include @ if desired):");
     if (!nextContext || !nextContext.trim()) return;
     const select = this.elements.clarifyContextSelect;
     if (!select) return;
@@ -5649,8 +5658,8 @@ export class UIController {
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger";
       deleteButton.textContent = "Delete task";
-      deleteButton.addEventListener("click", () => {
-        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
         if (confirmed) {
           this.taskManager.deleteTask(task.id);
           this.closeTaskFlyout();
@@ -5685,13 +5694,13 @@ export class UIController {
     return form;
   }
 
-  createProjectForTask(task, { archiveEntryId = null } = {}) {
+  async createProjectForTask(task, { archiveEntryId = null } = {}) {
     if (!task) return;
-    const proposedName = window.prompt("New project name");
+    const proposedName = await this.showPrompt("New project name:");
     if (!proposedName || !proposedName.trim()) return;
     const trimmedName = proposedName.trim();
     const confirmMessage = `Create project "${trimmedName}" and assign it to "${task.title || "this task"}"?`;
-    if (!window.confirm(confirmMessage)) {
+    if (!await this.showConfirm(confirmMessage, { okLabel: "Create project" })) {
       return;
     }
     const project = this.taskManager.addProject(trimmedName);
@@ -6479,6 +6488,78 @@ export class UIController {
     this.taskManager.updateTask(taskId, updates);
   }
 
+  showPrompt(title, defaultValue = "") {
+    return new Promise((resolve) => {
+      const modal = this.elements.promptModal;
+      if (!modal) { resolve(window.prompt(title, defaultValue)); return; }
+      const input = this.elements.promptModalInput;
+      const titleEl = this.elements.promptModalTitle;
+      const okBtn = this.elements.promptModalOk;
+      const cancelBtn = this.elements.promptModalCancel;
+      if (titleEl) titleEl.textContent = title;
+      if (input) { input.value = defaultValue; }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        okBtn?.removeEventListener("click", onOk);
+        cancelBtn?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onOk = () => {
+        const val = input?.value?.trim() || "";
+        cleanup();
+        resolve(val || null);
+      };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); onOk(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      };
+      okBtn?.addEventListener("click", onOk);
+      cancelBtn?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => { input?.focus(); input?.select(); }, 50);
+    });
+  }
+
+  showConfirm(message, { title = "Confirm", okLabel = "Confirm", danger = false } = {}) {
+    return new Promise((resolve) => {
+      const modal = this.elements.confirmModal;
+      if (!modal) { resolve(window.confirm(message)); return; }
+      const msgEl = this.elements.confirmModalMessage;
+      const titleEl = this.elements.confirmModalHeading;
+      const okBtn = this.elements.confirmModalOk;
+      const cancelBtn = this.elements.confirmModalCancel;
+      if (titleEl) titleEl.textContent = title;
+      if (msgEl) msgEl.textContent = message;
+      if (okBtn) {
+        okBtn.textContent = okLabel;
+        okBtn.className = danger ? "btn btn-danger" : "btn btn-primary";
+      }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        okBtn?.removeEventListener("click", onOk);
+        cancelBtn?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onOk = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onKeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); onOk(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      };
+      okBtn?.addEventListener("click", onOk);
+      cancelBtn?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => okBtn?.focus(), 50);
+    });
+  }
+
   showToast(level, message) {
     const region = this.elements.alerts;
     if (!message) return;
@@ -6844,6 +6925,16 @@ function mapElements() {
     statsAgeBuckets: byId("statsAgeBuckets"),
     statsArchiveMix: byId("statsArchiveMix"),
     statsPeopleList: byId("statsPeopleList"),
+    promptModal: byId("promptModal"),
+    promptModalTitle: byId("promptModalTitle"),
+    promptModalInput: byId("promptModalInput"),
+    promptModalOk: byId("promptModalOk"),
+    promptModalCancel: byId("promptModalCancel"),
+    confirmModal: byId("confirmModal"),
+    confirmModalHeading: byId("confirmModalHeading"),
+    confirmModalMessage: byId("confirmModalMessage"),
+    confirmModalOk: byId("confirmModalOk"),
+    confirmModalCancel: byId("confirmModalCancel"),
     manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
     taskContextMenu: byId("taskContextMenu"),

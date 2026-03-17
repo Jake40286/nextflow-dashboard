@@ -658,150 +658,150 @@
   <datalist id="projectStatusSuggestions"></datalist>
 
   <div id="clarifyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="clarifyModalTitle" hidden>
-    <div class="modal-backdrop" data-clarify-close></div>
+    <div class="modal-backdrop"></div>
     <div class="modal-dialog" role="document">
       <header class="modal-header">
-        <h2 id="clarifyModalTitle">Clarify capture</h2>
+        <h2 id="clarifyModalTitle">Process inbox item</h2>
         <button id="closeClarifyModal" class="btn btn-light" type="button" aria-label="Close clarify dialog">Close</button>
       </header>
       <div class="modal-body clarify-modal-body">
-        <section id="clarifyStepActionable" class="clarify-step" data-clarify-step="actionable" hidden>
-          <p class="muted small-text">Item</p>
+
+        <!-- Capture text (always visible) -->
+        <div class="clarify-field">
+          <p class="muted small-text">Capture</p>
           <blockquote id="clarifyPreviewText" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true"></blockquote>
-          <h3>Is this actionable?</h3>
-          <div class="clarify-option-buttons">
-            <button id="clarifyActionableYes" class="btn btn-primary" type="button">Yes</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Not currently → Someday/Maybe</button>
-            <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">No → Trash</button>
-          </div>
-        </section>
+        </div>
 
-        <section id="clarifyStepActionPlan" class="clarify-step" data-clarify-step="action-plan" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Is this a project?</h3>
+        <!-- Step 1: Actionable? -->
+        <div class="clarify-field">
+          <p class="clarify-question">Is this actionable?</p>
           <div class="clarify-option-buttons">
-            <button id="clarifyActionSingle" class="btn btn-primary" type="button">Single action → Continue</button>
-            <button id="clarifyActionAddExisting" class="btn btn-light" type="button">Add to existing project</button>
-            <button id="clarifyConvertProject" class="btn btn-light" type="button">Yes — Create project</button>
+            <button id="clarifyActionableYes" class="btn btn-primary clarify-choice" type="button">Yes</button>
+            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Someday / Maybe</button>
+            <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">Trash</button>
           </div>
-          <div id="clarifyProjectPicker" class="clarify-project-option" hidden>
-            <label for="clarifyProjectSelect">Pick a project</label>
-            <select id="clarifyProjectSelect"></select>
+        </div>
+
+        <!-- All following fields revealed after clicking Yes -->
+        <div id="clarifyActionableFields" hidden>
+
+          <!-- Project? -->
+          <div class="clarify-field clarify-field-section">
+            <p class="clarify-question">Part of a project?</p>
             <div class="clarify-option-buttons">
-              <button id="clarifyProjectPickContinue" class="btn btn-primary" type="button">Continue</button>
+              <button id="clarifyActionSingle" class="btn btn-light clarify-choice is-selected" type="button">Single action</button>
+              <button id="clarifyActionAddExisting" class="btn btn-light clarify-choice" type="button">Existing project</button>
+              <button id="clarifyConvertProject" class="btn btn-light clarify-choice" type="button">New project</button>
+            </div>
+            <div id="clarifyProjectPicker" class="clarify-project-option" hidden>
+              <label for="clarifyProjectSelect" class="visually-hidden">Project</label>
+              <select id="clarifyProjectSelect"></select>
             </div>
           </div>
-        </section>
 
-        <section id="clarifyStepTwoMinute" class="clarify-step" data-clarify-step="two-minute" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Will this take less than 2 minutes?</h3>
-          <div class="clarify-option-buttons">
-            <button id="clarifyTwoMinuteNo" class="btn btn-primary" type="button">No — Continue</button>
-            <button id="clarifyTwoMinuteYes" class="btn btn-light" type="button">Yes — Do it now</button>
-          </div>
-          <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
-            <p class="muted small-text">You did it. Do you expect a response?</p>
-            <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
-            <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
-            <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
-            <select id="clarifyFollowupTiming">
-              <option value="24h">Follow up in 24 hours</option>
-              <option value="7d">Follow up in 7 days</option>
-              <option value="custom">Custom</option>
-            </select>
-            <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
+          <!-- 2-minute rule -->
+          <div class="clarify-field clarify-field-section">
+            <p class="clarify-question">Less than 2 minutes?</p>
             <div class="clarify-option-buttons">
-              <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — Create Waiting For</button>
-              <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — Complete</button>
+              <button id="clarifyTwoMinuteNo" class="btn btn-light clarify-choice is-selected" type="button">No — add to my list</button>
+              <button id="clarifyTwoMinuteYes" class="btn btn-light clarify-choice" type="button">Yes — do it now</button>
             </div>
-          </div>
-        </section>
-
-        <section id="clarifyStepWho" class="clarify-step" data-clarify-step="who" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Who should do this?</h3>
-          <div class="clarify-option-buttons">
-            <button id="clarifyWhoSelf" class="btn btn-primary" type="button">I will do it</button>
-            <button id="clarifyWhoDelegate" class="btn btn-light" type="button">Delegate to someone else</button>
-          </div>
-          <div class="clarify-project-option">
-            <label class="visually-hidden" for="clarifyDelegateNameInput">Assignee</label>
-            <input id="clarifyDelegateNameInput" type="text" placeholder="Assignee name for delegation" autocomplete="off" />
-          </div>
-        </section>
-
-        <section id="clarifyStepDates" class="clarify-step" data-clarify-step="dates" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Does this need to happen on a specific date?</h3>
-          <div class="clarify-project-option">
-            <label><input id="clarifyDateOptionSpecific" type="radio" name="clarifyDateOption" value="specific" /> Specific date/time → Calendar</label>
-            <div class="clarify-date-row">
-              <input id="clarifySpecificDateInput" type="date" />
-              <input id="clarifySpecificTimeInput" type="time" />
-            </div>
-          </div>
-          <div class="clarify-project-option">
-            <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date → Next Actions</label>
-            <input id="clarifyDueDateInput" type="date" />
-          </div>
-          <div class="clarify-project-option">
-            <label><input id="clarifyDateOptionNone" type="radio" name="clarifyDateOption" value="none" checked /> No date</label>
-          </div>
-          <div class="clarify-option-buttons">
-            <button id="clarifyDateContinue" class="btn btn-primary" type="button">Continue</button>
-          </div>
-        </section>
-
-        <section id="clarifyStepMetadata" class="clarify-step" data-clarify-step="metadata" hidden>
-          <p class="muted small-text">Item</p>
-          <blockquote class="clarify-preview" aria-hidden="true"></blockquote>
-          <h3>Optional metadata</h3>
-          <div class="clarify-project-option">
-            <label for="clarifyContextSelect">Where must you be or what tool do you need?</label>
-            <div class="clarify-context-control">
-              <select id="clarifyContextSelect">
-                <option value="">Choose a context</option>
+            <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
+              <p class="muted small-text">Done! Expecting a response?</p>
+              <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
+              <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
+              <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
+              <select id="clarifyFollowupTiming">
+                <option value="24h">Follow up in 24 hours</option>
+                <option value="7d">Follow up in 7 days</option>
+                <option value="custom">Custom date</option>
               </select>
-              <button id="clarifyAddContext" class="btn btn-light" type="button">Add context</button>
+              <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
+              <div class="clarify-option-buttons">
+                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Waiting For</button>
+                <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
+              </div>
             </div>
           </div>
-          <div class="clarify-project-option">
-            <label for="clarifyEnergySelect">How much energy does this require?</label>
-            <select id="clarifyEnergySelect">
-              <option value="">Select energy</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-          <div class="clarify-project-option">
-            <label for="clarifyTimeSelect">How long will this take?</label>
-            <select id="clarifyTimeSelect">
-              <option value="">Select duration</option>
-              <option value="<5min">&lt; 5 minutes</option>
-              <option value="<15min">&lt; 15 minutes</option>
-              <option value="<30min">&lt; 30 minutes</option>
-              <option value="30min+">&gt; 30 minutes</option>
-            </select>
-          </div>
-          <div class="clarify-option-buttons">
-            <button id="clarifyMetadataSkip" class="btn btn-light" type="button">Skip</button>
-            <button id="clarifyMetadataSave" class="btn btn-primary" type="button">Save & Continue</button>
-          </div>
-        </section>
 
-        <section id="clarifyStepFinal" class="clarify-step" data-clarify-step="final" hidden>
-          <h3>Task processed</h3>
-          <p id="clarifyFinalMessage" class="muted">This action has been routed to the correct list.</p>
-          <div class="clarify-option-buttons">
-            <button id="clarifyFinalReturn" class="btn btn-primary" type="button">Return to Inbox</button>
-          </div>
-        </section>
+          <!-- Normal action fields (hidden when 2-min Yes chosen) -->
+          <div id="clarifyNormalActionFields">
+
+            <!-- Who? -->
+            <div class="clarify-field clarify-field-section">
+              <p class="clarify-question">Who does this?</p>
+              <div class="clarify-option-buttons">
+                <button id="clarifyWhoSelf" class="btn btn-light clarify-choice is-selected" type="button">Me</button>
+                <button id="clarifyWhoDelegate" class="btn btn-light clarify-choice" type="button">Delegate</button>
+              </div>
+              <div id="clarifyDelegateRow" hidden>
+                <label class="visually-hidden" for="clarifyDelegateNameInput">Delegate to</label>
+                <input id="clarifyDelegateNameInput" type="text" placeholder="Who are you delegating to?" autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- Date? -->
+            <div class="clarify-field clarify-field-section">
+              <p class="clarify-question">Does it need a date?</p>
+              <div class="clarify-project-option">
+                <label><input id="clarifyDateOptionNone" type="radio" name="clarifyDateOption" value="none" checked /> No date</label>
+              </div>
+              <div class="clarify-project-option">
+                <label><input id="clarifyDateOptionSpecific" type="radio" name="clarifyDateOption" value="specific" /> Specific date / time → Calendar</label>
+                <div id="clarifySpecificDateFields" class="clarify-date-row" hidden>
+                  <input id="clarifySpecificDateInput" type="date" />
+                  <input id="clarifySpecificTimeInput" type="time" />
+                </div>
+              </div>
+              <div class="clarify-project-option">
+                <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date → Next Actions</label>
+                <div id="clarifyDueDateFields" hidden>
+                  <input id="clarifyDueDateInput" type="date" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Metadata -->
+            <div class="clarify-field clarify-field-section">
+              <p class="clarify-question">Optional details</p>
+              <div class="clarify-project-option">
+                <label for="clarifyContextSelect">Context</label>
+                <div class="clarify-context-control">
+                  <select id="clarifyContextSelect">
+                    <option value="">Choose a context</option>
+                  </select>
+                  <button id="clarifyAddContext" class="btn btn-light" type="button">Add context</button>
+                </div>
+              </div>
+              <div class="clarify-project-option">
+                <label for="clarifyEnergySelect">Energy required</label>
+                <select id="clarifyEnergySelect">
+                  <option value="">Select energy</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div class="clarify-project-option">
+                <label for="clarifyTimeSelect">Time required</label>
+                <select id="clarifyTimeSelect">
+                  <option value="">Select duration</option>
+                  <option value="<5min">&lt; 5 minutes</option>
+                  <option value="<15min">&lt; 15 minutes</option>
+                  <option value="<30min">&lt; 30 minutes</option>
+                  <option value="30min+">&gt; 30 minutes</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Route button -->
+            <div class="clarify-field">
+              <button id="clarifyDoneButton" class="btn btn-primary" type="button">Route task →</button>
+            </div>
+
+          </div><!-- /clarifyNormalActionFields -->
+        </div><!-- /clarifyActionableFields -->
+
       </div>
     </div>
   </div>

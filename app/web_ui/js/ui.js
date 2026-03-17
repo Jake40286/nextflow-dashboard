@@ -4159,30 +4159,15 @@ export class UIController {
       clarifyWhoSelf,
       clarifyWhoDelegate,
       clarifyDelegateNameInput,
-      clarifyDateContinue,
       clarifyDateOptionSpecific,
-      clarifySpecificDateInput,
       clarifyDateOptionDue,
-      clarifyDueDateInput,
       clarifyDateOptionNone,
-      clarifySpecificTimeInput,
       clarifyProjectSelect,
       clarifyProjectPicker,
-      clarifyProjectPickContinue,
       clarifyContextSelect,
       clarifyEnergySelect,
       clarifyTimeSelect,
-      clarifyMetadataSave,
-      clarifyMetadataSkip,
       clarifyAddContext,
-      clarifyTwoMinuteStep,
-      clarifyStepActionable,
-      clarifyStepActionPlan,
-      clarifyStepDates,
-      clarifyStepMetadata,
-      clarifyStepFinal,
-      clarifyFinalMessage,
-      clarifyFinalReturn,
       clarifyPreviewText,
     } = this.elements;
     if (!clarifyModal) return;
@@ -4192,60 +4177,153 @@ export class UIController {
         this.closeClarifyModal();
       }
     };
-    this.clarifyDestinationButtons = Array.from(clarifyModal.querySelectorAll("[data-clarify-nonaction]"));
-    clarifyActionableYes?.addEventListener("click", () => this.handleClarifyActionableChoice(true));
-    clarifyActionSingle?.addEventListener("click", () => this.handleClarifySingleAction());
-    clarifyActionAddExisting?.addEventListener("click", () => this.showClarifyProjectPicker());
+    closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
+    clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
+
+    // Helper: toggle is-selected among a button group
+    const selectChoice = (group, chosen) => {
+      group.forEach((btn) => btn?.classList.toggle("is-selected", btn === chosen));
+    };
+    const projectChoices = [clarifyActionSingle, clarifyActionAddExisting, clarifyConvertProject];
+    const twoMinChoices = [clarifyTwoMinuteNo, clarifyTwoMinuteYes];
+    const whoChoices = [clarifyWhoSelf, clarifyWhoDelegate];
+
+    // Non-action destinations (Someday, Trash)
+    this.clarifyDestinationButtons = Array.from(
+      clarifyModal.querySelectorAll("[data-clarify-nonaction]")
+    );
     this.clarifyDestinationButtons.forEach((button) => {
-      button.addEventListener("click", () => this.handleClarifyNonAction(button.dataset.clarifyNonaction));
+      button.addEventListener("click", () =>
+        this.handleClarifyNonAction(button.dataset.clarifyNonaction)
+      );
     });
-    clarifyConvertProject?.addEventListener("click", () => this.handleClarifyConvertToProject());
-    clarifyTwoMinuteYes?.addEventListener("click", () => this.handleClarifyTwoMinuteYes());
-    clarifyTwoMinuteNo?.addEventListener("click", () => this.showClarifyStep("who"));
+
+    // Actionable Yes — reveal the rest of the form
+    clarifyActionableYes?.addEventListener("click", () => {
+      this.handleClarifyActionableChoice(true);
+      const fields = document.getElementById("clarifyActionableFields");
+      if (fields) fields.hidden = false;
+      clarifyActionableYes.classList.add("is-selected");
+    });
+
+    // Project section
+    clarifyActionSingle?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyActionSingle);
+      if (clarifyProjectPicker) clarifyProjectPicker.hidden = true;
+      this.clarifyState.projectId = null;
+      this.clarifyState.projectName = "";
+    });
+    clarifyActionAddExisting?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyActionAddExisting);
+      this.showClarifyProjectPicker();
+    });
+    clarifyConvertProject?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyConvertProject);
+      this.handleClarifyConvertToProject();
+    });
+
+    // 2-minute section
+    clarifyTwoMinuteNo?.addEventListener("click", () => {
+      selectChoice(twoMinChoices, clarifyTwoMinuteNo);
+      if (clarifyTwoMinuteFollowup) clarifyTwoMinuteFollowup.hidden = true;
+      const normalFields = document.getElementById("clarifyNormalActionFields");
+      if (normalFields) normalFields.hidden = false;
+    });
+    clarifyTwoMinuteYes?.addEventListener("click", () => {
+      selectChoice(twoMinChoices, clarifyTwoMinuteYes);
+      this.handleClarifyTwoMinuteYes();
+      const normalFields = document.getElementById("clarifyNormalActionFields");
+      if (normalFields) normalFields.hidden = true;
+    });
     clarifyTwoMinuteExpectYes?.addEventListener("click", () => this.handleTwoMinuteFollowup(true));
     clarifyTwoMinuteExpectNo?.addEventListener("click", () => this.handleTwoMinuteFollowup(false));
     clarifyFollowupTiming?.addEventListener("change", () => this.toggleCustomFollowupDate());
-    clarifyWhoSelf?.addEventListener("click", () => this.showClarifyStep("dates"));
-    clarifyWhoDelegate?.addEventListener("click", () => this.handleClarifyDelegation(clarifyDelegateNameInput?.value));
-    clarifyDateContinue?.addEventListener("click", () => this.handleClarifyDateDecision());
-    clarifyProjectPickContinue?.addEventListener("click", () => this.handleClarifyExistingProjectContinue());
-    clarifyMetadataSave?.addEventListener("click", () => this.handleClarifyMetadata({ skip: false }));
-    clarifyMetadataSkip?.addEventListener("click", () => this.handleClarifyMetadata({ skip: true }));
-    clarifyFinalReturn?.addEventListener("click", () => this.closeClarifyFlowToInbox());
-    clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
-    [clarifyEnergySelect, clarifyTimeSelect].forEach((select) => {
-      if (select) {
-        select.addEventListener("change", () => {
-          this.clarifyState.energy = clarifyEnergySelect?.value || "";
-          this.clarifyState.time = clarifyTimeSelect?.value || "";
-        });
+
+    // Who section
+    clarifyWhoSelf?.addEventListener("click", () => {
+      selectChoice(whoChoices, clarifyWhoSelf);
+      const row = document.getElementById("clarifyDelegateRow");
+      if (row) row.hidden = true;
+    });
+    clarifyWhoDelegate?.addEventListener("click", () => {
+      selectChoice(whoChoices, clarifyWhoDelegate);
+      const row = document.getElementById("clarifyDelegateRow");
+      if (row) {
+        row.hidden = false;
+        clarifyDelegateNameInput?.focus();
       }
     });
-    const clearFollowup = () => {
-      if (clarifyTwoMinuteFollowup) {
-        clarifyTwoMinuteFollowup.hidden = true;
-      }
-      if (clarifyTwoMinuteResponseInput) {
-        clarifyTwoMinuteResponseInput.value = "";
-      }
-      this.resetFollowupTiming();
+
+    // Date radios — show/hide date inputs inline
+    const updateDateInputs = () => {
+      const specificFields = document.getElementById("clarifySpecificDateFields");
+      const dueDateFields = document.getElementById("clarifyDueDateFields");
+      if (specificFields) specificFields.hidden = !clarifyDateOptionSpecific?.checked;
+      if (dueDateFields) dueDateFields.hidden = !clarifyDateOptionDue?.checked;
     };
-    clarifyTwoMinuteStep?.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        clearFollowup();
-      }
+    [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone].forEach((radio) => {
+      radio?.addEventListener("change", updateDateInputs);
     });
-    clarifyStepActionable?.addEventListener("click", () => clearFollowup());
-    clarifyStepActionPlan?.addEventListener("click", () => clearFollowup());
-    clarifyStepDates?.addEventListener("click", () => clearFollowup());
-    clarifyStepMetadata?.addEventListener("click", () => clearFollowup());
-    clarifyStepFinal?.addEventListener("click", () => clearFollowup());
-    closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
-    clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
+
+    // Metadata live updates
+    [clarifyEnergySelect, clarifyTimeSelect].forEach((select) => {
+      select?.addEventListener("change", () => {
+        this.clarifyState.energy = clarifyEnergySelect?.value || "";
+        this.clarifyState.time = clarifyTimeSelect?.value || "";
+      });
+    });
+
+    // Add context
+    clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
+
+    // Preview text editing
     if (clarifyPreviewText) {
       clarifyPreviewText.addEventListener("input", () => this.handleClarifyPreviewEdit(false));
       clarifyPreviewText.addEventListener("blur", () => this.handleClarifyPreviewEdit(true));
     }
+
+    // Route task — Done button
+    const doneButton = document.getElementById("clarifyDoneButton");
+    doneButton?.addEventListener("click", () => {
+      // Read project selection
+      const projectId = clarifyProjectSelect?.value;
+      if (
+        clarifyActionAddExisting?.classList.contains("is-selected") &&
+        (!projectId || projectId === "none")
+      ) {
+        this.taskManager.notify("warn", "Pick a project before routing.");
+        clarifyProjectSelect?.focus();
+        return;
+      }
+      if (projectId && projectId !== "none") {
+        this.clarifyState.projectId = projectId;
+        this.clarifyState.projectName = this.getProjectName(projectId) || "";
+      }
+      // Read delegate if chosen
+      if (clarifyWhoDelegate?.classList.contains("is-selected")) {
+        const name = clarifyDelegateNameInput?.value?.trim();
+        if (!name) {
+          this.taskManager.notify("warn", "Enter who you are delegating to.");
+          clarifyDelegateNameInput?.focus();
+          return;
+        }
+        this.clarifyState.statusTarget = STATUS.WAITING;
+        this.clarifyState.waitingFor = name;
+      } else {
+        this.clarifyState.statusTarget = null;
+        this.clarifyState.waitingFor = "";
+      }
+      // Read date
+      if (!this.readClarifyDateState()) return;
+      // Read metadata
+      this.clarifyState.context = clarifyContextSelect?.value || this.clarifyState.context || "";
+      this.clarifyState.energy = clarifyEnergySelect?.value || "";
+      this.clarifyState.time = clarifyTimeSelect?.value || "";
+      // Finalize
+      this.finalizeClarifyRouting();
+    });
+
+    // Closure modal bindings (unchanged)
     const {
       closureModal,
       closureBackdrop,
@@ -4260,31 +4338,18 @@ export class UIController {
         closureModal.setAttribute("hidden", "");
         this.pendingClosure = null;
       };
-      const handleSave = () => {
-        if (!this.pendingClosure) {
-          closeModal();
-          return;
-        }
-        const notes = closureNotesInput.value.trim();
-        if (notes && notes !== this.pendingClosure.existing) {
-          this.taskManager.updateTask(this.pendingClosure.taskId, { closureNotes: notes });
-        }
-        this.taskManager.completeTask(this.pendingClosure.taskId, {
-          archive: this.pendingClosure.archive,
-          closureNotes: notes || this.pendingClosure.existing,
-        });
-        this.closeTaskFlyout();
-        closeModal();
-      };
       closeClosureModal?.addEventListener("click", closeModal);
       cancelClosureNotes?.addEventListener("click", closeModal);
       closureBackdrop?.addEventListener("click", closeModal);
-      saveClosureNotes?.addEventListener("click", handleSave);
-      closureNotesInput?.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          handleSave();
+      saveClosureNotes?.addEventListener("click", () => {
+        const notes = closureNotesInput?.value?.trim() || "";
+        if (this.pendingClosure) {
+          this.taskManager.completeTask(this.pendingClosure.taskId, {
+            archive: this.pendingClosure.archive,
+            closureNotes: notes,
+          });
         }
+        closeModal();
       });
     }
   }
@@ -4333,6 +4398,31 @@ export class UIController {
       actionPlanInitialized: false,
       expectResponse: false,
     };
+    const actionableFields = document.getElementById("clarifyActionableFields");
+    if (actionableFields) actionableFields.hidden = true;
+    const normalFields = document.getElementById("clarifyNormalActionFields");
+    if (normalFields) normalFields.hidden = false;
+    const delegateRow = document.getElementById("clarifyDelegateRow");
+    if (delegateRow) delegateRow.hidden = true;
+    const specificDateFields = document.getElementById("clarifySpecificDateFields");
+    if (specificDateFields) specificDateFields.hidden = true;
+    const dueDateFields = document.getElementById("clarifyDueDateFields");
+    if (dueDateFields) dueDateFields.hidden = true;
+    [
+      ["clarifyActionSingle", "clarifyActionSingle"],
+      ["clarifyTwoMinuteNo", "clarifyTwoMinuteNo"],
+      ["clarifyWhoSelf", "clarifyWhoSelf"],
+    ].forEach(([selectedId, ...groupIds]) => {
+      const allIds = groupIds.length ? groupIds : [selectedId];
+      allIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle("is-selected", id === selectedId);
+      });
+    });
+    document.getElementById("clarifyActionableYes")?.classList.remove("is-selected");
+    ["clarifyActionAddExisting", "clarifyConvertProject", "clarifyTwoMinuteYes", "clarifyWhoDelegate"].forEach(id => {
+      document.getElementById(id)?.classList.remove("is-selected");
+    });
   }
 
   openClarifyModal(taskId) {
@@ -4353,7 +4443,6 @@ export class UIController {
     this.populateClarifyPreview(task);
     this.populateClarifyContexts();
     this.populateProjectSelect();
-    this.showClarifyStep("actionable");
     this.setClarifyModalOpen(true);
   }
 
@@ -4481,10 +4570,7 @@ export class UIController {
   }
 
   handleClarifyActionableChoice(isActionable) {
-    if (!this.clarifyState.taskId) return;
-    if (isActionable) {
-      this.showClarifyStep("action-plan");
-    }
+    if (!this.clarifyState.taskId || !isActionable) return;
   }
 
   handleClarifyNonAction(destination) {
@@ -4513,7 +4599,6 @@ export class UIController {
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
     }
-    this.showClarifyStep("two-minute");
   }
 
   handleClarifyConvertToProject() {
@@ -4535,7 +4620,6 @@ export class UIController {
         this.elements.clarifyProjectSelect.value = project.id;
       }
       this.taskManager.notify("info", `Created project "${project.name}".`);
-      this.showClarifyStep("two-minute");
     }
   }
 
@@ -4611,6 +4695,37 @@ export class UIController {
     this.clarifyState.context = normalized;
   }
 
+  readClarifyDateState() {
+    const specific = this.elements.clarifyDateOptionSpecific?.checked;
+    const due = this.elements.clarifyDateOptionDue?.checked;
+    if (specific) {
+      const date = this.elements.clarifySpecificDateInput?.value;
+      const time = this.elements.clarifySpecificTimeInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a calendar date.");
+        return false;
+      }
+      this.clarifyState.dueType = "calendar";
+      this.clarifyState.calendarDate = date;
+      this.clarifyState.calendarTime = time || "";
+      this.clarifyState.dueDate = "";
+    } else if (due) {
+      const date = this.elements.clarifyDueDateInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a due date.");
+        return false;
+      }
+      this.clarifyState.dueType = "due";
+      this.clarifyState.dueDate = date;
+      this.clarifyState.calendarDate = "";
+    } else {
+      this.clarifyState.dueType = "none";
+      this.clarifyState.dueDate = "";
+      this.clarifyState.calendarDate = "";
+    }
+    return true;
+  }
+
   handleClarifyTwoMinuteYes() {
     if (!this.clarifyState.taskId) return;
     const followup = this.elements.clarifyTwoMinuteFollowup;
@@ -4665,43 +4780,27 @@ export class UIController {
 
   handleTwoMinuteFollowup(expectResponse) {
     if (!this.clarifyState.taskId) return;
-    let followUpDueDate = null;
-    if (expectResponse) {
-      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
-      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
-      followUpDueDate = this.resolveFollowupDate(choice, customValue);
-      if (!followUpDueDate) {
-        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
-        return;
-      }
-    }
-    this.clarifyState.expectResponse = expectResponse;
-    const waitingFor = expectResponse
-      ? this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response"
-      : null;
     const task = this.taskManager.getTaskById(this.clarifyState.taskId);
     if (!task) {
       this.closeClarifyModal();
       return;
     }
     if (expectResponse) {
+      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
+      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
+      const followUpDueDate = this.resolveFollowupDate(choice, customValue);
+      if (!followUpDueDate) {
+        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
+        return;
+      }
+      this.clarifyState.expectResponse = true;
       this.clarifyState.statusTarget = STATUS.WAITING;
-      this.clarifyState.waitingFor = waitingFor;
+      this.clarifyState.waitingFor =
+        this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response";
       this.clarifyState.dueType = "due";
-      this.clarifyState.dueDate = followUpDueDate || "";
-      if (this.elements.clarifyDateOptionDue) {
-        this.elements.clarifyDateOptionDue.checked = true;
-      }
-      if (this.elements.clarifyDueDateInput) {
-        this.elements.clarifyDueDateInput.value = followUpDueDate || "";
-      }
-      if (this.elements.clarifySpecificDateInput) {
-        this.elements.clarifySpecificDateInput.value = "";
-      }
-      if (this.elements.clarifySpecificTimeInput) {
-        this.elements.clarifySpecificTimeInput.value = "";
-      }
-      this.showClarifyStep("dates");
+      this.clarifyState.dueDate = followUpDueDate;
+      this.clarifyState.calendarDate = "";
+      this.finalizeClarifyRouting();
       return;
     }
     this.taskManager.completeTask(task.id, { archive: "reference", closureNotes: task.closureNotes });
@@ -4781,14 +4880,21 @@ export class UIController {
       updates.dueDate = this.clarifyState.dueDate;
     }
     this.taskManager.updateTask(task.id, updates);
-    if (early) {
-      this.taskManager.notify("info", "Routed and removed from Inbox.");
-      this.closeClarifyModal();
-      this.setActivePanel("inbox");
-      return;
+    const destinations = [];
+    if (updates.status === STATUS.WAITING) destinations.push("Waiting");
+    else if (updates.calendarDate) destinations.push("Calendar");
+    else if (updates.dueDate) destinations.push("Next Actions (due)");
+    else destinations.push("Next Actions");
+    if (updates.projectId) {
+      const name = this.getProjectName(updates.projectId);
+      if (name) destinations.push(`Project: ${name}`);
     }
-    this.setClarifyFinalMessage(updates);
-    this.showClarifyStep("final");
+    const routeMessage = destinations.length > 1
+      ? `Routed to ${destinations.join(" + ")}.`
+      : `Routed to ${destinations[0] || "Next Actions"}.`;
+    this.taskManager.notify("info", routeMessage);
+    this.closeClarifyModal();
+    this.setActivePanel("inbox");
   }
 
   setClarifyFinalMessage(updates) {
@@ -6844,6 +6950,7 @@ function mapElements() {
     clarifyMetadataSkip: byId("clarifyMetadataSkip"),
     clarifyFinalMessage: byId("clarifyFinalMessage"),
     clarifyFinalReturn: byId("clarifyFinalReturn"),
+    clarifyDoneButton: byId("clarifyDoneButton"),
     closureModal: document.getElementById("closureModal"),
     closureBackdrop: document.querySelector("#closureModal .modal-backdrop"),
     closeClosureModal: byId("closeClosureModal"),

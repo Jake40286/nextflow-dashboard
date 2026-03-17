@@ -369,6 +369,14 @@ export class UIController {
 
     this.taskManager.addEventListener("connection", (event) => {
       this.updateConnectionIndicator(event.detail.status);
+      if (event.detail.status === "online") {
+        this.updateSyncButtonTitle();
+      }
+    });
+
+    this.taskManager.addEventListener("syncconflict", (event) => {
+      const { remoteDevice } = event.detail;
+      this.showToast("warn", `Merged changes from ${remoteDevice}. Review your tasks — last-write-wins was applied.`);
     });
   }
 
@@ -6408,6 +6416,7 @@ export class UIController {
     try {
       await this.taskManager.manualSync();
       this.showToast("info", "Synced with server.");
+      this.updateSyncButtonTitle();
     } catch (error) {
       console.error("Manual sync failed", error);
       this.showToast("error", "Sync failed. Check connection and try again.");
@@ -6415,6 +6424,15 @@ export class UIController {
       this.manualSyncInFlight = false;
       this.updateManualSyncButton(false);
     }
+  }
+
+  updateSyncButtonTitle() {
+    const button = this.elements.manualSyncButton;
+    if (!button) return;
+    const info = this.taskManager.lastSyncInfo;
+    if (!info) return;
+    const time = new Date(info.syncedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    button.title = `Last synced: ${info.deviceLabel} at ${time}`;
   }
 
   updateManualSyncButton(isSyncing) {

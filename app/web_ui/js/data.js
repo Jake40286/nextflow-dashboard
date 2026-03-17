@@ -358,6 +358,7 @@ export class TaskManager extends EventTarget {
     this.pendingRemoteState = null;
     this.remoteRetryTimer = null;
     this.lastLocalSignature = hashState(this.state);
+    this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
     this.loadFromLocal();
     if (this.remoteSyncEnabled) {
@@ -427,9 +428,21 @@ export class TaskManager extends EventTarget {
         this.state = hydrateState(merged);
         this.pendingRemoteState = merged;
         this.emitChange({ persist: false });
+        const remoteDevice = serverState?.syncMeta?.deviceLabel || "another device";
+        this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice } }));
       }
+      // Stamp which device last wrote and when.
+      this.pendingRemoteState = {
+        ...this.pendingRemoteState,
+        syncMeta: {
+          deviceId: this.deviceInfo.id,
+          deviceLabel: this.deviceInfo.label,
+          syncedAt: nowIso(),
+        },
+      };
       await writeServerState(this.pendingRemoteState);
       this.remoteSignature = hashState(this.pendingRemoteState);
+      this.lastSyncInfo = this.pendingRemoteState.syncMeta;
       this.pendingRemoteState = null;
       this.setConnectionStatus("online");
       if (this.remoteRetryTimer) {

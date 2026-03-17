@@ -125,6 +125,7 @@ export class UIController {
     this.handleCalendarDayMenuDismiss = null;
     this.handleCalendarDayMenuEscape = null;
     this.showMissingNextOnly = false;
+    this.showProjectCompletedTasks = false;
     this.selectedSettingsContext = null;
     this.customPaletteDraftName = "";
     this.statsLookbackDays = 30;
@@ -166,6 +167,7 @@ export class UIController {
       pickRandomTask,
       projectAreaFilter,
       toggleMissingNextAction,
+      toggleProjectCompletedTasks,
       calendarPrevMonth,
       calendarNextMonth,
       calendarShowCompleted,
@@ -240,6 +242,10 @@ export class UIController {
     });
     toggleMissingNextAction?.addEventListener("change", () => {
       this.showMissingNextOnly = toggleMissingNextAction.checked;
+      this.renderProjects();
+    });
+    toggleProjectCompletedTasks?.addEventListener("change", () => {
+      this.showProjectCompletedTasks = toggleProjectCompletedTasks.checked;
       this.renderProjects();
     });
 
@@ -440,6 +446,7 @@ export class UIController {
       nextHideScheduledControl,
       clearFilters,
       expandProjects,
+      projectCompletedTasksControl,
     } = this.elements;
     const panel = this.activePanel;
     const taskPanels = new Set(["inbox", "my-day", "next", "kanban", "waiting", "someday", "projects", "calendar", "all-active"]);
@@ -464,6 +471,9 @@ export class UIController {
     if (expandProjects) {
       expandProjects.hidden = !supportsExpandProjects;
     }
+    if (projectCompletedTasksControl) {
+      projectCompletedTasksControl.hidden = !supportsExpandProjects;
+    }
     if (clearFilters) {
       clearFilters.hidden = !supportsClearFilters;
     }
@@ -472,7 +482,8 @@ export class UIController {
       Boolean(nextProjectFanoutControl && !nextProjectFanoutControl.hidden) ||
       Boolean(nextHideScheduledControl && !nextHideScheduledControl.hidden) ||
       Boolean(clearFilters && !clearFilters.hidden) ||
-      Boolean(expandProjects && !expandProjects.hidden);
+      Boolean(expandProjects && !expandProjects.hidden) ||
+      Boolean(projectCompletedTasksControl && !projectCompletedTasksControl.hidden);
 
     if (toolbarActionsSection) {
       toolbarActionsSection.hidden = !hasActions;
@@ -1333,7 +1344,10 @@ export class UIController {
       status: STATUS.NEXT,
       includeFutureScheduled: !this.hideScheduledNextActions,
     });
-    const tasks = this.allowMultipleNextPerProject ? allNextTasks : this.filterNextTasksByProject(allNextTasks);
+    const unblockedNextTasks = allNextTasks.filter(
+      (task) => !task.waitingFor || !this.taskManager.getReferencedTask(task.waitingFor)
+    );
+    const tasks = this.allowMultipleNextPerProject ? unblockedNextTasks : this.filterNextTasksByProject(unblockedNextTasks);
     const board = this.elements.contextBoard;
     board.innerHTML = "";
 
@@ -1631,7 +1645,6 @@ export class UIController {
         [STATUS.DOING]: [],
         [STATUS.WAITING]: [],
         [STATUS.SOMEDAY]: [],
-        [STATUS.INBOX]: [],
       };
       projectTasks.forEach((task) => {
         if (grouped[task.status]) {
@@ -1644,7 +1657,6 @@ export class UIController {
         { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
         { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
         { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
-        { status: STATUS.INBOX, label: "Captured (Inbox)", empty: "No uncategorized work for this project." },
       ];
 
       const sectionsWrapper = document.createElement("div");
@@ -1745,6 +1757,29 @@ export class UIController {
         sectionsWrapper.append(section);
         this.attachDropzone(section, group.status, undefined, project.id);
       });
+
+      if (this.showProjectCompletedTasks) {
+        const completedTasks = this.taskManager.getCompletedTasks({ projectId: project.id });
+        const completedSection = document.createElement("section");
+        completedSection.className = "project-task-group";
+        const completedHeading = document.createElement("h4");
+        completedHeading.textContent = "Completed";
+        completedSection.append(completedHeading);
+        if (!completedTasks.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted small-text";
+          empty.textContent = "Drop a task here to complete it, or complete tasks from their flyout.";
+          completedSection.append(empty);
+        } else {
+          completedTasks.forEach((task) => {
+            const card = this.createTaskCard(task);
+            card.classList.add("task-card-completed");
+            completedSection.append(card);
+          });
+        }
+        sectionsWrapper.append(completedSection);
+        this.attachDropzone(completedSection, "complete", undefined, project.id);
+      }
 
       if (tagsRow.children.length) {
         body.append(tagsRow);
@@ -5019,7 +5054,7 @@ export class UIController {
         item.style.fontSize = "0.9em";
         item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
         item.addEventListener("click", () => {
-          waitingInput.value = `task:${suggestionTask.id}`;
+          waitingInput.value = `task:${suggestionTask.slug || suggestionTask.id}`;
           suggestionList.style.display = "none";
           suggestionList.innerHTML = "";
         });
@@ -6256,7 +6291,9 @@ export class UIController {
       this.taskManager.notify("warn", "Only tasks from this project can be dropped here.");
       return;
     }
-    if (status === STATUS.NEXT) {
+    if (status === "complete") {
+      this.taskManager.completeTask(taskId);
+    } else if (status === STATUS.NEXT) {
       const updates = { status };
       if (context !== undefined) {
         updates.context = context === "No context" ? null : context;
@@ -6703,6 +6740,8 @@ function mapElements() {
     projectList: document.querySelector("[data-projects]"),
     projectAreaFilter: document.getElementById("projectAreaFilter"),
     toggleMissingNextAction: document.getElementById("toggleMissingNextAction"),
+    toggleProjectCompletedTasks: document.getElementById("toggleProjectCompletedTasks"),
+    projectCompletedTasksControl: byId("projectCompletedTasksControl"),
     completedProjectsList: document.querySelector("[data-completed-projects]"),
     waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
     somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),

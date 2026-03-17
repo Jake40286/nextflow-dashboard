@@ -566,16 +566,17 @@ export class TaskManager extends EventTarget {
     if (!waitingFor || typeof waitingFor !== "string") return { text: waitingFor, referencedTaskIds: [] };
     const text = waitingFor.trim();
     const referencedTaskIds = [];
-    // Match patterns like "task:abc123", "slug:myslug", or just task IDs/slugs at the start
+    // Match "task:<id-or-slug>" prefix or a bare ID/slug (case-insensitive, hyphens allowed for UUIDs)
     const patterns = [
-      /^task:([a-z0-9_]+)/i,
-      /^([a-z0-9_]+)(?:\s|$)/,
+      /^task:([a-z0-9_-]+)/i,
+      /^([a-z0-9_-]+)(?:\s|$)/i,
     ];
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (match) {
-        const id = match[1];
-        const task = this.getTaskById(id) || this.state.tasks.find((t) => t.slug === id);
+        const ref = match[1];
+        const task = this.getTaskById(ref)
+          || this.state.tasks.find((t) => t.slug && t.slug.toUpperCase() === ref.toUpperCase());
         if (task) {
           referencedTaskIds.push(task.id);
           break;

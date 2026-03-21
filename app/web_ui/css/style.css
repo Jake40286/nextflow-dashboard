@@ -2450,26 +2450,38 @@ button.meta-item:hover {
 }
 
 .task-list-section {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  padding: var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
 
+.task-list-section:has(.task-list-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
 .task-list-header {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .task-list-header h3 {
   margin: 0;
   font-size: 0.95rem;
   font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-list-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.task-list-body {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .task-list-items {

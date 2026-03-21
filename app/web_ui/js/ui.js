@@ -4179,35 +4179,53 @@ export class UIController {
     const section = document.createElement("section");
     section.className = "task-list-section";
 
+    // Header row — always visible
     const header = document.createElement("div");
     header.className = "task-list-header";
     const title = document.createElement("h3");
     title.textContent = "List";
-    const items = Array.isArray(task.listItems) ? [...task.listItems] : [];
-    const doneCount = items.filter((i) => i.done).length;
     const count = document.createElement("span");
     count.className = "muted small-text";
-    count.textContent = items.length
-      ? `${doneCount}/${items.length} done`
-      : "0 items";
-    header.append(title, count);
+
+    // Collapsible body — list + form
+    const body = document.createElement("div");
+    body.className = "task-list-body";
 
     const list = document.createElement("ul");
     list.className = "task-list-items";
+
+    const setExpanded = (expanded) => {
+      body.hidden = !expanded;
+      toggleBtn.setAttribute("aria-expanded", String(expanded));
+      toggleBtn.classList.toggle("is-active", expanded);
+    };
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-list-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle list");
+    toggleBtn.setAttribute("aria-expanded", "false");
+    toggleBtn.textContent = "☰";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      setExpanded(willExpand);
+      if (willExpand && !readOnly) {
+        textarea?.focus();
+      }
+    });
 
     const renderItems = () => {
       list.innerHTML = "";
       const currentTask = readOnly ? task : (this.taskManager.getTaskById(task.id) || task);
       const currentItems = Array.isArray(currentTask.listItems) ? currentTask.listItems : [];
       const doneNow = currentItems.filter((i) => i.done).length;
-      count.textContent = currentItems.length ? `${doneNow}/${currentItems.length} done` : "0 items";
-      if (!currentItems.length) {
-        const empty = document.createElement("li");
-        empty.className = "muted small-text";
-        empty.textContent = "No items yet.";
-        list.append(empty);
-        return;
+      count.textContent = currentItems.length ? `${doneNow}/${currentItems.length} done` : "";
+
+      // Auto-expand when items exist; keep collapsed when empty
+      if (currentItems.length && body.hidden) {
+        setExpanded(true);
       }
+
       currentItems.forEach((item) => {
         const li = document.createElement("li");
         li.className = "task-list-item" + (item.done ? " task-list-item--done" : "");
@@ -4221,7 +4239,6 @@ export class UIController {
           checkbox.addEventListener("click", (e) => {
             e.stopPropagation();
             this.taskManager.toggleTaskListItem(task.id, item.id);
-            // re-render is driven by task change event
           });
         } else {
           checkbox.disabled = true;
@@ -4249,6 +4266,10 @@ export class UIController {
       });
     };
 
+    const initialItems = Array.isArray(task.listItems) ? task.listItems : [];
+    body.hidden = initialItems.length === 0;
+    toggleBtn.setAttribute("aria-expanded", String(initialItems.length > 0));
+    toggleBtn.classList.toggle("is-active", initialItems.length > 0);
     renderItems();
 
     // Re-render list when task changes
@@ -4259,7 +4280,6 @@ export class UIController {
         renderItems();
       };
       this.taskManager.addEventListener("change", onTaskChange);
-      // Clean up listener when flyout closes (section removed from DOM)
       const observer = new MutationObserver((mutations) => {
         for (const m of mutations) {
           for (const node of m.removedNodes) {
@@ -4270,22 +4290,19 @@ export class UIController {
           }
         }
       });
-      if (section.parentElement) {
-        observer.observe(section.parentElement, { childList: true, subtree: true });
-      } else {
-        // attach observer after section is inserted
-        const attachObserver = () => {
-          if (section.parentElement) {
-            observer.observe(section.parentElement, { childList: true, subtree: true });
-          } else {
-            requestAnimationFrame(attachObserver);
-          }
-        };
-        requestAnimationFrame(attachObserver);
-      }
+      const attachObserver = () => {
+        if (section.parentElement) {
+          observer.observe(section.parentElement, { childList: true, subtree: true });
+        } else {
+          requestAnimationFrame(attachObserver);
+        }
+      };
+      requestAnimationFrame(attachObserver);
     }
 
-    section.append(header, list);
+    header.append(title, count, toggleBtn);
+    body.append(list);
+    section.append(header, body);
 
     if (readOnly) return section;
 
@@ -4313,7 +4330,7 @@ export class UIController {
         textarea.focus();
       }
     });
-    section.append(form);
+    body.append(form);
     return section;
   }
 

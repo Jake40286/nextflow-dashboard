@@ -6049,7 +6049,6 @@ export class UIController {
       projectGroup,
       dueGroup,
       calendarGroup,
-      waitingGroup,
       closureGroup,
       recurrenceGroup,
       actions

@@ -2555,6 +2555,60 @@ button.meta-item:hover {
   justify-content: flex-end;
 }
 
+.task-followup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-followup:has(.task-followup-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.task-followup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-followup-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-followup-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.task-followup-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.task-section-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.task-section-divider::before,
+.task-section-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .task-edit {
   display: grid;
   gap: var(--space-3);

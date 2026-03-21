@@ -5480,21 +5480,49 @@ export class UIController {
   }
 
   createFollowupSection(task) {
-    const section = document.createElement("div");
-    section.className = "task-edit";
+    const isWaiting = task.status === STATUS.WAITING;
+
+    const section = document.createElement("section");
+    section.className = "task-followup";
+
+    // Header row — always visible
+    const header = document.createElement("div");
+    header.className = "task-followup-header";
     const heading = document.createElement("h3");
     heading.textContent = "Follow up";
-    const helper = document.createElement("p");
-    helper.className = "muted small-text";
-    helper.textContent = "Move to Waiting and set a follow-up date.";
+
+    const body = document.createElement("div");
+    body.className = "task-followup-body";
+    body.hidden = !isWaiting;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-followup-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle follow up");
+    toggleBtn.setAttribute("aria-expanded", String(isWaiting));
+    toggleBtn.classList.toggle("is-active", isWaiting);
+    toggleBtn.textContent = "⏱";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+    });
+
+    header.append(heading, toggleBtn);
+    section.append(header, body);
+
     const waitingField = document.createElement("label");
     waitingField.className = "task-edit-field";
     waitingField.textContent = "Waiting on";
     const waitingInput = document.createElement("input");
     waitingInput.type = "text";
-    waitingInput.placeholder = "Person, response, or task ID (e.g., task:abc123)";
+    waitingInput.placeholder = "Who or what are you waiting on?";
     waitingInput.value = task.waitingFor || "";
-    waitingField.append(waitingInput);
+    const waitingHint = document.createElement("p");
+    waitingHint.className = "muted small-text";
+    waitingHint.textContent = "e.g., +Alice for a person, task:abc123 for a task reference";
+    waitingField.append(waitingInput, waitingHint);
 
     // Task reference suggestion list
     const suggestionList = document.createElement("div");
@@ -5608,7 +5636,7 @@ export class UIController {
     });
     actions.append(setButton);
 
-    section.append(heading, helper, waitingField, timingField, customField, actions);
+    body.append(waitingField, timingField, customField, actions);
     return section;
   }
 
@@ -5731,6 +5759,13 @@ export class UIController {
     const form = document.createElement("form");
     form.className = "task-edit";
     form.setAttribute("aria-label", "Edit task");
+
+    const editDivider = document.createElement("div");
+    editDivider.className = "task-section-divider";
+    const editDividerLabel = document.createElement("span");
+    editDividerLabel.textContent = "Edit details";
+    editDivider.append(editDividerLabel);
+    form.append(editDivider);
 
     const titleGroup = document.createElement("label");
     titleGroup.className = "task-edit-field";

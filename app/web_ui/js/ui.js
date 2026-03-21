@@ -120,6 +120,10 @@ export class UIController {
     this.noteContextMenuHandlersBound = false;
     this.handleNoteMenuDismiss = null;
     this.handleNoteMenuEscape = null;
+    this.listItemContextMenuState = null;
+    this.listItemContextMenuHandlersBound = false;
+    this.handleListItemMenuDismiss = null;
+    this.handleListItemMenuEscape = null;
     this.calendarDayContextMenuDate = null;
     this.calendarDayContextMenuHandlersBound = false;
     this.handleCalendarDayMenuDismiss = null;
@@ -143,6 +147,7 @@ export class UIController {
     this.setupAssociationFlyout();
     this.setupTaskContextMenu();
     this.setupTaskNoteContextMenu();
+    this.setupTaskListItemContextMenu();
     this.setupCalendarDayContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
@@ -4083,6 +4088,235 @@ export class UIController {
     }
   }
 
+  setupTaskListItemContextMenu() {
+    const menu = this.elements.taskListItemContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", async (event) => {
+      const actionButton = event.target.closest("[data-list-item-action]");
+      if (!actionButton) return;
+      const action = actionButton.dataset.listItemAction;
+      const state = this.listItemContextMenuState;
+      this.closeTaskListItemContextMenu();
+      if (!state?.taskId || !state?.itemId) return;
+      if (action === "edit") {
+        const task = this.taskManager.getTaskById(state.taskId);
+        const item = Array.isArray(task?.listItems) ? task.listItems.find((i) => i?.id === state.itemId) : null;
+        if (!item) return;
+        const nextText = await this.showPrompt("Edit list item", item.text || "");
+        if (nextText === null) return;
+        const trimmed = nextText.trim();
+        if (!trimmed) {
+          this.taskManager.notify("warn", "List item cannot be empty.");
+          return;
+        }
+        if (trimmed !== item.text) {
+          this.taskManager.updateTaskListItem(state.taskId, state.itemId, trimmed);
+        }
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = await this.showConfirm("Delete this list item?", { title: "Delete item", okLabel: "Delete", danger: true });
+        if (!confirmed) return;
+        this.taskManager.deleteTaskListItem(state.taskId, state.itemId);
+      }
+    });
+  }
+
+  openTaskListItemContextMenu(taskId, itemId, x, y) {
+    const menu = this.elements.taskListItemContextMenu;
+    if (!menu || !taskId || !itemId) return;
+    this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
+    this.closeCalendarDayContextMenu();
+    this.listItemContextMenuState = { taskId, itemId };
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindTaskListItemContextMenuDismiss();
+  }
+
+  bindTaskListItemContextMenuDismiss() {
+    if (this.listItemContextMenuHandlersBound) return;
+    this.handleListItemMenuDismiss = (event) => {
+      const menu = this.elements.taskListItemContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeTaskListItemContextMenu();
+    };
+    this.handleListItemMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeTaskListItemContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleListItemMenuDismiss, true);
+    document.addEventListener("scroll", this.handleListItemMenuDismiss, true);
+    window.addEventListener("resize", this.handleListItemMenuDismiss);
+    document.addEventListener("keydown", this.handleListItemMenuEscape);
+    this.listItemContextMenuHandlersBound = true;
+  }
+
+  closeTaskListItemContextMenu() {
+    const menu = this.elements.taskListItemContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.listItemContextMenuState = null;
+    if (this.listItemContextMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleListItemMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleListItemMenuDismiss, true);
+      window.removeEventListener("resize", this.handleListItemMenuDismiss);
+      document.removeEventListener("keydown", this.handleListItemMenuEscape);
+      this.listItemContextMenuHandlersBound = false;
+    }
+  }
+
+  createTaskListSection(task, { readOnly = false } = {}) {
+    const section = document.createElement("section");
+    section.className = "task-list-section";
+
+    const header = document.createElement("div");
+    header.className = "task-list-header";
+    const title = document.createElement("h3");
+    title.textContent = "List";
+    const items = Array.isArray(task.listItems) ? [...task.listItems] : [];
+    const doneCount = items.filter((i) => i.done).length;
+    const count = document.createElement("span");
+    count.className = "muted small-text";
+    count.textContent = items.length
+      ? `${doneCount}/${items.length} done`
+      : "0 items";
+    header.append(title, count);
+
+    const list = document.createElement("ul");
+    list.className = "task-list-items";
+
+    const renderItems = () => {
+      list.innerHTML = "";
+      const currentTask = readOnly ? task : (this.taskManager.getTaskById(task.id) || task);
+      const currentItems = Array.isArray(currentTask.listItems) ? currentTask.listItems : [];
+      const doneNow = currentItems.filter((i) => i.done).length;
+      count.textContent = currentItems.length ? `${doneNow}/${currentItems.length} done` : "0 items";
+      if (!currentItems.length) {
+        const empty = document.createElement("li");
+        empty.className = "muted small-text";
+        empty.textContent = "No items yet.";
+        list.append(empty);
+        return;
+      }
+      currentItems.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = "task-list-item" + (item.done ? " task-list-item--done" : "");
+        li.dataset.itemId = item.id;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.done;
+        checkbox.setAttribute("aria-label", item.text);
+        if (!readOnly) {
+          checkbox.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.taskManager.toggleTaskListItem(task.id, item.id);
+            // re-render is driven by task change event
+          });
+        } else {
+          checkbox.disabled = true;
+        }
+
+        const text = document.createElement("p");
+        text.className = "task-list-item-text";
+        text.textContent = item.text;
+
+        li.append(checkbox, text);
+
+        if (!readOnly) {
+          li.addEventListener("click", (e) => {
+            if (e.target === checkbox) return;
+            this.taskManager.toggleTaskListItem(task.id, item.id);
+          });
+          li.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openTaskListItemContextMenu(task.id, item.id, e.clientX, e.clientY);
+          });
+        }
+
+        list.append(li);
+      });
+    };
+
+    renderItems();
+
+    // Re-render list when task changes
+    if (!readOnly) {
+      const onTaskChange = () => {
+        const updated = this.taskManager.getTaskById(task.id);
+        if (!updated) return;
+        renderItems();
+      };
+      this.taskManager.addEventListener("change", onTaskChange);
+      // Clean up listener when flyout closes (section removed from DOM)
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.removedNodes) {
+            if (node === section || (node instanceof Element && node.contains(section))) {
+              this.taskManager.removeEventListener("change", onTaskChange);
+              observer.disconnect();
+            }
+          }
+        }
+      });
+      if (section.parentElement) {
+        observer.observe(section.parentElement, { childList: true, subtree: true });
+      } else {
+        // attach observer after section is inserted
+        const attachObserver = () => {
+          if (section.parentElement) {
+            observer.observe(section.parentElement, { childList: true, subtree: true });
+          } else {
+            requestAnimationFrame(attachObserver);
+          }
+        };
+        requestAnimationFrame(attachObserver);
+      }
+    }
+
+    section.append(header, list);
+
+    if (readOnly) return section;
+
+    const form = document.createElement("form");
+    form.className = "task-list-add-form";
+    form.setAttribute("aria-label", "Add list items");
+    const textarea = document.createElement("textarea");
+    textarea.rows = 2;
+    textarea.placeholder = "Add items — one per line";
+    const actions = document.createElement("div");
+    actions.className = "task-list-add-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "submit";
+    addButton.className = "btn btn-light";
+    addButton.textContent = "Add";
+    actions.append(addButton);
+    form.append(textarea, actions);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const lines = textarea.value.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const added = this.taskManager.addTaskListItems(task.id, lines);
+      if (added) {
+        textarea.value = "";
+        textarea.focus();
+      }
+    });
+    section.append(form);
+    return section;
+  }
+
   setupCalendarDayContextMenu() {
     const menu = this.elements.calendarDayContextMenu;
     if (!menu) return;
@@ -5010,6 +5244,7 @@ export class UIController {
     if (!flyout) return;
     this.closeTaskContextMenu();
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     const { readOnly = false, entry = null } = options;
     let task = typeof taskInput === "string" ? this.taskManager.getTaskById(taskInput) : taskInput;
     if (!task && entry) {
@@ -5035,6 +5270,7 @@ export class UIController {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     flyout.classList.remove("is-open");
     flyout.setAttribute("aria-hidden", "true");
     this.isFlyoutOpen = false;
@@ -5048,6 +5284,7 @@ export class UIController {
   renderTaskFlyout(task, options = {}) {
     const { readOnly = false, entry = null } = options;
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     const content = this.elements.taskFlyoutContent;
     if (!content) return;
     const isCompleted = Boolean(task.completedAt);
@@ -5065,6 +5302,7 @@ export class UIController {
       readOnly: readOnly && !archiveEntryId,
       archiveEntryId,
     });
+    const listSection = this.createTaskListSection(task, { readOnly: Boolean(readOnly && !archiveEntryId) });
 
     const meta = document.createElement("div");
     meta.className = "task-flyout-meta";
@@ -5122,7 +5360,7 @@ export class UIController {
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
       inboxPanel.append(instructions, inboxActions, reminder);
-      content.append(description, meta, notesSection, inboxPanel);
+      content.append(description, meta, listSection, notesSection, inboxPanel);
       return;
     }
 
@@ -5154,7 +5392,7 @@ export class UIController {
       const readOnlyNote = document.createElement("p");
       readOnlyNote.className = "muted";
       readOnlyNote.textContent = "Archived task. Changes are saved to the archive. Restore to reactivate it.";
-      content.append(description, meta, notesSection, readOnlyNote, actionToolbar);
+      content.append(description, meta, listSection, notesSection, readOnlyNote, actionToolbar);
       content.append(this.createTaskForm(task, { archiveEntryId }));
       return;
     }
@@ -5194,9 +5432,9 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(description, meta, notesSection, this.createFollowupSection(task), actionToolbar);
+      content.append(description, meta, listSection, notesSection, this.createFollowupSection(task), actionToolbar);
     } else {
-      content.append(description, meta, notesSection, actionToolbar);
+      content.append(description, meta, listSection, notesSection, actionToolbar);
     }
     content.append(this.createTaskForm(task));
   }
@@ -7015,6 +7253,7 @@ function mapElements() {
     connectionStatusDot: byId("connectionStatusDot"),
     taskContextMenu: byId("taskContextMenu"),
     taskNoteContextMenu: byId("taskNoteContextMenu"),
+    taskListItemContextMenu: byId("taskListItemContextMenu"),
     calendarDayContextMenu: byId("calendarDayContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),

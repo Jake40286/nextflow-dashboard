@@ -2449,6 +2449,88 @@ button.meta-item:hover {
   justify-content: flex-end;
 }
 
+.task-list-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.task-list-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+}
+
+.task-list-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  user-select: none;
+}
+
+.task-list-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.task-list-item input[type="checkbox"] {
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.task-list-item-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  transition: color 0.12s, opacity 0.12s;
+}
+
+.task-list-item--done .task-list-item-text {
+  color: var(--text-muted);
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.task-list-add-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-list-add-form textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.task-list-add-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .task-edit {
   display: grid;
   gap: var(--space-3);

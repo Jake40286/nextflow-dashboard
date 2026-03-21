@@ -5316,9 +5316,12 @@ export class UIController {
     if (statusEl) statusEl.textContent = STATUS_LABELS[task.status] || task.status;
     content.innerHTML = "";
 
-    const description = document.createElement("p");
-    this.setEntityLinkedText(description, task.description || task.title || "No description yet.");
-    description.className = "muted";
+    const descriptionText = task.description?.trim();
+    const description = descriptionText ? document.createElement("p") : null;
+    if (description) {
+      this.setEntityLinkedText(description, descriptionText);
+      description.className = "muted";
+    }
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
     const notesSection = this.createTaskNotesSection(task, {
       readOnly: readOnly && !archiveEntryId,
@@ -5397,7 +5400,7 @@ export class UIController {
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
       inboxPanel.append(instructions, inboxActions, reminder);
-      content.append(description, inboxPanel, listSection, notesSection, meta);
+      content.append(...[description, inboxPanel, listSection, notesSection, meta].filter(Boolean));
       return;
     }
 
@@ -5429,7 +5432,7 @@ export class UIController {
       const readOnlyNote = document.createElement("p");
       readOnlyNote.className = "muted";
       readOnlyNote.textContent = "Archived task. Changes are saved to the archive. Restore to reactivate it.";
-      content.append(description, actionToolbar, listSection, notesSection, readOnlyNote, meta);
+      content.append(...[description, actionToolbar, listSection, notesSection, readOnlyNote, meta].filter(Boolean));
       content.append(this.createTaskForm(task, { archiveEntryId }));
       return;
     }
@@ -5469,9 +5472,9 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(description, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta);
+      content.append(...[description, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
     } else {
-      content.append(description, actionToolbar, listSection, notesSection, meta);
+      content.append(...[description, actionToolbar, listSection, notesSection, meta].filter(Boolean));
     }
     content.append(this.createTaskForm(task));
   }

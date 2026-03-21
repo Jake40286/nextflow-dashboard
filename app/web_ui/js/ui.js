@@ -6049,7 +6049,7 @@ export class UIController {
       projectGroup,
       dueGroup,
       calendarGroup,
-      closureGroup,
+      ...(task.completedAt ? [closureGroup] : []),
       recurrenceGroup,
       actions
     );

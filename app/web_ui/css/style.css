@@ -2387,26 +2387,38 @@ button.meta-item:hover {
 }
 
 .task-notes {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  padding: var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
 
+.task-notes:has(.task-notes-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
 .task-notes-header {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .task-notes-header h3 {
   margin: 0;
   font-size: 0.95rem;
   font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-notes-body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-notes-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
 }
 
 .task-notes-list {

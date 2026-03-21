@@ -5397,7 +5397,7 @@ export class UIController {
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
       inboxPanel.append(instructions, inboxActions, reminder);
-      content.append(description, meta, listSection, notesSection, inboxPanel);
+      content.append(description, inboxPanel, listSection, notesSection, meta);
       return;
     }
 
@@ -5429,7 +5429,7 @@ export class UIController {
       const readOnlyNote = document.createElement("p");
       readOnlyNote.className = "muted";
       readOnlyNote.textContent = "Archived task. Changes are saved to the archive. Restore to reactivate it.";
-      content.append(description, meta, listSection, notesSection, readOnlyNote, actionToolbar);
+      content.append(description, actionToolbar, listSection, notesSection, readOnlyNote, meta);
       content.append(this.createTaskForm(task, { archiveEntryId }));
       return;
     }
@@ -5469,9 +5469,9 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(description, meta, listSection, notesSection, this.createFollowupSection(task), actionToolbar);
+      content.append(description, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta);
     } else {
-      content.append(description, meta, listSection, notesSection, actionToolbar);
+      content.append(description, actionToolbar, listSection, notesSection, meta);
     }
     content.append(this.createTaskForm(task));
   }
@@ -5613,79 +5613,92 @@ export class UIController {
     const section = document.createElement("section");
     section.className = "task-notes";
 
+    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
+    const hasNotes = notes.length > 0;
+
+    // Header — always visible
     const header = document.createElement("div");
     header.className = "task-notes-header";
     const title = document.createElement("h3");
     title.textContent = "Notes";
-    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
     const count = document.createElement("span");
     count.className = "muted small-text";
-    count.textContent = `${notes.length} entr${notes.length === 1 ? "y" : "ies"}`;
-    header.append(title, count);
+    count.textContent = hasNotes ? `${notes.length} entr${notes.length === 1 ? "y" : "ies"}` : "";
+
+    // Collapsible body
+    const body = document.createElement("div");
+    body.className = "task-notes-body";
+    body.hidden = !hasNotes;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-notes-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle notes");
+    toggleBtn.setAttribute("aria-expanded", String(hasNotes));
+    toggleBtn.classList.toggle("is-active", hasNotes);
+    toggleBtn.textContent = "✎";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+      if (willExpand && noteInput) noteInput.focus();
+    });
+
+    header.append(title, count, toggleBtn);
 
     const list = document.createElement("ul");
     list.className = "task-notes-list";
-    if (!notes.length) {
-      const empty = document.createElement("li");
-      empty.className = "muted small-text";
-      empty.textContent = "No notes yet.";
-      list.append(empty);
-    } else {
-      notes
-        .sort((a, b) => {
-          const aTime = new Date(a?.createdAt || 0).getTime();
-          const bTime = new Date(b?.createdAt || 0).getTime();
-          return bTime - aTime;
-        })
-        .forEach((note) => {
-          const item = document.createElement("li");
-          item.className = "task-note-item";
-          if (!readOnly) {
-            item.dataset.noteId = note.id;
-            item.addEventListener("contextmenu", (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              this.openTaskNoteContextMenu(
-                {
-                  taskId: task.id,
-                  archiveEntryId: archiveEntryId || null,
-                  noteId: note.id,
-                },
-                event.clientX,
-                event.clientY
-              );
-            });
-          }
-          const meta = document.createElement("div");
-          meta.className = "task-note-meta";
-          const timestamp = document.createElement("time");
-          timestamp.dateTime = note.createdAt || "";
-          timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
-          meta.append(timestamp);
-          const text = document.createElement("p");
-          text.className = "task-note-text";
-          this.setEntityLinkedText(text, note.text || "");
-          item.append(meta, text);
-          list.append(item);
-        });
-    }
+    notes
+      .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
+      .forEach((note) => {
+        const item = document.createElement("li");
+        item.className = "task-note-item";
+        if (!readOnly) {
+          item.dataset.noteId = note.id;
+          item.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.openTaskNoteContextMenu(
+              { taskId: task.id, archiveEntryId: archiveEntryId || null, noteId: note.id },
+              event.clientX,
+              event.clientY
+            );
+          });
+        }
+        const meta = document.createElement("div");
+        meta.className = "task-note-meta";
+        const timestamp = document.createElement("time");
+        timestamp.dateTime = note.createdAt || "";
+        timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
+        meta.append(timestamp);
+        const text = document.createElement("p");
+        text.className = "task-note-text";
+        this.setEntityLinkedText(text, note.text || "");
+        item.append(meta, text);
+        list.append(item);
+      });
 
-    section.append(header, list);
+    body.append(list);
+
     if (readOnly) {
       const helper = document.createElement("p");
       helper.className = "muted small-text";
       helper.textContent = "Restore this task to add or edit notes.";
-      section.append(helper);
+      body.append(helper);
+      header.append(title, count, toggleBtn);
+      section.append(header, body);
       return section;
     }
 
+    let noteInput = null;
     const form = document.createElement("form");
     form.className = "task-note-form";
     form.setAttribute("aria-label", "Add task note");
-    const input = document.createElement("textarea");
-    input.rows = 3;
-    input.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
-    this.attachEntityMentionAutocomplete(input);
+    noteInput = document.createElement("textarea");
+    noteInput.rows = 3;
+    noteInput.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
+    this.attachEntityMentionAutocomplete(noteInput);
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
     const addButton = document.createElement("button");
@@ -5693,19 +5706,20 @@ export class UIController {
     addButton.className = "btn btn-light";
     addButton.textContent = "Add note";
     actions.append(addButton);
-    form.append(input, actions);
+    form.append(noteInput, actions);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const noteText = input.value;
+      const noteText = noteInput.value;
       const added = archiveEntryId
         ? this.taskManager.addCompletedTaskNote(archiveEntryId, noteText)
         : this.taskManager.addTaskNote(task.id, noteText);
       if (!added) return;
       this.ensureMentionedEntitiesExist(noteText);
-      input.value = "";
-      input.focus();
+      noteInput.value = "";
+      noteInput.focus();
     });
-    section.append(form);
+    body.append(form);
+    section.append(header, body);
     return section;
   }
 

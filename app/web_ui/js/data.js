@@ -660,6 +660,7 @@ export class TaskManager extends EventTarget {
       completedAt: payload.completedAt || null,
       closureNotes: payload.closureNotes?.trim() || null,
       notes: normalizeTaskNotes(payload.notes, { fallbackCreatedAt: createdAt }),
+      listItems: normalizeListItems(payload.listItems),
       updatedAt: nowIso(),
       recurrenceRule: normalizeRecurrenceRule(payload.recurrenceRule),
       slug: normalizeSlug(payload.slug, id),
@@ -832,6 +833,81 @@ export class TaskManager extends EventTarget {
     }
     notes.splice(noteIndex, 1);
     task.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: nowIso() });
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return true;
+  }
+
+  addTaskListItems(id, texts) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return null;
+    }
+    const lines = (Array.isArray(texts) ? texts : [texts])
+      .map((t) => (typeof t === "string" ? t.trim() : ""))
+      .filter(Boolean);
+    if (!lines.length) {
+      this.notify("warn", "List item cannot be empty.");
+      return null;
+    }
+    const newItems = lines.map((text) => ({ id: generateId("li"), text, done: false }));
+    task.listItems = normalizeListItems([...(task.listItems || []), ...newItems]);
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return newItems;
+  }
+
+  toggleTaskListItem(id, itemId) {
+    const task = this.getTaskById(id);
+    if (!task) return false;
+    const items = Array.isArray(task.listItems) ? task.listItems : [];
+    const item = items.find((i) => i?.id === itemId);
+    if (!item) return false;
+    item.done = !item.done;
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return true;
+  }
+
+  updateTaskListItem(id, itemId, text) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return null;
+    }
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed) {
+      this.notify("warn", "List item cannot be empty.");
+      return null;
+    }
+    const items = Array.isArray(task.listItems) ? task.listItems : [];
+    const index = items.findIndex((i) => i?.id === itemId);
+    if (index === -1) {
+      this.notify("warn", "List item not found.");
+      return null;
+    }
+    items[index] = { ...items[index], text: trimmed };
+    task.listItems = normalizeListItems(items);
+    task.updatedAt = nowIso();
+    this.emitChange();
+    return items[index];
+  }
+
+  deleteTaskListItem(id, itemId) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Task not found.");
+      return false;
+    }
+    const items = Array.isArray(task.listItems) ? task.listItems : [];
+    const index = items.findIndex((i) => i?.id === itemId);
+    if (index === -1) {
+      this.notify("warn", "List item not found.");
+      return false;
+    }
+    items.splice(index, 1);
+    task.listItems = normalizeListItems(items);
     task.updatedAt = nowIso();
     this.emitChange();
     return true;
@@ -2322,6 +2398,17 @@ function normalizeFeatureFlags(featureFlags, fallbackFlags = DEFAULT_FEATURE_FLA
   return normalized;
 }
 
+function normalizeListItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item) => item && typeof item === "object" && typeof item.text === "string" && item.text.trim())
+    .map((item) => ({
+      id: typeof item.id === "string" && item.id ? item.id : generateId("li"),
+      text: item.text.trim(),
+      done: Boolean(item.done),
+    }));
+}
+
 function normalizeGoogleCalendarConfig(config) {
   const duration = parseInt(config?.defaultDurationMinutes ?? DEFAULT_GOOGLE_CALENDAR_CONFIG.defaultDurationMinutes, 10);
   return {
@@ -2391,6 +2478,7 @@ function normalizeTask(task) {
         : null,
     closureNotes: task.closureNotes ?? null,
     notes: normalizeTaskNotes(task.notes, { fallbackCreatedAt: noteFallback }),
+    listItems: normalizeListItems(task.listItems),
     updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
   const enforceContext = normalized.status && normalized.status !== STATUS.INBOX;

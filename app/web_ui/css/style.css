@@ -2387,26 +2387,38 @@ button.meta-item:hover {
 }
 
 .task-notes {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  padding: var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
 
+.task-notes:has(.task-notes-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
 .task-notes-header {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .task-notes-header h3 {
   margin: 0;
   font-size: 0.95rem;
   font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-notes-body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-notes-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
 }
 
 .task-notes-list {
@@ -2447,6 +2459,154 @@ button.meta-item:hover {
 .task-note-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.task-list-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-list-section:has(.task-list-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.task-list-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-list-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-list-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.task-list-body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-list-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  user-select: none;
+}
+
+.task-list-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.task-list-item input[type="checkbox"] {
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.task-list-item-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  transition: color 0.12s, opacity 0.12s;
+}
+
+.task-list-item--done .task-list-item-text {
+  color: var(--text-muted);
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.task-list-add-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-list-add-form textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.task-list-add-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-followup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-followup:has(.task-followup-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.task-followup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-followup-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-followup-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.task-followup-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.task-section-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.task-section-divider::before,
+.task-section-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 
 .task-edit {
@@ -2857,6 +3017,27 @@ button.meta-item:hover {
 .btn-light:hover {
   border-color: var(--line-strong);
   background: var(--surface-2);
+}
+
+.btn-icon {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.btn-icon.is-active {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .btn-danger {

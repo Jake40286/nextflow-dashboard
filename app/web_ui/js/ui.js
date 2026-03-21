@@ -120,6 +120,10 @@ export class UIController {
     this.noteContextMenuHandlersBound = false;
     this.handleNoteMenuDismiss = null;
     this.handleNoteMenuEscape = null;
+    this.listItemContextMenuState = null;
+    this.listItemContextMenuHandlersBound = false;
+    this.handleListItemMenuDismiss = null;
+    this.handleListItemMenuEscape = null;
     this.calendarDayContextMenuDate = null;
     this.calendarDayContextMenuHandlersBound = false;
     this.handleCalendarDayMenuDismiss = null;
@@ -143,6 +147,7 @@ export class UIController {
     this.setupAssociationFlyout();
     this.setupTaskContextMenu();
     this.setupTaskNoteContextMenu();
+    this.setupTaskListItemContextMenu();
     this.setupCalendarDayContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
@@ -4083,6 +4088,252 @@ export class UIController {
     }
   }
 
+  setupTaskListItemContextMenu() {
+    const menu = this.elements.taskListItemContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", async (event) => {
+      const actionButton = event.target.closest("[data-list-item-action]");
+      if (!actionButton) return;
+      const action = actionButton.dataset.listItemAction;
+      const state = this.listItemContextMenuState;
+      this.closeTaskListItemContextMenu();
+      if (!state?.taskId || !state?.itemId) return;
+      if (action === "edit") {
+        const task = this.taskManager.getTaskById(state.taskId);
+        const item = Array.isArray(task?.listItems) ? task.listItems.find((i) => i?.id === state.itemId) : null;
+        if (!item) return;
+        const nextText = await this.showPrompt("Edit list item", item.text || "");
+        if (nextText === null) return;
+        const trimmed = nextText.trim();
+        if (!trimmed) {
+          this.taskManager.notify("warn", "List item cannot be empty.");
+          return;
+        }
+        if (trimmed !== item.text) {
+          this.taskManager.updateTaskListItem(state.taskId, state.itemId, trimmed);
+        }
+        return;
+      }
+      if (action === "delete") {
+        const confirmed = await this.showConfirm("Delete this list item?", { title: "Delete item", okLabel: "Delete", danger: true });
+        if (!confirmed) return;
+        this.taskManager.deleteTaskListItem(state.taskId, state.itemId);
+      }
+    });
+  }
+
+  openTaskListItemContextMenu(taskId, itemId, x, y) {
+    const menu = this.elements.taskListItemContextMenu;
+    if (!menu || !taskId || !itemId) return;
+    this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
+    this.closeCalendarDayContextMenu();
+    this.listItemContextMenuState = { taskId, itemId };
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindTaskListItemContextMenuDismiss();
+  }
+
+  bindTaskListItemContextMenuDismiss() {
+    if (this.listItemContextMenuHandlersBound) return;
+    this.handleListItemMenuDismiss = (event) => {
+      const menu = this.elements.taskListItemContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeTaskListItemContextMenu();
+    };
+    this.handleListItemMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeTaskListItemContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleListItemMenuDismiss, true);
+    document.addEventListener("scroll", this.handleListItemMenuDismiss, true);
+    window.addEventListener("resize", this.handleListItemMenuDismiss);
+    document.addEventListener("keydown", this.handleListItemMenuEscape);
+    this.listItemContextMenuHandlersBound = true;
+  }
+
+  closeTaskListItemContextMenu() {
+    const menu = this.elements.taskListItemContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.listItemContextMenuState = null;
+    if (this.listItemContextMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleListItemMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleListItemMenuDismiss, true);
+      window.removeEventListener("resize", this.handleListItemMenuDismiss);
+      document.removeEventListener("keydown", this.handleListItemMenuEscape);
+      this.listItemContextMenuHandlersBound = false;
+    }
+  }
+
+  createTaskListSection(task, { readOnly = false } = {}) {
+    const section = document.createElement("section");
+    section.className = "task-list-section";
+
+    // Header row — always visible
+    const header = document.createElement("div");
+    header.className = "task-list-header";
+    const title = document.createElement("h3");
+    title.textContent = "List";
+    const count = document.createElement("span");
+    count.className = "muted small-text";
+
+    // Collapsible body — list + form
+    const body = document.createElement("div");
+    body.className = "task-list-body";
+
+    const list = document.createElement("ul");
+    list.className = "task-list-items";
+
+    const setExpanded = (expanded) => {
+      body.hidden = !expanded;
+      toggleBtn.setAttribute("aria-expanded", String(expanded));
+      toggleBtn.classList.toggle("is-active", expanded);
+    };
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-list-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle list");
+    toggleBtn.setAttribute("aria-expanded", "false");
+    toggleBtn.textContent = "☰";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      setExpanded(willExpand);
+      if (willExpand && !readOnly) {
+        textarea?.focus();
+      }
+    });
+
+    const renderItems = () => {
+      list.innerHTML = "";
+      const currentTask = readOnly ? task : (this.taskManager.getTaskById(task.id) || task);
+      const currentItems = Array.isArray(currentTask.listItems) ? currentTask.listItems : [];
+      const doneNow = currentItems.filter((i) => i.done).length;
+      count.textContent = currentItems.length ? `${doneNow}/${currentItems.length} done` : "";
+
+      // Auto-expand when items exist; keep collapsed when empty
+      if (currentItems.length && body.hidden) {
+        setExpanded(true);
+      }
+
+      currentItems.forEach((item) => {
+        const li = document.createElement("li");
+        li.className = "task-list-item" + (item.done ? " task-list-item--done" : "");
+        li.dataset.itemId = item.id;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.done;
+        checkbox.setAttribute("aria-label", item.text);
+        if (!readOnly) {
+          checkbox.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.taskManager.toggleTaskListItem(task.id, item.id);
+          });
+        } else {
+          checkbox.disabled = true;
+        }
+
+        const text = document.createElement("p");
+        text.className = "task-list-item-text";
+        text.textContent = item.text;
+
+        li.append(checkbox, text);
+
+        if (!readOnly) {
+          li.addEventListener("click", (e) => {
+            if (e.target === checkbox) return;
+            this.taskManager.toggleTaskListItem(task.id, item.id);
+          });
+          li.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openTaskListItemContextMenu(task.id, item.id, e.clientX, e.clientY);
+          });
+        }
+
+        list.append(li);
+      });
+    };
+
+    const initialItems = Array.isArray(task.listItems) ? task.listItems : [];
+    body.hidden = initialItems.length === 0;
+    toggleBtn.setAttribute("aria-expanded", String(initialItems.length > 0));
+    toggleBtn.classList.toggle("is-active", initialItems.length > 0);
+    renderItems();
+
+    // Re-render list when task changes
+    if (!readOnly) {
+      const onTaskChange = () => {
+        const updated = this.taskManager.getTaskById(task.id);
+        if (!updated) return;
+        renderItems();
+      };
+      this.taskManager.addEventListener("change", onTaskChange);
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.removedNodes) {
+            if (node === section || (node instanceof Element && node.contains(section))) {
+              this.taskManager.removeEventListener("change", onTaskChange);
+              observer.disconnect();
+            }
+          }
+        }
+      });
+      const attachObserver = () => {
+        if (section.parentElement) {
+          observer.observe(section.parentElement, { childList: true, subtree: true });
+        } else {
+          requestAnimationFrame(attachObserver);
+        }
+      };
+      requestAnimationFrame(attachObserver);
+    }
+
+    header.append(title, count, toggleBtn);
+    body.append(list);
+    section.append(header, body);
+
+    if (readOnly) return section;
+
+    const form = document.createElement("form");
+    form.className = "task-list-add-form";
+    form.setAttribute("aria-label", "Add list items");
+    const textarea = document.createElement("textarea");
+    textarea.rows = 2;
+    textarea.placeholder = "Add items — one per line";
+    const actions = document.createElement("div");
+    actions.className = "task-list-add-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "submit";
+    addButton.className = "btn btn-light";
+    addButton.textContent = "Add";
+    actions.append(addButton);
+    form.append(textarea, actions);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const lines = textarea.value.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const added = this.taskManager.addTaskListItems(task.id, lines);
+      if (added) {
+        textarea.value = "";
+        textarea.focus();
+      }
+    });
+    body.append(form);
+    return section;
+  }
+
   setupCalendarDayContextMenu() {
     const menu = this.elements.calendarDayContextMenu;
     if (!menu) return;
@@ -5010,6 +5261,7 @@ export class UIController {
     if (!flyout) return;
     this.closeTaskContextMenu();
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     const { readOnly = false, entry = null } = options;
     let task = typeof taskInput === "string" ? this.taskManager.getTaskById(taskInput) : taskInput;
     if (!task && entry) {
@@ -5035,6 +5287,7 @@ export class UIController {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     flyout.classList.remove("is-open");
     flyout.setAttribute("aria-hidden", "true");
     this.isFlyoutOpen = false;
@@ -5043,11 +5296,17 @@ export class UIController {
     if (this.handleFlyoutKeydown) {
       document.removeEventListener("keydown", this.handleFlyoutKeydown);
     }
+    const infoToggle = this.elements.taskFlyoutInfoToggle;
+    if (infoToggle) {
+      infoToggle.setAttribute("aria-pressed", "false");
+      infoToggle.classList.remove("is-active");
+    }
   }
 
   renderTaskFlyout(task, options = {}) {
     const { readOnly = false, entry = null } = options;
     this.closeTaskNoteContextMenu();
+    this.closeTaskListItemContextMenu();
     const content = this.elements.taskFlyoutContent;
     if (!content) return;
     const isCompleted = Boolean(task.completedAt);
@@ -5057,17 +5316,36 @@ export class UIController {
     if (statusEl) statusEl.textContent = STATUS_LABELS[task.status] || task.status;
     content.innerHTML = "";
 
-    const description = document.createElement("p");
-    this.setEntityLinkedText(description, task.description || task.title || "No description yet.");
-    description.className = "muted";
+    const descriptionText = task.description?.trim();
+    const description = descriptionText ? document.createElement("p") : null;
+    if (description) {
+      this.setEntityLinkedText(description, descriptionText);
+      description.className = "muted";
+    }
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
     const notesSection = this.createTaskNotesSection(task, {
       readOnly: readOnly && !archiveEntryId,
       archiveEntryId,
     });
+    const listSection = this.createTaskListSection(task, { readOnly: Boolean(readOnly && !archiveEntryId) });
 
+    const infoToggle = this.elements.taskFlyoutInfoToggle;
     const meta = document.createElement("div");
     meta.className = "task-flyout-meta";
+    meta.hidden = true;
+    if (infoToggle) {
+      infoToggle.setAttribute("aria-pressed", "false");
+      // Replace any previous listener by cloning the button
+      const freshToggle = infoToggle.cloneNode(true);
+      infoToggle.replaceWith(freshToggle);
+      this.elements.taskFlyoutInfoToggle = freshToggle;
+      freshToggle.addEventListener("click", () => {
+        const visible = !meta.hidden;
+        meta.hidden = visible;
+        freshToggle.setAttribute("aria-pressed", String(!visible));
+        freshToggle.classList.toggle("is-active", !visible);
+      });
+    }
     meta.append(this.buildMetaRow("Task ID", task.slug || task.id));
     meta.append(this.buildMetaRow("Context", task.context || "—"));
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
@@ -5122,7 +5400,7 @@ export class UIController {
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
       inboxPanel.append(instructions, inboxActions, reminder);
-      content.append(description, meta, notesSection, inboxPanel);
+      content.append(...[description, inboxPanel, listSection, notesSection, meta].filter(Boolean));
       return;
     }
 
@@ -5154,7 +5432,7 @@ export class UIController {
       const readOnlyNote = document.createElement("p");
       readOnlyNote.className = "muted";
       readOnlyNote.textContent = "Archived task. Changes are saved to the archive. Restore to reactivate it.";
-      content.append(description, meta, notesSection, readOnlyNote, actionToolbar);
+      content.append(...[description, actionToolbar, listSection, notesSection, readOnlyNote, meta].filter(Boolean));
       content.append(this.createTaskForm(task, { archiveEntryId }));
       return;
     }
@@ -5194,29 +5472,57 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(description, meta, notesSection, this.createFollowupSection(task), actionToolbar);
+      content.append(...[description, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
     } else {
-      content.append(description, meta, notesSection, actionToolbar);
+      content.append(...[description, actionToolbar, listSection, notesSection, meta].filter(Boolean));
     }
     content.append(this.createTaskForm(task));
   }
 
   createFollowupSection(task) {
-    const section = document.createElement("div");
-    section.className = "task-edit";
+    const isWaiting = task.status === STATUS.WAITING;
+
+    const section = document.createElement("section");
+    section.className = "task-followup";
+
+    // Header row — always visible
+    const header = document.createElement("div");
+    header.className = "task-followup-header";
     const heading = document.createElement("h3");
     heading.textContent = "Follow up";
-    const helper = document.createElement("p");
-    helper.className = "muted small-text";
-    helper.textContent = "Move to Waiting and set a follow-up date.";
+
+    const body = document.createElement("div");
+    body.className = "task-followup-body";
+    body.hidden = !isWaiting;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-followup-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle follow up");
+    toggleBtn.setAttribute("aria-expanded", String(isWaiting));
+    toggleBtn.classList.toggle("is-active", isWaiting);
+    toggleBtn.textContent = "⏱";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+    });
+
+    header.append(heading, toggleBtn);
+    section.append(header, body);
+
     const waitingField = document.createElement("label");
     waitingField.className = "task-edit-field";
     waitingField.textContent = "Waiting on";
     const waitingInput = document.createElement("input");
     waitingInput.type = "text";
-    waitingInput.placeholder = "Person, response, or task ID (e.g., task:abc123)";
+    waitingInput.placeholder = "Who or what are you waiting on?";
     waitingInput.value = task.waitingFor || "";
-    waitingField.append(waitingInput);
+    const waitingHint = document.createElement("p");
+    waitingHint.className = "muted small-text";
+    waitingHint.textContent = "e.g., +Alice for a person, task:abc123 for a task reference";
+    waitingField.append(waitingInput, waitingHint);
 
     // Task reference suggestion list
     const suggestionList = document.createElement("div");
@@ -5330,7 +5636,7 @@ export class UIController {
     });
     actions.append(setButton);
 
-    section.append(heading, helper, waitingField, timingField, customField, actions);
+    body.append(waitingField, timingField, customField, actions);
     return section;
   }
 
@@ -5338,79 +5644,92 @@ export class UIController {
     const section = document.createElement("section");
     section.className = "task-notes";
 
+    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
+    const hasNotes = notes.length > 0;
+
+    // Header — always visible
     const header = document.createElement("div");
     header.className = "task-notes-header";
     const title = document.createElement("h3");
     title.textContent = "Notes";
-    const notes = Array.isArray(task.notes) ? [...task.notes] : [];
     const count = document.createElement("span");
     count.className = "muted small-text";
-    count.textContent = `${notes.length} entr${notes.length === 1 ? "y" : "ies"}`;
-    header.append(title, count);
+    count.textContent = hasNotes ? `${notes.length} entr${notes.length === 1 ? "y" : "ies"}` : "";
+
+    // Collapsible body
+    const body = document.createElement("div");
+    body.className = "task-notes-body";
+    body.hidden = !hasNotes;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-notes-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle notes");
+    toggleBtn.setAttribute("aria-expanded", String(hasNotes));
+    toggleBtn.classList.toggle("is-active", hasNotes);
+    toggleBtn.textContent = "✎";
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+      if (willExpand && noteInput) noteInput.focus();
+    });
+
+    header.append(title, count, toggleBtn);
 
     const list = document.createElement("ul");
     list.className = "task-notes-list";
-    if (!notes.length) {
-      const empty = document.createElement("li");
-      empty.className = "muted small-text";
-      empty.textContent = "No notes yet.";
-      list.append(empty);
-    } else {
-      notes
-        .sort((a, b) => {
-          const aTime = new Date(a?.createdAt || 0).getTime();
-          const bTime = new Date(b?.createdAt || 0).getTime();
-          return bTime - aTime;
-        })
-        .forEach((note) => {
-          const item = document.createElement("li");
-          item.className = "task-note-item";
-          if (!readOnly) {
-            item.dataset.noteId = note.id;
-            item.addEventListener("contextmenu", (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              this.openTaskNoteContextMenu(
-                {
-                  taskId: task.id,
-                  archiveEntryId: archiveEntryId || null,
-                  noteId: note.id,
-                },
-                event.clientX,
-                event.clientY
-              );
-            });
-          }
-          const meta = document.createElement("div");
-          meta.className = "task-note-meta";
-          const timestamp = document.createElement("time");
-          timestamp.dateTime = note.createdAt || "";
-          timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
-          meta.append(timestamp);
-          const text = document.createElement("p");
-          text.className = "task-note-text";
-          this.setEntityLinkedText(text, note.text || "");
-          item.append(meta, text);
-          list.append(item);
-        });
-    }
+    notes
+      .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
+      .forEach((note) => {
+        const item = document.createElement("li");
+        item.className = "task-note-item";
+        if (!readOnly) {
+          item.dataset.noteId = note.id;
+          item.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.openTaskNoteContextMenu(
+              { taskId: task.id, archiveEntryId: archiveEntryId || null, noteId: note.id },
+              event.clientX,
+              event.clientY
+            );
+          });
+        }
+        const meta = document.createElement("div");
+        meta.className = "task-note-meta";
+        const timestamp = document.createElement("time");
+        timestamp.dateTime = note.createdAt || "";
+        timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
+        meta.append(timestamp);
+        const text = document.createElement("p");
+        text.className = "task-note-text";
+        this.setEntityLinkedText(text, note.text || "");
+        item.append(meta, text);
+        list.append(item);
+      });
 
-    section.append(header, list);
+    body.append(list);
+
     if (readOnly) {
       const helper = document.createElement("p");
       helper.className = "muted small-text";
       helper.textContent = "Restore this task to add or edit notes.";
-      section.append(helper);
+      body.append(helper);
+      header.append(title, count, toggleBtn);
+      section.append(header, body);
       return section;
     }
 
+    let noteInput = null;
     const form = document.createElement("form");
     form.className = "task-note-form";
     form.setAttribute("aria-label", "Add task note");
-    const input = document.createElement("textarea");
-    input.rows = 3;
-    input.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
-    this.attachEntityMentionAutocomplete(input);
+    noteInput = document.createElement("textarea");
+    noteInput.rows = 3;
+    noteInput.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
+    this.attachEntityMentionAutocomplete(noteInput);
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
     const addButton = document.createElement("button");
@@ -5418,19 +5737,20 @@ export class UIController {
     addButton.className = "btn btn-light";
     addButton.textContent = "Add note";
     actions.append(addButton);
-    form.append(input, actions);
+    form.append(noteInput, actions);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const noteText = input.value;
+      const noteText = noteInput.value;
       const added = archiveEntryId
         ? this.taskManager.addCompletedTaskNote(archiveEntryId, noteText)
         : this.taskManager.addTaskNote(task.id, noteText);
       if (!added) return;
       this.ensureMentionedEntitiesExist(noteText);
-      input.value = "";
-      input.focus();
+      noteInput.value = "";
+      noteInput.focus();
     });
-    section.append(form);
+    body.append(form);
+    section.append(header, body);
     return section;
   }
 
@@ -5439,6 +5759,13 @@ export class UIController {
     const form = document.createElement("form");
     form.className = "task-edit";
     form.setAttribute("aria-label", "Edit task");
+
+    const editDivider = document.createElement("div");
+    editDivider.className = "task-section-divider";
+    const editDividerLabel = document.createElement("span");
+    editDividerLabel.textContent = "Edit details";
+    editDivider.append(editDividerLabel);
+    form.append(editDivider);
 
     const titleGroup = document.createElement("label");
     titleGroup.className = "task-edit-field";
@@ -5757,8 +6084,7 @@ export class UIController {
       projectGroup,
       dueGroup,
       calendarGroup,
-      waitingGroup,
-      closureGroup,
+      ...(task.completedAt ? [closureGroup] : []),
       recurrenceGroup,
       actions
     );
@@ -7015,12 +7341,14 @@ function mapElements() {
     connectionStatusDot: byId("connectionStatusDot"),
     taskContextMenu: byId("taskContextMenu"),
     taskNoteContextMenu: byId("taskNoteContextMenu"),
+    taskListItemContextMenu: byId("taskListItemContextMenu"),
     calendarDayContextMenu: byId("calendarDayContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),
     taskFlyoutStatus: byId("taskFlyoutStatus"),
     closeTaskFlyout: byId("closeTaskFlyout"),
+    taskFlyoutInfoToggle: byId("taskFlyoutInfoToggle"),
     taskFlyoutBackdrop: document.querySelector(".task-flyout-backdrop"),
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),

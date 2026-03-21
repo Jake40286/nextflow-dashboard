@@ -21,8 +21,39 @@ WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
 STATE_LOCK = threading.Lock()
-CALENDAR_SYNC = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
+_CALENDAR_SYNC_LOCK = threading.Lock()
+_calendar_sync = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
+_calendar_sync_key = None  # tracks (calendarId, timezone, duration) of current sync
 BACKUP_MANAGER = StateBackupManager.from_env() if StateBackupManager else None
+
+
+def _get_calendar_sync(calendar_id, timezone, duration):
+    """Return a GoogleCalendarSync for the given config, reusing or reinitialising as needed."""
+    global _calendar_sync, _calendar_sync_key
+    if not GoogleCalendarSync or not calendar_id:
+        return None
+    key = (calendar_id, timezone, duration)
+    with _CALENDAR_SYNC_LOCK:
+        if _calendar_sync_key == key and _calendar_sync is not None:
+            return _calendar_sync
+        credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json")
+        event_store = os.getenv("GOOGLE_CALENDAR_EVENT_STORE", "/data/google-events.json")
+        try:
+            sync = GoogleCalendarSync(
+                calendar_id=calendar_id,
+                credentials_file=Path(credentials_file),
+                state_file=Path(event_store),
+                timezone=timezone,
+                default_duration=duration,
+            )
+            _calendar_sync = sync
+            _calendar_sync_key = key
+            return sync
+        except Exception as error:  # noqa: BLE001
+            print(f"Failed to (re)initialise Google Calendar sync: {error}", file=sys.stderr)
+            _calendar_sync = None
+            _calendar_sync_key = None
+            return None
 
 
 def get_server_address():
@@ -119,11 +150,20 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             STATE_FILE.write_text(json.dumps(core_payload, indent=2), encoding="utf-8")
             COMPLETED_FILE.write_text(json.dumps(completed_payload, indent=2), encoding="utf-8")
         self._send_json({"status": "ok"})
-        if CALENDAR_SYNC:
-            try:
-                CALENDAR_SYNC.sync_async(core_payload.get("tasks", []))
-            except Exception as error:  # noqa: BLE001
-                print(f"Google Calendar sync skipped: {error}", file=sys.stderr)
+        settings = core_payload.get("settings", {})
+        flags = settings.get("featureFlags", {})
+        gcal_enabled = flags.get("googleCalendarEnabled", True)
+        if gcal_enabled:
+            gcal_cfg = settings.get("googleCalendarConfig", {})
+            calendar_id = gcal_cfg.get("calendarId") or os.getenv("GOOGLE_CALENDAR_ID", "")
+            timezone = gcal_cfg.get("timezone") or os.getenv("GOOGLE_CALENDAR_TIMEZONE", "UTC")
+            duration = int(gcal_cfg.get("defaultDurationMinutes") or os.getenv("GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES", "60"))
+            sync = _get_calendar_sync(calendar_id, timezone, duration)
+            if sync:
+                try:
+                    sync.sync_async(core_payload.get("tasks", []))
+                except Exception as error:  # noqa: BLE001
+                    print(f"Google Calendar sync skipped: {error}", file=sys.stderr)
         if BACKUP_MANAGER:
             try:
                 BACKUP_MANAGER.write_backup(payload)

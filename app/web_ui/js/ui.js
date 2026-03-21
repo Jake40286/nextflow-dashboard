@@ -717,7 +717,6 @@ export class UIController {
       summaryCalendar,
       summaryCompleted,
       summaryStatistics,
-      summarySettings,
       summaryAllActive,
     } = this.elements;
     summaryInbox.textContent = summary.inbox;
@@ -741,16 +740,6 @@ export class UIController {
     if (summaryStatistics) {
       const completedAll = this.taskManager.getCompletedTasks().length;
       summaryStatistics.textContent = summary.next + summary.waiting + summary.projects + completedAll;
-    }
-    if (summarySettings) {
-      const settingsTotal =
-        THEME_OPTIONS.length +
-        this.taskManager.getCustomThemePalettes().length +
-        this.taskManager.getContexts().length +
-        this.taskManager.getPeopleTags().length +
-        this.taskManager.getAreasOfFocus().length +
-        Object.keys(this.taskManager.getFeatureFlags()).length;
-      summarySettings.textContent = settingsTotal;
     }
     if (summaryAllActive) {
       const activeCount = this.taskManager.getTasks(this.buildTaskFilters()).length;
@@ -1078,7 +1067,7 @@ export class UIController {
     return raw.replace(/\s+/g, " ");
   }
 
-  ensureMentionedEntitiesExist(rawText) {
+  async ensureMentionedEntitiesExist(rawText) {
     const tokens = this.extractEntityMentionTokens(rawText);
     if (!tokens.length) return;
 
@@ -1089,42 +1078,42 @@ export class UIController {
     let addedContexts = 0;
     let addedPeople = 0;
 
-    tokens.forEach((token) => {
+    for (const token of tokens) {
       if (token.startsWith("+")) {
         const key = token.toLowerCase();
-        if (peopleSet.has(key)) return;
-        const confirmed = window.confirm(`Create people tag "${token}" from this note mention?`);
-        if (!confirmed) return;
+        if (peopleSet.has(key)) continue;
+        const confirmed = await this.showConfirm(`Create people tag "${token}" from this note mention?`, { okLabel: "Create tag" });
+        if (!confirmed) continue;
         const added = this.taskManager.addPeopleTagOption(token, { notify: false });
-        if (!added) return;
+        if (!added) continue;
         peopleSet.add(added.toLowerCase());
         addedPeople += 1;
-        return;
+        continue;
       }
 
       if (token.startsWith("@")) {
         const key = token.toLowerCase();
-        if (contextSet.has(key)) return;
-        const confirmed = window.confirm(`Create context "${token}" from this note mention?`);
-        if (!confirmed) return;
+        if (contextSet.has(key)) continue;
+        const confirmed = await this.showConfirm(`Create context "${token}" from this note mention?`, { okLabel: "Create context" });
+        if (!confirmed) continue;
         const added = this.taskManager.addContextOption(token, { notify: false });
-        if (!added) return;
+        if (!added) continue;
         contextSet.add(added.toLowerCase());
         addedContexts += 1;
-        return;
+        continue;
       }
 
       if (token.startsWith("#")) {
         const key = this.normalizeProjectTagKey(token.slice(1));
-        if (!key) return;
-        if (this.findProjectByTagKey(key)) return;
+        if (!key) continue;
+        if (this.findProjectByTagKey(key)) continue;
         const suggestedName = this.formatProjectNameFromMentionToken(token);
-        if (!suggestedName) return;
-        const confirmed = window.confirm(`Create project "${suggestedName}" from note mention "${token}"?`);
-        if (!confirmed) return;
+        if (!suggestedName) continue;
+        const confirmed = await this.showConfirm(`Create project "${suggestedName}" from note mention?`, { okLabel: "Create project" });
+        if (!confirmed) continue;
         this.taskManager.addProject(suggestedName);
       }
-    });
+    }
 
     const messages = [];
     if (addedPeople) {
@@ -1300,10 +1289,10 @@ export class UIController {
     this.taskManager.notify("info", `Added "${task.title}" to My Day and scheduled it for today.`);
   }
 
-  promptRescheduleTask(task) {
+  async promptRescheduleTask(task) {
     if (!task?.id) return;
     const fallbackDate = task.calendarDate || this.getTodayDateKey();
-    const candidate = window.prompt(`Re-schedule "${task.title}" to (YYYY-MM-DD):`, fallbackDate);
+    const candidate = await this.showPrompt(`Re-schedule "${task.title}" to (YYYY-MM-DD):`, fallbackDate);
     if (candidate === null) return;
     const nextDate = candidate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
@@ -1588,8 +1577,8 @@ export class UIController {
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger";
       deleteButton.textContent = "Delete project";
-      deleteButton.addEventListener("click", () => {
-        const confirmed = window.confirm(`Delete project "${project.name}"? Tasks will remain but lose this project link.`);
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = await this.showConfirm(`Delete project "${project.name}"? Tasks will remain but lose their project link.`, { title: "Delete project", okLabel: "Delete", danger: true });
         if (confirmed) {
           this.taskManager.deleteProject(project.id);
         }
@@ -2987,8 +2976,8 @@ export class UIController {
             deleteButton.type = "button";
             deleteButton.className = "btn btn-danger btn-small";
             deleteButton.textContent = "Delete";
-            deleteButton.addEventListener("click", () => {
-              const confirmed = window.confirm(`Delete palette "${palette.name}"?`);
+            deleteButton.addEventListener("click", async () => {
+              const confirmed = await this.showConfirm(`Delete palette "${palette.name}"?`, { title: "Delete palette", okLabel: "Delete", danger: true });
               if (!confirmed) return;
               this.taskManager.deleteCustomThemePalette(palette.id);
             });
@@ -3026,10 +3015,21 @@ export class UIController {
         label: "Show Filters Sidebar Card",
         description: "Display the Filters card in the left sidebar.",
       },
+      {
+        key: "showDaysSinceTouched",
+        label: "Show Days Since Touched",
+        description: "Display how many days ago each task was last updated on task cards.",
+      },
+      {
+        key: "googleCalendarEnabled",
+        label: "Google Calendar Sync",
+        description: "Mirror tasks with dates to a Google Calendar.",
+        renderConfig: (configPanel) => this.renderGoogleCalendarConfig(configPanel),
+      },
     ];
     entries.forEach((entry) => {
       const item = document.createElement("li");
-      item.className = "settings-item";
+      item.className = "settings-item settings-item--block";
       const main = document.createElement("div");
       main.className = "settings-item-main";
       const labelWrap = document.createElement("div");
@@ -3055,13 +3055,82 @@ export class UIController {
       text.textContent = input.checked ? "Enabled" : "Disabled";
       input.addEventListener("change", () => {
         text.textContent = input.checked ? "Enabled" : "Disabled";
+        if (configPanel) configPanel.hidden = !input.checked;
       });
       toggle.append(input, text);
       actions.append(toggle);
       main.append(labelWrap, actions);
       item.append(main);
+      let configPanel = null;
+      if (entry.renderConfig) {
+        configPanel = document.createElement("div");
+        configPanel.className = "feature-flag-config-panel";
+        configPanel.hidden = !input.checked;
+        entry.renderConfig(configPanel);
+        item.append(configPanel);
+      }
       container.append(item);
     });
+  }
+
+  renderGoogleCalendarConfig(panel) {
+    const cfg = this.taskManager.getGoogleCalendarConfig();
+
+    const makeField = (labelText, input) => {
+      const wrap = document.createElement("label");
+      wrap.className = "feature-flag-config-field";
+      const lbl = document.createElement("span");
+      lbl.className = "feature-flag-config-label";
+      lbl.textContent = labelText;
+      wrap.append(lbl, input);
+      return wrap;
+    };
+
+    const calendarIdInput = document.createElement("input");
+    calendarIdInput.type = "text";
+    calendarIdInput.className = "";
+    calendarIdInput.placeholder = "e.g. you@gmail.com";
+    calendarIdInput.value = cfg.calendarId;
+
+    const timezoneInput = document.createElement("input");
+    timezoneInput.type = "text";
+    timezoneInput.className = "";
+    timezoneInput.placeholder = "e.g. America/Chicago";
+    timezoneInput.value = cfg.timezone;
+
+    const durationInput = document.createElement("input");
+    durationInput.type = "number";
+    durationInput.className = "";
+    durationInput.min = "5";
+    durationInput.step = "5";
+    durationInput.placeholder = "60";
+    durationInput.value = cfg.defaultDurationMinutes;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-light";
+    saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", () => {
+      const duration = parseInt(durationInput.value, 10);
+      this.taskManager.updateGoogleCalendarConfig({
+        calendarId: calendarIdInput.value.trim(),
+        timezone: timezoneInput.value.trim() || "UTC",
+        defaultDurationMinutes: Number.isFinite(duration) && duration >= 5 ? duration : 60,
+      });
+      this.showToast("ok", "Google Calendar settings saved.");
+    });
+
+    const hint = document.createElement("p");
+    hint.className = "muted small-text feature-flag-config-hint";
+    hint.textContent = "The service account credentials file must be placed on the server at the path set in GOOGLE_CREDENTIALS_FILE.";
+
+    panel.append(
+      makeField("Calendar ID", calendarIdInput),
+      makeField("Timezone (IANA)", timezoneInput),
+      makeField("Default event duration (minutes)", durationInput),
+      saveBtn,
+      hint,
+    );
   }
 
   applyFeatureFlags() {
@@ -3309,10 +3378,10 @@ export class UIController {
     return wrapper;
   }
 
-  handleSettingsAction({ action, type, value }) {
+  async handleSettingsAction({ action, type, value }) {
     if (!action || !type || !value) return;
     if (action === "rename") {
-      const candidate = window.prompt(`Rename "${value}" to:`, value);
+      const candidate = await this.showPrompt(`Rename "${value}" to:`, value);
       if (!candidate || !candidate.trim()) return;
       const nextValue = candidate.trim();
       if (nextValue === value) return;
@@ -3327,7 +3396,7 @@ export class UIController {
       return;
     }
     if (action === "delete") {
-      const confirmed = window.confirm(`Delete "${value}"?`);
+      const confirmed = await this.showConfirm(`Delete "${value}"?`, { title: "Delete option", okLabel: "Delete", danger: true });
       if (!confirmed) return;
       if (type === "context") {
         const changed = this.taskManager.deleteContext(value);
@@ -3708,6 +3777,13 @@ export class UIController {
     } else if (task.calendarDate) {
       metaItems.push(this.createMetaSpan(`📅 ${formatFriendlyDate(task.calendarDate)}`));
     }
+    if (this.taskManager.getFeatureFlag("showDaysSinceTouched") && task.updatedAt) {
+      const msPerDay = 86400000;
+      const days = Math.floor((Date.now() - new Date(task.updatedAt).getTime()) / msPerDay);
+      const label = days === 0 ? "Touched today" : days === 1 ? "1 day ago" : `${days} days ago`;
+      const ageClass = days >= 14 ? "task-meta-age-stale" : days >= 7 ? "task-meta-age-warn" : "task-meta-age";
+      metaItems.push(this.createMetaSpan(label, ageClass));
+    }
 
     metaItems.forEach((item, index) => {
       if (index > 0) {
@@ -3767,7 +3843,7 @@ export class UIController {
   setupTaskContextMenu() {
     const menu = this.elements.taskContextMenu;
     if (!menu) return;
-    menu.addEventListener("click", (event) => {
+    menu.addEventListener("click", async (event) => {
       const actionButton = event.target.closest("[data-task-menu-action]");
       if (!actionButton) return;
       const task = this.contextMenuTaskId ? this.taskManager.getTaskById(this.contextMenuTaskId) : null;
@@ -3787,7 +3863,7 @@ export class UIController {
         return;
       }
       if (action === "delete") {
-        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+        const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
         if (!confirmed) return;
         this.taskManager.deleteTask(task.id);
       }
@@ -3887,7 +3963,7 @@ export class UIController {
   setupTaskNoteContextMenu() {
     const menu = this.elements.taskNoteContextMenu;
     if (!menu) return;
-    menu.addEventListener("click", (event) => {
+    menu.addEventListener("click", async (event) => {
       const actionButton = event.target.closest("[data-note-menu-action]");
       if (!actionButton) return;
       const action = actionButton.dataset.noteMenuAction;
@@ -3895,7 +3971,7 @@ export class UIController {
       this.closeTaskNoteContextMenu();
       if (!context) return;
       if (action === "edit") {
-        const nextText = window.prompt("Edit note", context.note.text || "");
+        const nextText = await this.showPrompt("Edit note", context.note.text || "");
         if (nextText === null) return;
         const trimmed = nextText.trim();
         if (!trimmed) {
@@ -3913,7 +3989,7 @@ export class UIController {
         return;
       }
       if (action === "delete") {
-        const confirmed = window.confirm("Delete this note? This cannot be undone.");
+        const confirmed = await this.showConfirm("Delete this note?", { title: "Delete note", okLabel: "Delete", danger: true });
         if (!confirmed) return;
         const deleted = context.isArchived
           ? this.taskManager.deleteCompletedTaskNote(context.archiveEntryId, context.note.id)
@@ -4075,9 +4151,9 @@ export class UIController {
     }
   }
 
-  promptCalendarTaskCreate(dateKey) {
+  async promptCalendarTaskCreate(dateKey) {
     const dateLabel = formatFriendlyDate(dateKey);
-    const title = window.prompt(`Task title for ${dateLabel}:`);
+    const title = await this.showPrompt(`New task for ${dateLabel}:`);
     if (title === null) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -4159,30 +4235,15 @@ export class UIController {
       clarifyWhoSelf,
       clarifyWhoDelegate,
       clarifyDelegateNameInput,
-      clarifyDateContinue,
       clarifyDateOptionSpecific,
-      clarifySpecificDateInput,
       clarifyDateOptionDue,
-      clarifyDueDateInput,
       clarifyDateOptionNone,
-      clarifySpecificTimeInput,
       clarifyProjectSelect,
       clarifyProjectPicker,
-      clarifyProjectPickContinue,
       clarifyContextSelect,
       clarifyEnergySelect,
       clarifyTimeSelect,
-      clarifyMetadataSave,
-      clarifyMetadataSkip,
       clarifyAddContext,
-      clarifyTwoMinuteStep,
-      clarifyStepActionable,
-      clarifyStepActionPlan,
-      clarifyStepDates,
-      clarifyStepMetadata,
-      clarifyStepFinal,
-      clarifyFinalMessage,
-      clarifyFinalReturn,
       clarifyPreviewText,
     } = this.elements;
     if (!clarifyModal) return;
@@ -4192,60 +4253,158 @@ export class UIController {
         this.closeClarifyModal();
       }
     };
-    this.clarifyDestinationButtons = Array.from(clarifyModal.querySelectorAll("[data-clarify-nonaction]"));
-    clarifyActionableYes?.addEventListener("click", () => this.handleClarifyActionableChoice(true));
-    clarifyActionSingle?.addEventListener("click", () => this.handleClarifySingleAction());
-    clarifyActionAddExisting?.addEventListener("click", () => this.showClarifyProjectPicker());
+    closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
+    clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
+
+    // Helper: toggle is-selected among a button group
+    const selectChoice = (group, chosen) => {
+      group.forEach((btn) => btn?.classList.toggle("is-selected", btn === chosen));
+    };
+    const projectChoices = [clarifyActionSingle, clarifyActionAddExisting, clarifyConvertProject];
+    const twoMinChoices = [clarifyTwoMinuteNo, clarifyTwoMinuteYes];
+    const whoChoices = [clarifyWhoSelf, clarifyWhoDelegate];
+
+    // Non-action destinations (Someday, Trash)
+    this.clarifyDestinationButtons = Array.from(
+      clarifyModal.querySelectorAll("[data-clarify-nonaction]")
+    );
     this.clarifyDestinationButtons.forEach((button) => {
-      button.addEventListener("click", () => this.handleClarifyNonAction(button.dataset.clarifyNonaction));
+      button.addEventListener("click", () =>
+        this.handleClarifyNonAction(button.dataset.clarifyNonaction)
+      );
     });
-    clarifyConvertProject?.addEventListener("click", () => this.handleClarifyConvertToProject());
-    clarifyTwoMinuteYes?.addEventListener("click", () => this.handleClarifyTwoMinuteYes());
-    clarifyTwoMinuteNo?.addEventListener("click", () => this.showClarifyStep("who"));
+
+    // Actionable Yes — collapse the question, show the form
+    clarifyActionableYes?.addEventListener("click", () => {
+      this.handleClarifyActionableChoice(true);
+      const fields = document.getElementById("clarifyActionableFields");
+      if (fields) fields.hidden = false;
+      const question = document.getElementById("clarifyActionableQuestion");
+      if (question) question.hidden = true;
+      const summary = document.getElementById("clarifyActionableSummary");
+      const summaryText = document.getElementById("clarifyPreviewTextSummary");
+      if (summaryText) summaryText.textContent = this.clarifyState.previewText || "";
+      if (summary) summary.hidden = false;
+    });
+
+    // Project section
+    clarifyActionSingle?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyActionSingle);
+      if (clarifyProjectPicker) clarifyProjectPicker.hidden = true;
+      this.clarifyState.projectId = null;
+      this.clarifyState.projectName = "";
+    });
+    clarifyActionAddExisting?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyActionAddExisting);
+      this.showClarifyProjectPicker();
+    });
+    clarifyConvertProject?.addEventListener("click", () => {
+      selectChoice(projectChoices, clarifyConvertProject);
+      this.handleClarifyConvertToProject();
+    });
+
+    // 2-minute section
+    clarifyTwoMinuteNo?.addEventListener("click", () => {
+      selectChoice(twoMinChoices, clarifyTwoMinuteNo);
+      if (clarifyTwoMinuteFollowup) clarifyTwoMinuteFollowup.hidden = true;
+      const normalFields = document.getElementById("clarifyNormalActionFields");
+      if (normalFields) normalFields.hidden = false;
+    });
+    clarifyTwoMinuteYes?.addEventListener("click", () => {
+      selectChoice(twoMinChoices, clarifyTwoMinuteYes);
+      this.handleClarifyTwoMinuteYes();
+      const normalFields = document.getElementById("clarifyNormalActionFields");
+      if (normalFields) normalFields.hidden = true;
+    });
     clarifyTwoMinuteExpectYes?.addEventListener("click", () => this.handleTwoMinuteFollowup(true));
     clarifyTwoMinuteExpectNo?.addEventListener("click", () => this.handleTwoMinuteFollowup(false));
     clarifyFollowupTiming?.addEventListener("change", () => this.toggleCustomFollowupDate());
-    clarifyWhoSelf?.addEventListener("click", () => this.showClarifyStep("dates"));
-    clarifyWhoDelegate?.addEventListener("click", () => this.handleClarifyDelegation(clarifyDelegateNameInput?.value));
-    clarifyDateContinue?.addEventListener("click", () => this.handleClarifyDateDecision());
-    clarifyProjectPickContinue?.addEventListener("click", () => this.handleClarifyExistingProjectContinue());
-    clarifyMetadataSave?.addEventListener("click", () => this.handleClarifyMetadata({ skip: false }));
-    clarifyMetadataSkip?.addEventListener("click", () => this.handleClarifyMetadata({ skip: true }));
-    clarifyFinalReturn?.addEventListener("click", () => this.closeClarifyFlowToInbox());
-    clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
-    [clarifyEnergySelect, clarifyTimeSelect].forEach((select) => {
-      if (select) {
-        select.addEventListener("change", () => {
-          this.clarifyState.energy = clarifyEnergySelect?.value || "";
-          this.clarifyState.time = clarifyTimeSelect?.value || "";
-        });
+
+    // Who section
+    clarifyWhoSelf?.addEventListener("click", () => {
+      selectChoice(whoChoices, clarifyWhoSelf);
+      const row = document.getElementById("clarifyDelegateRow");
+      if (row) row.hidden = true;
+    });
+    clarifyWhoDelegate?.addEventListener("click", () => {
+      selectChoice(whoChoices, clarifyWhoDelegate);
+      const row = document.getElementById("clarifyDelegateRow");
+      if (row) {
+        row.hidden = false;
+        clarifyDelegateNameInput?.focus();
       }
     });
-    const clearFollowup = () => {
-      if (clarifyTwoMinuteFollowup) {
-        clarifyTwoMinuteFollowup.hidden = true;
-      }
-      if (clarifyTwoMinuteResponseInput) {
-        clarifyTwoMinuteResponseInput.value = "";
-      }
-      this.resetFollowupTiming();
+
+    // Date radios — show/hide date inputs inline
+    const updateDateInputs = () => {
+      const specificFields = document.getElementById("clarifySpecificDateFields");
+      const dueDateFields = document.getElementById("clarifyDueDateFields");
+      if (specificFields) specificFields.hidden = !clarifyDateOptionSpecific?.checked;
+      if (dueDateFields) dueDateFields.hidden = !clarifyDateOptionDue?.checked;
     };
-    clarifyTwoMinuteStep?.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        clearFollowup();
-      }
+    [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone].forEach((radio) => {
+      radio?.addEventListener("change", updateDateInputs);
     });
-    clarifyStepActionable?.addEventListener("click", () => clearFollowup());
-    clarifyStepActionPlan?.addEventListener("click", () => clearFollowup());
-    clarifyStepDates?.addEventListener("click", () => clearFollowup());
-    clarifyStepMetadata?.addEventListener("click", () => clearFollowup());
-    clarifyStepFinal?.addEventListener("click", () => clearFollowup());
-    closeClarifyModal?.addEventListener("click", () => this.closeClarifyModal());
-    clarifyBackdrop?.addEventListener("click", () => this.closeClarifyModal());
+
+    // Metadata live updates
+    [clarifyEnergySelect, clarifyTimeSelect].forEach((select) => {
+      select?.addEventListener("change", () => {
+        this.clarifyState.energy = clarifyEnergySelect?.value || "";
+        this.clarifyState.time = clarifyTimeSelect?.value || "";
+      });
+    });
+
+    // Add context
+    clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
+
+    // Preview text editing
     if (clarifyPreviewText) {
       clarifyPreviewText.addEventListener("input", () => this.handleClarifyPreviewEdit(false));
       clarifyPreviewText.addEventListener("blur", () => this.handleClarifyPreviewEdit(true));
     }
+
+    // Route task — Done button
+    const doneButton = document.getElementById("clarifyDoneButton");
+    doneButton?.addEventListener("click", () => {
+      // Read project selection
+      const projectId = clarifyProjectSelect?.value;
+      if (
+        clarifyActionAddExisting?.classList.contains("is-selected") &&
+        (!projectId || projectId === "none")
+      ) {
+        this.taskManager.notify("warn", "Pick a project before routing.");
+        clarifyProjectSelect?.focus();
+        return;
+      }
+      if (projectId && projectId !== "none") {
+        this.clarifyState.projectId = projectId;
+        this.clarifyState.projectName = this.getProjectName(projectId) || "";
+      }
+      // Read delegate if chosen
+      if (clarifyWhoDelegate?.classList.contains("is-selected")) {
+        const name = clarifyDelegateNameInput?.value?.trim();
+        if (!name) {
+          this.taskManager.notify("warn", "Enter who you are delegating to.");
+          clarifyDelegateNameInput?.focus();
+          return;
+        }
+        this.clarifyState.statusTarget = STATUS.WAITING;
+        this.clarifyState.waitingFor = name;
+      } else {
+        this.clarifyState.statusTarget = null;
+        this.clarifyState.waitingFor = "";
+      }
+      // Read date
+      if (!this.readClarifyDateState()) return;
+      // Read metadata
+      this.clarifyState.context = clarifyContextSelect?.value || this.clarifyState.context || "";
+      this.clarifyState.energy = clarifyEnergySelect?.value || "";
+      this.clarifyState.time = clarifyTimeSelect?.value || "";
+      // Finalize
+      this.finalizeClarifyRouting();
+    });
+
+    // Closure modal bindings (unchanged)
     const {
       closureModal,
       closureBackdrop,
@@ -4260,31 +4419,18 @@ export class UIController {
         closureModal.setAttribute("hidden", "");
         this.pendingClosure = null;
       };
-      const handleSave = () => {
-        if (!this.pendingClosure) {
-          closeModal();
-          return;
-        }
-        const notes = closureNotesInput.value.trim();
-        if (notes && notes !== this.pendingClosure.existing) {
-          this.taskManager.updateTask(this.pendingClosure.taskId, { closureNotes: notes });
-        }
-        this.taskManager.completeTask(this.pendingClosure.taskId, {
-          archive: this.pendingClosure.archive,
-          closureNotes: notes || this.pendingClosure.existing,
-        });
-        this.closeTaskFlyout();
-        closeModal();
-      };
       closeClosureModal?.addEventListener("click", closeModal);
       cancelClosureNotes?.addEventListener("click", closeModal);
       closureBackdrop?.addEventListener("click", closeModal);
-      saveClosureNotes?.addEventListener("click", handleSave);
-      closureNotesInput?.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          handleSave();
+      saveClosureNotes?.addEventListener("click", () => {
+        const notes = closureNotesInput?.value?.trim() || "";
+        if (this.pendingClosure) {
+          this.taskManager.completeTask(this.pendingClosure.taskId, {
+            archive: this.pendingClosure.archive,
+            closureNotes: notes,
+          });
         }
+        closeModal();
       });
     }
   }
@@ -4333,6 +4479,35 @@ export class UIController {
       actionPlanInitialized: false,
       expectResponse: false,
     };
+    const actionableFields = document.getElementById("clarifyActionableFields");
+    if (actionableFields) actionableFields.hidden = true;
+    const actionableQuestion = document.getElementById("clarifyActionableQuestion");
+    if (actionableQuestion) actionableQuestion.hidden = false;
+    const actionableSummary = document.getElementById("clarifyActionableSummary");
+    if (actionableSummary) actionableSummary.hidden = true;
+    const normalFields = document.getElementById("clarifyNormalActionFields");
+    if (normalFields) normalFields.hidden = false;
+    const delegateRow = document.getElementById("clarifyDelegateRow");
+    if (delegateRow) delegateRow.hidden = true;
+    const specificDateFields = document.getElementById("clarifySpecificDateFields");
+    if (specificDateFields) specificDateFields.hidden = true;
+    const dueDateFields = document.getElementById("clarifyDueDateFields");
+    if (dueDateFields) dueDateFields.hidden = true;
+    [
+      ["clarifyActionSingle", "clarifyActionSingle"],
+      ["clarifyTwoMinuteNo", "clarifyTwoMinuteNo"],
+      ["clarifyWhoSelf", "clarifyWhoSelf"],
+    ].forEach(([selectedId, ...groupIds]) => {
+      const allIds = groupIds.length ? groupIds : [selectedId];
+      allIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle("is-selected", id === selectedId);
+      });
+    });
+    document.getElementById("clarifyActionableYes")?.classList.remove("is-selected");
+    ["clarifyActionAddExisting", "clarifyConvertProject", "clarifyTwoMinuteYes", "clarifyWhoDelegate"].forEach(id => {
+      document.getElementById(id)?.classList.remove("is-selected");
+    });
   }
 
   openClarifyModal(taskId) {
@@ -4353,7 +4528,6 @@ export class UIController {
     this.populateClarifyPreview(task);
     this.populateClarifyContexts();
     this.populateProjectSelect();
-    this.showClarifyStep("actionable");
     this.setClarifyModalOpen(true);
   }
 
@@ -4481,18 +4655,15 @@ export class UIController {
   }
 
   handleClarifyActionableChoice(isActionable) {
-    if (!this.clarifyState.taskId) return;
-    if (isActionable) {
-      this.showClarifyStep("action-plan");
-    }
+    if (!this.clarifyState.taskId || !isActionable) return;
   }
 
-  handleClarifyNonAction(destination) {
+  async handleClarifyNonAction(destination) {
     if (!this.clarifyState.taskId || !destination) return;
     if (destination === "trash") {
       const task = this.taskManager.getTaskById(this.clarifyState.taskId);
       const label = task?.title || "this capture";
-      const confirmed = window.confirm(`Delete "${label}"? This cannot be undone.`);
+      const confirmed = await this.showConfirm(`Delete "${label}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
       if (!confirmed) {
         return;
       }
@@ -4513,12 +4684,11 @@ export class UIController {
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
     }
-    this.showClarifyStep("two-minute");
   }
 
-  handleClarifyConvertToProject() {
+  async handleClarifyConvertToProject() {
     if (!this.clarifyState.taskId) return;
-    const projectName = window.prompt("Project name");
+    const projectName = await this.showPrompt("New project name:");
     if (!projectName || !projectName.trim()) {
       return;
     }
@@ -4535,7 +4705,6 @@ export class UIController {
         this.elements.clarifyProjectSelect.value = project.id;
       }
       this.taskManager.notify("info", `Created project "${project.name}".`);
-      this.showClarifyStep("two-minute");
     }
   }
 
@@ -4597,8 +4766,8 @@ export class UIController {
     this.showClarifyStep("metadata");
   }
 
-  handleClarifyAddContext() {
-    const nextContext = window.prompt("New context name (include @ if desired)");
+  async handleClarifyAddContext() {
+    const nextContext = await this.showPrompt("New context name (include @ if desired):");
     if (!nextContext || !nextContext.trim()) return;
     const select = this.elements.clarifyContextSelect;
     if (!select) return;
@@ -4609,6 +4778,37 @@ export class UIController {
     select.append(option);
     select.value = normalized;
     this.clarifyState.context = normalized;
+  }
+
+  readClarifyDateState() {
+    const specific = this.elements.clarifyDateOptionSpecific?.checked;
+    const due = this.elements.clarifyDateOptionDue?.checked;
+    if (specific) {
+      const date = this.elements.clarifySpecificDateInput?.value;
+      const time = this.elements.clarifySpecificTimeInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a calendar date.");
+        return false;
+      }
+      this.clarifyState.dueType = "calendar";
+      this.clarifyState.calendarDate = date;
+      this.clarifyState.calendarTime = time || "";
+      this.clarifyState.dueDate = "";
+    } else if (due) {
+      const date = this.elements.clarifyDueDateInput?.value;
+      if (!date) {
+        this.taskManager.notify("warn", "Choose a due date.");
+        return false;
+      }
+      this.clarifyState.dueType = "due";
+      this.clarifyState.dueDate = date;
+      this.clarifyState.calendarDate = "";
+    } else {
+      this.clarifyState.dueType = "none";
+      this.clarifyState.dueDate = "";
+      this.clarifyState.calendarDate = "";
+    }
+    return true;
   }
 
   handleClarifyTwoMinuteYes() {
@@ -4665,43 +4865,27 @@ export class UIController {
 
   handleTwoMinuteFollowup(expectResponse) {
     if (!this.clarifyState.taskId) return;
-    let followUpDueDate = null;
-    if (expectResponse) {
-      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
-      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
-      followUpDueDate = this.resolveFollowupDate(choice, customValue);
-      if (!followUpDueDate) {
-        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
-        return;
-      }
-    }
-    this.clarifyState.expectResponse = expectResponse;
-    const waitingFor = expectResponse
-      ? this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response"
-      : null;
     const task = this.taskManager.getTaskById(this.clarifyState.taskId);
     if (!task) {
       this.closeClarifyModal();
       return;
     }
     if (expectResponse) {
+      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
+      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
+      const followUpDueDate = this.resolveFollowupDate(choice, customValue);
+      if (!followUpDueDate) {
+        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
+        return;
+      }
+      this.clarifyState.expectResponse = true;
       this.clarifyState.statusTarget = STATUS.WAITING;
-      this.clarifyState.waitingFor = waitingFor;
+      this.clarifyState.waitingFor =
+        this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response";
       this.clarifyState.dueType = "due";
-      this.clarifyState.dueDate = followUpDueDate || "";
-      if (this.elements.clarifyDateOptionDue) {
-        this.elements.clarifyDateOptionDue.checked = true;
-      }
-      if (this.elements.clarifyDueDateInput) {
-        this.elements.clarifyDueDateInput.value = followUpDueDate || "";
-      }
-      if (this.elements.clarifySpecificDateInput) {
-        this.elements.clarifySpecificDateInput.value = "";
-      }
-      if (this.elements.clarifySpecificTimeInput) {
-        this.elements.clarifySpecificTimeInput.value = "";
-      }
-      this.showClarifyStep("dates");
+      this.clarifyState.dueDate = followUpDueDate;
+      this.clarifyState.calendarDate = "";
+      this.finalizeClarifyRouting();
       return;
     }
     this.taskManager.completeTask(task.id, { archive: "reference", closureNotes: task.closureNotes });
@@ -4781,14 +4965,21 @@ export class UIController {
       updates.dueDate = this.clarifyState.dueDate;
     }
     this.taskManager.updateTask(task.id, updates);
-    if (early) {
-      this.taskManager.notify("info", "Routed and removed from Inbox.");
-      this.closeClarifyModal();
-      this.setActivePanel("inbox");
-      return;
+    const destinations = [];
+    if (updates.status === STATUS.WAITING) destinations.push("Waiting");
+    else if (updates.calendarDate) destinations.push("Calendar");
+    else if (updates.dueDate) destinations.push("Next Actions (due)");
+    else destinations.push("Next Actions");
+    if (updates.projectId) {
+      const name = this.getProjectName(updates.projectId);
+      if (name) destinations.push(`Project: ${name}`);
     }
-    this.setClarifyFinalMessage(updates);
-    this.showClarifyStep("final");
+    const routeMessage = destinations.length > 1
+      ? `Routed to ${destinations.join(" + ")}.`
+      : `Routed to ${destinations[0] || "Next Actions"}.`;
+    this.taskManager.notify("info", routeMessage);
+    this.closeClarifyModal();
+    this.setActivePanel("inbox");
   }
 
   setClarifyFinalMessage(updates) {
@@ -5218,7 +5409,7 @@ export class UIController {
     form.setAttribute("aria-label", "Add task note");
     const input = document.createElement("textarea");
     input.rows = 3;
-    input.placeholder = "Capture findings, blockers, and progress updates...";
+    input.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
     this.attachEntityMentionAutocomplete(input);
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
@@ -5543,8 +5734,8 @@ export class UIController {
       deleteButton.type = "button";
       deleteButton.className = "btn btn-danger";
       deleteButton.textContent = "Delete task";
-      deleteButton.addEventListener("click", () => {
-        const confirmed = window.confirm(`Delete "${task.title}"? This cannot be undone.`);
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
         if (confirmed) {
           this.taskManager.deleteTask(task.id);
           this.closeTaskFlyout();
@@ -5579,13 +5770,13 @@ export class UIController {
     return form;
   }
 
-  createProjectForTask(task, { archiveEntryId = null } = {}) {
+  async createProjectForTask(task, { archiveEntryId = null } = {}) {
     if (!task) return;
-    const proposedName = window.prompt("New project name");
+    const proposedName = await this.showPrompt("New project name:");
     if (!proposedName || !proposedName.trim()) return;
     const trimmedName = proposedName.trim();
     const confirmMessage = `Create project "${trimmedName}" and assign it to "${task.title || "this task"}"?`;
-    if (!window.confirm(confirmMessage)) {
+    if (!await this.showConfirm(confirmMessage, { okLabel: "Create project" })) {
       return;
     }
     const project = this.taskManager.addProject(trimmedName);
@@ -6373,6 +6564,78 @@ export class UIController {
     this.taskManager.updateTask(taskId, updates);
   }
 
+  showPrompt(title, defaultValue = "") {
+    return new Promise((resolve) => {
+      const modal = this.elements.promptModal;
+      if (!modal) { resolve(window.prompt(title, defaultValue)); return; }
+      const input = this.elements.promptModalInput;
+      const titleEl = this.elements.promptModalTitle;
+      const okBtn = this.elements.promptModalOk;
+      const cancelBtn = this.elements.promptModalCancel;
+      if (titleEl) titleEl.textContent = title;
+      if (input) { input.value = defaultValue; }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        okBtn?.removeEventListener("click", onOk);
+        cancelBtn?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onOk = () => {
+        const val = input?.value?.trim() || "";
+        cleanup();
+        resolve(val || null);
+      };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); onOk(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      };
+      okBtn?.addEventListener("click", onOk);
+      cancelBtn?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => { input?.focus(); input?.select(); }, 50);
+    });
+  }
+
+  showConfirm(message, { title = "Confirm", okLabel = "Confirm", danger = false } = {}) {
+    return new Promise((resolve) => {
+      const modal = this.elements.confirmModal;
+      if (!modal) { resolve(window.confirm(message)); return; }
+      const msgEl = this.elements.confirmModalMessage;
+      const titleEl = this.elements.confirmModalHeading;
+      const okBtn = this.elements.confirmModalOk;
+      const cancelBtn = this.elements.confirmModalCancel;
+      if (titleEl) titleEl.textContent = title;
+      if (msgEl) msgEl.textContent = message;
+      if (okBtn) {
+        okBtn.textContent = okLabel;
+        okBtn.className = danger ? "btn btn-danger" : "btn btn-primary";
+      }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        okBtn?.removeEventListener("click", onOk);
+        cancelBtn?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onOk = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onKeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); onOk(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      };
+      okBtn?.addEventListener("click", onOk);
+      cancelBtn?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => okBtn?.focus(), 50);
+    });
+  }
+
   showToast(level, message) {
     const region = this.elements.alerts;
     if (!message) return;
@@ -6738,6 +7001,16 @@ function mapElements() {
     statsAgeBuckets: byId("statsAgeBuckets"),
     statsArchiveMix: byId("statsArchiveMix"),
     statsPeopleList: byId("statsPeopleList"),
+    promptModal: byId("promptModal"),
+    promptModalTitle: byId("promptModalTitle"),
+    promptModalInput: byId("promptModalInput"),
+    promptModalOk: byId("promptModalOk"),
+    promptModalCancel: byId("promptModalCancel"),
+    confirmModal: byId("confirmModal"),
+    confirmModalHeading: byId("confirmModalHeading"),
+    confirmModalMessage: byId("confirmModalMessage"),
+    confirmModalOk: byId("confirmModalOk"),
+    confirmModalCancel: byId("confirmModalCancel"),
     manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
     taskContextMenu: byId("taskContextMenu"),
@@ -6780,7 +7053,6 @@ function mapElements() {
     summaryCompleted: byId("summaryCompleted"),
     summaryStatistics: byId("summaryStatistics"),
     summaryAllActive: byId("summaryAllActive"),
-    summarySettings: byId("summarySettings"),
     allActiveList: byId("allActiveList"),
     settingsThemesList: byId("settingsThemesList"),
     settingsFeatureFlagsList: byId("settingsFeatureFlagsList"),
@@ -6844,6 +7116,7 @@ function mapElements() {
     clarifyMetadataSkip: byId("clarifyMetadataSkip"),
     clarifyFinalMessage: byId("clarifyFinalMessage"),
     clarifyFinalReturn: byId("clarifyFinalReturn"),
+    clarifyDoneButton: byId("clarifyDoneButton"),
     closureModal: document.getElementById("closureModal"),
     closureBackdrop: document.querySelector("#closureModal .modal-backdrop"),
     closeClosureModal: byId("closeClosureModal"),

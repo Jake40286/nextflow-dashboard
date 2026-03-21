@@ -717,7 +717,6 @@ export class UIController {
       summaryCalendar,
       summaryCompleted,
       summaryStatistics,
-      summarySettings,
       summaryAllActive,
     } = this.elements;
     summaryInbox.textContent = summary.inbox;
@@ -741,16 +740,6 @@ export class UIController {
     if (summaryStatistics) {
       const completedAll = this.taskManager.getCompletedTasks().length;
       summaryStatistics.textContent = summary.next + summary.waiting + summary.projects + completedAll;
-    }
-    if (summarySettings) {
-      const settingsTotal =
-        THEME_OPTIONS.length +
-        this.taskManager.getCustomThemePalettes().length +
-        this.taskManager.getContexts().length +
-        this.taskManager.getPeopleTags().length +
-        this.taskManager.getAreasOfFocus().length +
-        Object.keys(this.taskManager.getFeatureFlags()).length;
-      summarySettings.textContent = settingsTotal;
     }
     if (summaryAllActive) {
       const activeCount = this.taskManager.getTasks(this.buildTaskFilters()).length;
@@ -3026,10 +3015,21 @@ export class UIController {
         label: "Show Filters Sidebar Card",
         description: "Display the Filters card in the left sidebar.",
       },
+      {
+        key: "showDaysSinceTouched",
+        label: "Show Days Since Touched",
+        description: "Display how many days ago each task was last updated on task cards.",
+      },
+      {
+        key: "googleCalendarEnabled",
+        label: "Google Calendar Sync",
+        description: "Mirror tasks with dates to a Google Calendar.",
+        renderConfig: (configPanel) => this.renderGoogleCalendarConfig(configPanel),
+      },
     ];
     entries.forEach((entry) => {
       const item = document.createElement("li");
-      item.className = "settings-item";
+      item.className = "settings-item settings-item--block";
       const main = document.createElement("div");
       main.className = "settings-item-main";
       const labelWrap = document.createElement("div");
@@ -3055,13 +3055,82 @@ export class UIController {
       text.textContent = input.checked ? "Enabled" : "Disabled";
       input.addEventListener("change", () => {
         text.textContent = input.checked ? "Enabled" : "Disabled";
+        if (configPanel) configPanel.hidden = !input.checked;
       });
       toggle.append(input, text);
       actions.append(toggle);
       main.append(labelWrap, actions);
       item.append(main);
+      let configPanel = null;
+      if (entry.renderConfig) {
+        configPanel = document.createElement("div");
+        configPanel.className = "feature-flag-config-panel";
+        configPanel.hidden = !input.checked;
+        entry.renderConfig(configPanel);
+        item.append(configPanel);
+      }
       container.append(item);
     });
+  }
+
+  renderGoogleCalendarConfig(panel) {
+    const cfg = this.taskManager.getGoogleCalendarConfig();
+
+    const makeField = (labelText, input) => {
+      const wrap = document.createElement("label");
+      wrap.className = "feature-flag-config-field";
+      const lbl = document.createElement("span");
+      lbl.className = "feature-flag-config-label";
+      lbl.textContent = labelText;
+      wrap.append(lbl, input);
+      return wrap;
+    };
+
+    const calendarIdInput = document.createElement("input");
+    calendarIdInput.type = "text";
+    calendarIdInput.className = "";
+    calendarIdInput.placeholder = "e.g. you@gmail.com";
+    calendarIdInput.value = cfg.calendarId;
+
+    const timezoneInput = document.createElement("input");
+    timezoneInput.type = "text";
+    timezoneInput.className = "";
+    timezoneInput.placeholder = "e.g. America/Chicago";
+    timezoneInput.value = cfg.timezone;
+
+    const durationInput = document.createElement("input");
+    durationInput.type = "number";
+    durationInput.className = "";
+    durationInput.min = "5";
+    durationInput.step = "5";
+    durationInput.placeholder = "60";
+    durationInput.value = cfg.defaultDurationMinutes;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-light";
+    saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", () => {
+      const duration = parseInt(durationInput.value, 10);
+      this.taskManager.updateGoogleCalendarConfig({
+        calendarId: calendarIdInput.value.trim(),
+        timezone: timezoneInput.value.trim() || "UTC",
+        defaultDurationMinutes: Number.isFinite(duration) && duration >= 5 ? duration : 60,
+      });
+      this.showToast("ok", "Google Calendar settings saved.");
+    });
+
+    const hint = document.createElement("p");
+    hint.className = "muted small-text feature-flag-config-hint";
+    hint.textContent = "The service account credentials file must be placed on the server at the path set in GOOGLE_CREDENTIALS_FILE.";
+
+    panel.append(
+      makeField("Calendar ID", calendarIdInput),
+      makeField("Timezone (IANA)", timezoneInput),
+      makeField("Default event duration (minutes)", durationInput),
+      saveBtn,
+      hint,
+    );
   }
 
   applyFeatureFlags() {
@@ -3707,6 +3776,13 @@ export class UIController {
       metaItems.push(this.createMetaSpan(`Due ${formatFriendlyDate(task.dueDate)}`, dueClass));
     } else if (task.calendarDate) {
       metaItems.push(this.createMetaSpan(`📅 ${formatFriendlyDate(task.calendarDate)}`));
+    }
+    if (this.taskManager.getFeatureFlag("showDaysSinceTouched") && task.updatedAt) {
+      const msPerDay = 86400000;
+      const days = Math.floor((Date.now() - new Date(task.updatedAt).getTime()) / msPerDay);
+      const label = days === 0 ? "Touched today" : days === 1 ? "1 day ago" : `${days} days ago`;
+      const ageClass = days >= 14 ? "task-meta-age-stale" : days >= 7 ? "task-meta-age-warn" : "task-meta-age";
+      metaItems.push(this.createMetaSpan(label, ageClass));
     }
 
     metaItems.forEach((item, index) => {
@@ -5333,7 +5409,7 @@ export class UIController {
     form.setAttribute("aria-label", "Add task note");
     const input = document.createElement("textarea");
     input.rows = 3;
-    input.placeholder = "Capture findings, blockers, and progress updates...";
+    input.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
     this.attachEntityMentionAutocomplete(input);
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
@@ -6977,7 +7053,6 @@ function mapElements() {
     summaryCompleted: byId("summaryCompleted"),
     summaryStatistics: byId("summaryStatistics"),
     summaryAllActive: byId("summaryAllActive"),
-    summarySettings: byId("summarySettings"),
     allActiveList: byId("allActiveList"),
     settingsThemesList: byId("settingsThemesList"),
     settingsFeatureFlagsList: byId("settingsFeatureFlagsList"),

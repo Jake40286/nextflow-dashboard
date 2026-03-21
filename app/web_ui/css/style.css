@@ -1533,6 +1533,20 @@ button.meta-item:hover {
   color: color-mix(in srgb, var(--accent-strong) 84%, var(--text));
 }
 
+.task-meta-age {
+  color: var(--muted);
+}
+
+.task-meta-age-warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.task-meta-age-stale {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .task-meta-due-warning {
   color: var(--warning);
   font-weight: 700;
@@ -2100,6 +2114,38 @@ button.meta-item:hover {
 
 .settings-flag-toggle input[type="checkbox"] {
   width: auto;
+  margin: 0;
+}
+
+.settings-item--block {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.feature-flag-config-panel {
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.feature-flag-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.feature-flag-config-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.feature-flag-config-hint {
   margin: 0;
 }
 

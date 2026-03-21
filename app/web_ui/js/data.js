@@ -107,6 +107,14 @@ const CUSTOM_THEME_PALETTE_DEFAULT_NAME = "Custom Palette";
 const CUSTOM_THEME_PALETTE_NAME_MAX = 40;
 const DEFAULT_FEATURE_FLAGS = Object.freeze({
   showFiltersCard: true,
+  showDaysSinceTouched: false,
+  googleCalendarEnabled: true,
+});
+
+const DEFAULT_GOOGLE_CALENDAR_CONFIG = Object.freeze({
+  calendarId: "",
+  timezone: "UTC",
+  defaultDurationMinutes: 60,
 });
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -154,6 +162,7 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   peopleOptions: normalizePeopleOptions(),
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
+  googleCalendarConfig: { ...DEFAULT_GOOGLE_CALENDAR_CONFIG },
 });
 
 const defaultState = () => ({
@@ -217,6 +226,7 @@ function hydrateState(raw = {}) {
       nextState.completedProjects
     ),
     featureFlags: normalizeFeatureFlags(nextState.settings?.featureFlags),
+    googleCalendarConfig: normalizeGoogleCalendarConfig(nextState.settings?.googleCalendarConfig),
   };
   return nextState;
 }
@@ -2190,6 +2200,21 @@ export class TaskManager extends EventTarget {
     }
     return Boolean(this.getFeatureFlags()[flag]);
   }
+
+  getGoogleCalendarConfig() {
+    return normalizeGoogleCalendarConfig(this.state.settings?.googleCalendarConfig);
+  }
+
+  updateGoogleCalendarConfig(config) {
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    this.state.settings.googleCalendarConfig = normalizeGoogleCalendarConfig({
+      ...this.state.settings.googleCalendarConfig,
+      ...config,
+    });
+    this.emitChange();
+  }
 }
 
 function normalizeTheme(theme) {
@@ -2295,6 +2320,15 @@ function normalizeFeatureFlags(featureFlags, fallbackFlags = DEFAULT_FEATURE_FLA
       typeof featureFlags?.[flag] === "boolean" ? featureFlags[flag] : Boolean(fallbackValue);
   });
   return normalized;
+}
+
+function normalizeGoogleCalendarConfig(config) {
+  const duration = parseInt(config?.defaultDurationMinutes ?? DEFAULT_GOOGLE_CALENDAR_CONFIG.defaultDurationMinutes, 10);
+  return {
+    calendarId: typeof config?.calendarId === "string" ? config.calendarId : DEFAULT_GOOGLE_CALENDAR_CONFIG.calendarId,
+    timezone: typeof config?.timezone === "string" && config.timezone ? config.timezone : DEFAULT_GOOGLE_CALENDAR_CONFIG.timezone,
+    defaultDurationMinutes: Number.isFinite(duration) && duration >= 5 ? duration : DEFAULT_GOOGLE_CALENDAR_CONFIG.defaultDurationMinutes,
+  };
 }
 
 function createCompletionSnapshot(task, completedAt, archiveType = "reference") {

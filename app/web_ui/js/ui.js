@@ -5279,6 +5279,11 @@ export class UIController {
     if (this.handleFlyoutKeydown) {
       document.removeEventListener("keydown", this.handleFlyoutKeydown);
     }
+    const infoToggle = this.elements.taskFlyoutInfoToggle;
+    if (infoToggle) {
+      infoToggle.setAttribute("aria-pressed", "false");
+      infoToggle.classList.remove("is-active");
+    }
   }
 
   renderTaskFlyout(task, options = {}) {
@@ -5304,8 +5309,23 @@ export class UIController {
     });
     const listSection = this.createTaskListSection(task, { readOnly: Boolean(readOnly && !archiveEntryId) });
 
+    const infoToggle = this.elements.taskFlyoutInfoToggle;
     const meta = document.createElement("div");
     meta.className = "task-flyout-meta";
+    meta.hidden = true;
+    if (infoToggle) {
+      infoToggle.setAttribute("aria-pressed", "false");
+      // Replace any previous listener by cloning the button
+      const freshToggle = infoToggle.cloneNode(true);
+      infoToggle.replaceWith(freshToggle);
+      this.elements.taskFlyoutInfoToggle = freshToggle;
+      freshToggle.addEventListener("click", () => {
+        const visible = !meta.hidden;
+        meta.hidden = visible;
+        freshToggle.setAttribute("aria-pressed", String(!visible));
+        freshToggle.classList.toggle("is-active", !visible);
+      });
+    }
     meta.append(this.buildMetaRow("Task ID", task.slug || task.id));
     meta.append(this.buildMetaRow("Context", task.context || "—"));
     meta.append(this.buildMetaRow("Project", this.getProjectName(task.projectId) || "—"));
@@ -7260,6 +7280,7 @@ function mapElements() {
     taskFlyoutTitle: byId("taskFlyoutTitle"),
     taskFlyoutStatus: byId("taskFlyoutStatus"),
     closeTaskFlyout: byId("closeTaskFlyout"),
+    taskFlyoutInfoToggle: byId("taskFlyoutInfoToggle"),
     taskFlyoutBackdrop: document.querySelector(".task-flyout-backdrop"),
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),

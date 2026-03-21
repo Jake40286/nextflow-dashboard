@@ -2941,6 +2941,27 @@ button.meta-item:hover {
   background: var(--surface-2);
 }
 
+.btn-icon {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.btn-icon.is-active {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
 .btn-danger {
   border-color: transparent;
   background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 70%, #7c2d12));

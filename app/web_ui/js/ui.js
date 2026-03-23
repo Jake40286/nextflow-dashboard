@@ -4463,12 +4463,40 @@ export class UIController {
     const backdrop = this.elements.taskFlyoutBackdrop;
     closeButton?.addEventListener("click", () => this.closeTaskFlyout());
     backdrop?.addEventListener("click", () => this.closeTaskFlyout());
+    this.elements.taskFlyoutPrev?.addEventListener("click", () => this.navigateFlyout(-1));
+    this.elements.taskFlyoutNext?.addEventListener("click", () => this.navigateFlyout(1));
     this.handleFlyoutKeydown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
         this.closeTaskFlyout();
+        return;
+      }
+      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowLeft")) {
+        event.preventDefault();
+        this.navigateFlyout(-1);
+      } else if (event.altKey && (event.key === "ArrowDown" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        this.navigateFlyout(1);
       }
     };
+  }
+
+  getFlyoutTaskIds() {
+    const activePanel = document.querySelector(".workspace-view.is-active");
+    if (!activePanel) return [];
+    return Array.from(activePanel.querySelectorAll("[data-task-id]"))
+      .map((el) => el.dataset.taskId)
+      .filter(Boolean);
+  }
+
+  navigateFlyout(direction) {
+    if (!this.currentFlyoutTaskId || this.flyoutContext?.readOnly) return;
+    const taskIds = this.getFlyoutTaskIds();
+    const currentIndex = taskIds.indexOf(this.currentFlyoutTaskId);
+    if (currentIndex === -1) return;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= taskIds.length) return;
+    this.openTaskFlyout(taskIds[nextIndex]);
   }
 
   bindClarifyModal() {
@@ -5320,6 +5348,16 @@ export class UIController {
     if (titleEl) this.setEntityLinkedText(titleEl, task.title || "Untitled task");
     if (statusEl) statusEl.textContent = STATUS_LABELS[task.status] || task.status;
     content.innerHTML = "";
+
+    const taskIds = this.getFlyoutTaskIds();
+    const currentIndex = taskIds.indexOf(task.id);
+    const isNavigable = !readOnly && taskIds.length > 1;
+    if (this.elements.taskFlyoutPrev) {
+      this.elements.taskFlyoutPrev.disabled = !isNavigable || currentIndex <= 0;
+    }
+    if (this.elements.taskFlyoutNext) {
+      this.elements.taskFlyoutNext.disabled = !isNavigable || currentIndex >= taskIds.length - 1;
+    }
 
     const descriptionText = task.description?.trim();
     const description = descriptionText ? document.createElement("p") : null;
@@ -7365,6 +7403,8 @@ function mapElements() {
     taskFlyoutStatus: byId("taskFlyoutStatus"),
     closeTaskFlyout: byId("closeTaskFlyout"),
     taskFlyoutInfoToggle: byId("taskFlyoutInfoToggle"),
+    taskFlyoutPrev: byId("taskFlyoutPrev"),
+    taskFlyoutNext: byId("taskFlyoutNext"),
     taskFlyoutBackdrop: document.querySelector(".task-flyout-backdrop"),
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),

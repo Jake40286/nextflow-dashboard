@@ -2369,6 +2369,12 @@ button.meta-item:hover {
   min-width: 0;
 }
 
+.task-flyout-nav {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 .task-flyout-header h2 {
   margin: 2px 0 0;
   font-family: var(--font-display);

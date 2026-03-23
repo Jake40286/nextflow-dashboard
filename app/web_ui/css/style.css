@@ -961,6 +961,7 @@ button.meta-item:hover {
   margin-top: var(--space-2);
   max-height: 220px;
   overflow: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 6px;
   padding-right: 2px;

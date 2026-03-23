@@ -2391,6 +2391,7 @@ button.meta-item:hover {
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
+  align-content: start;
 }
 
 .task-flyout-meta {

@@ -5799,10 +5799,21 @@ export class UIController {
     const contextGroup = document.createElement("label");
     contextGroup.className = "task-edit-field";
     contextGroup.textContent = "Physical context";
-    const contextInput = document.createElement("input");
-    contextInput.type = "text";
-    contextInput.setAttribute("list", "contextSuggestions");
-    contextInput.placeholder = "@Office";
+    const contextInput = document.createElement("select");
+    const emptyContext = document.createElement("option");
+    emptyContext.value = "";
+    emptyContext.textContent = "No context";
+    contextInput.append(emptyContext);
+    const contextOptions = Array.from(new Set([
+      ...this.taskManager.getContexts(),
+      ...(task.context ? [task.context] : []),
+    ]));
+    contextOptions.forEach((ctx) => {
+      const option = document.createElement("option");
+      option.value = ctx;
+      option.textContent = ctx;
+      contextInput.append(option);
+    });
     contextInput.value = task.context || "";
     contextGroup.append(contextInput);
 

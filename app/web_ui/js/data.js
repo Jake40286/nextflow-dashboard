@@ -432,7 +432,7 @@ export class TaskManager extends EventTarget {
     try {
       const serverState = await readServerState();
       const serverSig = hashState(serverState || {});
-      if (this.remoteSignature && serverSig && serverSig !== this.remoteSignature) {
+      if (serverSig && serverSig !== this.remoteSignature) {
         // Merge conflicts: prefer most recently updated entities.
         const merged = mergeStates(serverState || {}, payload);
         this.state = hydrateState(merged);
@@ -2905,21 +2905,33 @@ function collectRemovalMarkers(...states) {
 function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map()) {
   const localList = Array.isArray(localTasks) ? localTasks.filter(Boolean) : [];
   const remoteList = Array.isArray(remoteTasks) ? remoteTasks.filter(Boolean) : [];
-  const localIds = new Set(localList.map((task) => task.id).filter(Boolean));
-  const merged = localList.slice();
+  // Build a map seeded with local tasks, then apply last-write-wins for remote tasks.
+  const map = new Map();
+  localList.forEach((task) => {
+    if (task?.id) map.set(task.id, task);
+  });
   remoteList.forEach((task) => {
     if (!task?.id) return;
-    if (localIds.has(task.id)) return;
     const removedAt = removalMarkers.get(task.id);
     if (removedAt) {
       const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
       if (updatedAt <= removedAt) {
+        map.delete(task.id);
         return;
       }
     }
-    merged.push(task);
+    const existing = map.get(task.id);
+    if (!existing) {
+      map.set(task.id, task);
+      return;
+    }
+    const existingTime = toTimestamp(existing.updatedAt || existing.createdAt);
+    const remoteTime = toTimestamp(task.updatedAt || task.createdAt);
+    if (remoteTime > existingTime) {
+      map.set(task.id, task);
+    }
   });
-  return merged;
+  return Array.from(map.values());
 }
 
 function advanceRecurrence(date, rule) {

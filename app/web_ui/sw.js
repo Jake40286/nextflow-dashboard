@@ -51,8 +51,27 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for core assets and navigations.
-  if (request.method === "GET" && (request.mode === "navigate" || isSameOrigin)) {
+  if (request.method !== "GET") return;
+
+  const isScript = url.pathname.endsWith(".js");
+  const isStylesheet = url.pathname.endsWith(".css");
+
+  // Network-first for JS/CSS so app updates are picked up without clearing cache.
+  if (isSameOrigin && (isScript || isStylesheet)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Cache-first for navigations and other static assets (images, fonts, etc.).
+  if (request.mode === "navigate" || isSameOrigin) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

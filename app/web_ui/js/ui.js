@@ -307,6 +307,9 @@ export class UIController {
     manualSyncButton?.addEventListener("click", () => {
       this.triggerManualSync();
     });
+    this.elements.topbarSettings?.addEventListener("click", () => {
+      this.setActivePanel("settings");
+    });
     const settingsLists = [
       this.elements.settingsContextsList,
       this.elements.settingsPeopleList,
@@ -414,7 +417,7 @@ export class UIController {
 
   setActivePanel(panelName, { focus = false } = {}) {
     if (!panelName) return;
-    if (!this.panelButtons?.some((btn) => btn.dataset.panelTarget === panelName)) {
+    if (!this.panels?.some((panel) => panel.dataset.panel === panelName)) {
       panelName = "inbox";
     }
     this.activePanel = panelName;
@@ -714,6 +717,7 @@ export class UIController {
     const {
       summaryInbox,
       summaryNext,
+      summaryDoing,
       summaryMyDay,
       summaryKanban,
       summaryWaiting,
@@ -726,6 +730,7 @@ export class UIController {
     } = this.elements;
     summaryInbox.textContent = summary.inbox;
     summaryNext.textContent = summary.next;
+    if (summaryDoing) summaryDoing.textContent = summary.doing;
     if (summaryMyDay) {
       summaryMyDay.textContent = this.getMyDayTasks({ applyFilters: false }).length;
     }
@@ -7383,6 +7388,7 @@ function mapElements() {
     overdueCount: byId("overdueCount"),
     summaryInbox: byId("summaryInbox"),
     summaryNext: byId("summaryNext"),
+    summaryDoing: byId("summaryDoing"),
     summaryMyDay: byId("summaryMyDay"),
     summaryKanban: byId("summaryKanban"),
     summaryWaiting: byId("summaryWaiting"),
@@ -7400,6 +7406,7 @@ function mapElements() {
     settingsAreasList: byId("settingsAreasList"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
+    topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
     contextSuggestions: document.getElementById("contextSuggestions"),
     energySuggestions: document.getElementById("energySuggestions"),

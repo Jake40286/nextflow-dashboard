@@ -533,6 +533,30 @@ button.meta-item:hover {
   font-size: 1.12rem;
 }
 
+.settings-toggle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border var(--transition-fast), background var(--transition-fast);
+}
+
+.settings-toggle:hover {
+  transform: translateY(-1px) rotate(30deg);
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.settings-icon {
+  font-size: 1.12rem;
+}
+
 .alerts {
   min-height: 26px;
   display: flex;

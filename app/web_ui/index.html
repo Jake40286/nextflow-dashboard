@@ -49,6 +49,9 @@
           <span class="meta-label">Sync</span>
           <span id="connectionStatusDot" class="status-dot" aria-live="polite" role="status">●</span>
         </button>
+        <button id="topbarSettings" class="settings-toggle" type="button" aria-label="Open settings">
+          <span class="settings-icon" aria-hidden="true">⚙</span>
+        </button>
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Cycle dashboard theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
         </button>
@@ -109,6 +112,10 @@
               <span class="summary-label">Next Actions</span>
               <span class="summary-value" id="summaryNext">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-doing" data-panel-target="kanban" data-status-target="doing" aria-controls="panel-kanban" aria-selected="false">
+              <span class="summary-label">Doing</span>
+              <span class="summary-value" id="summaryDoing">0</span>
+            </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-my-day" data-panel-target="my-day" aria-controls="panel-my-day" aria-selected="false">
               <span class="summary-label">My Day</span>
               <span class="summary-value" id="summaryMyDay">0</span>
@@ -144,9 +151,6 @@
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
               <span class="summary-label">All Active</span>
               <span class="summary-value" id="summaryAllActive">0</span>
-            </button>
-            <button type="button" class="summary-tab" role="tab" id="summary-tab-settings" data-panel-target="settings" aria-controls="panel-settings" aria-selected="false">
-              <span class="summary-label">Settings</span>
             </button>
           </div>
         </section>
@@ -511,7 +515,7 @@
         </div>
       </section>
 
-      <section class="workspace-view" data-panel="settings" role="tabpanel" aria-labelledby="summary-tab-settings" id="panel-settings" hidden>
+      <section class="workspace-view" data-panel="settings" role="tabpanel" aria-labelledby="topbarSettings" id="panel-settings" hidden>
         <div class="panel-content settings-panel">
           <section class="settings-card">
             <header class="settings-card-header">

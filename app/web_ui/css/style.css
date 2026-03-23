@@ -2363,7 +2363,7 @@ button.meta-item:hover {
   flex-shrink: 0;
 }
 
-.task-flyout-header > div {
+.task-flyout-header > div:first-child {
   flex: 1;
   min-width: 0;
 }

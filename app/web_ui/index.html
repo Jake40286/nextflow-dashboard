@@ -579,16 +579,16 @@
     <div class="task-flyout-backdrop" data-close="flyout"></div>
     <aside class="task-flyout-panel" role="dialog" aria-modal="true" aria-labelledby="taskFlyoutTitle">
       <header class="task-flyout-header">
-        <div>
+        <div class="task-flyout-header-top">
           <p class="task-flyout-status muted small-text" id="taskFlyoutStatus"></p>
-          <h2 id="taskFlyoutTitle">Task details</h2>
+          <button id="taskFlyoutInfoToggle" class="btn btn-icon" type="button" aria-label="Show task info" aria-pressed="false" title="Task info">ⓘ</button>
+          <button id="closeTaskFlyout" class="btn btn-light" type="button" aria-label="Close task details">Close</button>
         </div>
+        <h2 id="taskFlyoutTitle">Task details</h2>
         <div class="task-flyout-nav" role="group" aria-label="Navigate tasks">
           <button id="taskFlyoutPrev" class="btn btn-icon" type="button" aria-label="Previous task" title="Previous task">‹</button>
           <button id="taskFlyoutNext" class="btn btn-icon" type="button" aria-label="Next task" title="Next task">›</button>
         </div>
-        <button id="taskFlyoutInfoToggle" class="btn btn-icon" type="button" aria-label="Show task info" aria-pressed="false" title="Task info">ⓘ</button>
-        <button id="closeTaskFlyout" class="btn btn-light" type="button" aria-label="Close task details">Close</button>
       </header>
       <div id="taskFlyoutContent" class="task-flyout-content"></div>
     </aside>

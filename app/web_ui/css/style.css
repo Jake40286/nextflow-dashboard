@@ -2358,21 +2358,25 @@ button.meta-item:hover {
   border-bottom: 1px solid var(--line);
   padding: var(--space-4);
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-.task-flyout-header > div:first-child {
+.task-flyout-header-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-flyout-header-top .task-flyout-status {
   flex: 1;
-  min-width: 0;
+  margin: 0;
 }
 
 .task-flyout-nav {
   display: flex;
   gap: 4px;
-  flex-shrink: 0;
-  align-items: center;
 }
 
 .task-flyout-nav .btn-icon {
@@ -2395,7 +2399,7 @@ button.meta-item:hover {
 }
 
 .task-flyout-header h2 {
-  margin: 2px 0 0;
+  margin: 0;
   font-family: var(--font-display);
   font-size: 1.2rem;
 }

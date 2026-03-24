@@ -915,6 +915,13 @@ export class UIController {
       this.applyAssociationFlyoutState();
     });
 
+    document.addEventListener("click", (event) => {
+      if (!this.associationFlyoutOpen) return;
+      if (this.elements.associationFlyout?.contains(event.target)) return;
+      this.associationFlyoutOpen = false;
+      this.applyAssociationFlyoutState();
+    });
+
     panel.addEventListener("change", (event) => {
       const checkbox = event.target.closest("input[data-association-filter-key][data-association-filter-value]");
       if (!checkbox) return;
@@ -977,6 +984,7 @@ export class UIController {
       clauses.push(`(${contexts.join(" OR ")})`);
     }
     const projects = this.getFilterSelections("project").map((projectId) => {
+      if (projectId === "none") return "No project";
       return this.projectLookup.get(projectId)?.name || "Unknown project";
     });
     if (projects.length) {
@@ -1004,13 +1012,16 @@ export class UIController {
       .slice()
       .sort((a, b) => a.localeCompare(b))
       .map((value) => ({ value, label: value }));
-    const projects = (this.projectCache || [])
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((project) => ({
-        value: project.id,
-        label: project.name + (project.someday ? " (Someday)" : ""),
-      }));
+    const projects = [
+      { value: "none", label: "No project" },
+      ...(this.projectCache || [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((project) => ({
+          value: project.id,
+          label: project.name + (project.someday ? " (Someday)" : ""),
+        })),
+    ];
 
     this.renderAssociationFlyoutGroup("person", peopleContainer, people, "No people tags yet.");
     this.renderAssociationFlyoutGroup("context", contextContainer, contexts, "No contexts yet.");
@@ -1151,7 +1162,7 @@ export class UIController {
 
   renderInbox() {
     const tasks = this.taskManager.getTasks({
-      ...this.buildTaskFilters(),
+      ...this.buildTaskFilters({ context: "all", projectId: "all", person: "all" }),
       status: STATUS.INBOX,
     });
     const container = this.elements.inboxList;

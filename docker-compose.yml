@@ -12,4 +12,4 @@ services:
     volumes:
       - ./app:/app
       - ./data:/data
-      - ./secrets:/secrets:ro
+      - ./secrets:/secrets

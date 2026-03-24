@@ -4,3 +4,4 @@
 /secrets/*
 !/secrets/.gitkeep
 /app/web_ui/data/*
+/memory/

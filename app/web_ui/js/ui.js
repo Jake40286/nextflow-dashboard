@@ -3096,21 +3096,111 @@ export class UIController {
       return wrap;
     };
 
+    // --- Credentials section ---
+    const credsStatus = document.createElement("p");
+    credsStatus.className = "feature-flag-config-hint gcal-creds-status";
+    credsStatus.textContent = "Checking credentials…";
+
+    const credsTextarea = document.createElement("textarea");
+    credsTextarea.className = "gcal-creds-input";
+    credsTextarea.placeholder = "Paste service account JSON here…";
+    credsTextarea.rows = 5;
+    credsTextarea.spellcheck = false;
+
+    const credsBtnRow = document.createElement("div");
+    credsBtnRow.className = "gcal-creds-actions";
+
+    const credsSaveBtn = document.createElement("button");
+    credsSaveBtn.type = "button";
+    credsSaveBtn.className = "btn btn-light";
+    credsSaveBtn.textContent = "Save Credentials";
+
+    const credsRemoveBtn = document.createElement("button");
+    credsRemoveBtn.type = "button";
+    credsRemoveBtn.className = "btn btn-light";
+    credsRemoveBtn.textContent = "Remove";
+    credsRemoveBtn.hidden = true;
+
+    const updateCredsStatus = (configured, clientEmail) => {
+      if (configured) {
+        credsStatus.textContent = `Credentials configured — ${clientEmail || "service account"}`;
+        credsStatus.dataset.state = "ok";
+        credsRemoveBtn.hidden = false;
+        credsTextarea.value = "";
+        credsTextarea.placeholder = "Paste new service account JSON to replace…";
+      } else {
+        credsStatus.textContent = "No credentials configured.";
+        credsStatus.dataset.state = "warn";
+        credsRemoveBtn.hidden = true;
+        credsTextarea.placeholder = "Paste service account JSON here…";
+      }
+    };
+
+    fetch("/credentials/google", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => updateCredsStatus(d.configured, d.clientEmail))
+      .catch(() => updateCredsStatus(false, null));
+
+    credsSaveBtn.addEventListener("click", async () => {
+      const raw = credsTextarea.value.trim();
+      if (!raw) {
+        this.showToast("warn", "Paste service account JSON before saving.");
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        this.showToast("error", "Invalid JSON — check the pasted credentials.");
+        return;
+      }
+      try {
+        const resp = await fetch("/credentials/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          this.showToast("error", data.error || "Failed to save credentials.");
+          return;
+        }
+        updateCredsStatus(true, data.clientEmail);
+        this.showToast("ok", "Google credentials saved.");
+      } catch {
+        this.showToast("error", "Could not reach server.");
+      }
+    });
+
+    credsRemoveBtn.addEventListener("click", async () => {
+      try {
+        const resp = await fetch("/credentials/google", { method: "DELETE" });
+        if (!resp.ok) {
+          this.showToast("error", "Failed to remove credentials.");
+          return;
+        }
+        updateCredsStatus(false, null);
+        this.showToast("ok", "Google credentials removed.");
+      } catch {
+        this.showToast("error", "Could not reach server.");
+      }
+    });
+
+    credsBtnRow.append(credsSaveBtn, credsRemoveBtn);
+
+    // --- Calendar config section ---
     const calendarIdInput = document.createElement("input");
     calendarIdInput.type = "text";
-    calendarIdInput.className = "";
     calendarIdInput.placeholder = "e.g. you@gmail.com";
     calendarIdInput.value = cfg.calendarId;
 
     const timezoneInput = document.createElement("input");
     timezoneInput.type = "text";
-    timezoneInput.className = "";
     timezoneInput.placeholder = "e.g. America/Chicago";
     timezoneInput.value = cfg.timezone;
 
     const durationInput = document.createElement("input");
     durationInput.type = "number";
-    durationInput.className = "";
     durationInput.min = "5";
     durationInput.step = "5";
     durationInput.placeholder = "60";
@@ -3119,7 +3209,7 @@ export class UIController {
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "btn btn-light";
-    saveBtn.textContent = "Save";
+    saveBtn.textContent = "Save Settings";
     saveBtn.addEventListener("click", () => {
       const duration = parseInt(durationInput.value, 10);
       this.taskManager.updateGoogleCalendarConfig({
@@ -3130,16 +3220,14 @@ export class UIController {
       this.showToast("ok", "Google Calendar settings saved.");
     });
 
-    const hint = document.createElement("p");
-    hint.className = "muted small-text feature-flag-config-hint";
-    hint.textContent = "The service account credentials file must be placed on the server at the path set in GOOGLE_CREDENTIALS_FILE.";
-
     panel.append(
+      credsStatus,
+      makeField("Service Account JSON", credsTextarea),
+      credsBtnRow,
       makeField("Calendar ID", calendarIdInput),
       makeField("Timezone (IANA)", timezoneInput),
       makeField("Default event duration (minutes)", durationInput),
       saveBtn,
-      hint,
     );
   }
 

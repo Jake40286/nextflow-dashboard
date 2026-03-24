@@ -20,6 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
+CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json"))
 STATE_LOCK = threading.Lock()
 _CALENDAR_SYNC_LOCK = threading.Lock()
 _calendar_sync = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
@@ -36,7 +37,7 @@ def _get_calendar_sync(calendar_id, timezone, duration):
     with _CALENDAR_SYNC_LOCK:
         if _calendar_sync_key == key and _calendar_sync is not None:
             return _calendar_sync
-        credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json")
+        credentials_file = CREDENTIALS_FILE
         event_store = os.getenv("GOOGLE_CALENDAR_EVENT_STORE", "/data/google-events.json")
         try:
             sync = GoogleCalendarSync(
@@ -73,6 +74,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         return parsed.path.rstrip("/") == "/state"
 
+    def _is_credentials_endpoint(self):
+        parsed = urlparse(self.path)
+        return parsed.path.rstrip("/") == "/credentials/google"
+
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -90,11 +95,17 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         if self._is_state_endpoint():
             self._handle_state_get()
             return
+        if self._is_credentials_endpoint():
+            self._handle_credentials_get()
+            return
         super().do_GET()
 
     def do_POST(self):
         if self._is_state_endpoint():
             self._handle_state_write()
+            return
+        if self._is_credentials_endpoint():
+            self._handle_credentials_write()
             return
         super().do_POST()
 
@@ -103,6 +114,60 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self._handle_state_write()
             return
         super().do_PUT()
+
+    def do_DELETE(self):
+        if self._is_credentials_endpoint():
+            self._handle_credentials_delete()
+            return
+        self.send_error(405)
+
+    def _handle_credentials_get(self):
+        if CREDENTIALS_FILE.exists():
+            try:
+                creds = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+                self._send_json({"configured": True, "clientEmail": creds.get("client_email")})
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        self._send_json({"configured": False, "clientEmail": None})
+
+    def _handle_credentials_write(self):
+        global _calendar_sync, _calendar_sync_key  # noqa: PLW0603
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            self._send_json({"error": "Request body required"}, status=400)
+            return
+        try:
+            raw = self.rfile.read(content_length)
+            payload = json.loads(raw.decode("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+        required = {"type", "project_id", "private_key_id", "private_key", "client_email"}
+        if not required.issubset(payload.keys()) or payload.get("type") != "service_account":
+            self._send_json({"error": "Invalid service account JSON — required fields missing or type is not service_account"}, status=400)
+            return
+        try:
+            CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CREDENTIALS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            with _CALENDAR_SYNC_LOCK:
+                _calendar_sync = None
+                _calendar_sync_key = None
+            self._send_json({"status": "ok", "clientEmail": payload.get("client_email")})
+        except OSError as error:
+            self._send_json({"error": f"Failed to save credentials: {error}"}, status=500)
+
+    def _handle_credentials_delete(self):
+        global _calendar_sync, _calendar_sync_key  # noqa: PLW0603
+        try:
+            if CREDENTIALS_FILE.exists():
+                CREDENTIALS_FILE.unlink()
+            with _CALENDAR_SYNC_LOCK:
+                _calendar_sync = None
+                _calendar_sync_key = None
+            self._send_json({"status": "ok"})
+        except OSError as error:
+            self._send_json({"error": f"Failed to remove credentials: {error}"}, status=500)
 
     def _handle_state_get(self):
         self._ensure_state_dir()

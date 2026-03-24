@@ -85,8 +85,11 @@ class GoogleCalendarSync:
                 event_id = mapping.get(task_id)
                 if has_dates and not task.get("completedAt"):
                     next_event_id = self._upsert_event(task, event_id)
-                    if next_event_id and next_event_id != event_id:
-                        mapping[task_id] = next_event_id
+                    if next_event_id != event_id:
+                        if next_event_id:
+                            mapping[task_id] = next_event_id
+                        elif event_id:
+                            mapping.pop(task_id, None)
                         changed = True
                 elif event_id:
                     if self._delete_event(event_id):
@@ -118,8 +121,14 @@ class GoogleCalendarSync:
             try:
                 hour, minute = map(int, time_value.split(":"))
                 local_start = datetime.combine(start_date, time(hour, minute), tzinfo=self.zoneinfo)
-                minutes = self._duration_for_task(task)
-                local_end = local_start + timedelta(minutes=minutes)
+                end_time_value = task.get("calendarEndTime")
+                if end_time_value:
+                    end_hour, end_minute = map(int, end_time_value.split(":"))
+                    local_end = datetime.combine(start_date, time(end_hour, end_minute), tzinfo=self.zoneinfo)
+                    if local_end <= local_start:
+                        local_end += timedelta(days=1)
+                else:
+                    local_end = local_start + timedelta(minutes=self._duration_for_task(task))
                 start_payload = {"dateTime": local_start.isoformat()}
                 end_payload = {"dateTime": local_end.isoformat()}
             except ValueError:
@@ -157,8 +166,13 @@ class GoogleCalendarSync:
             return None
         try:
             if event_id:
-                self.service.events().patch(calendarId=self.calendar_id, eventId=event_id, body=body).execute()
-                return event_id
+                try:
+                    self.service.events().patch(calendarId=self.calendar_id, eventId=event_id, body=body).execute()
+                    return event_id
+                except HttpError as patch_error:
+                    if patch_error.resp.status != 404:
+                        raise
+                    # Event no longer exists on the calendar — fall through to insert.
             created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
             return created.get("id")
         except HttpError as error:
@@ -167,7 +181,7 @@ class GoogleCalendarSync:
                 print("Request payload:", json.dumps(body))
             except Exception:
                 pass
-            return event_id
+            return None
 
     def _delete_event(self, event_id: str) -> bool:
         try:

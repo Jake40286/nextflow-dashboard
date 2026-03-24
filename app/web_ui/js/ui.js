@@ -3194,10 +3194,14 @@ export class UIController {
     calendarIdInput.placeholder = "e.g. you@gmail.com";
     calendarIdInput.value = cfg.calendarId;
 
-    const timezoneInput = document.createElement("input");
-    timezoneInput.type = "text";
-    timezoneInput.placeholder = "e.g. America/Chicago";
-    timezoneInput.value = cfg.timezone;
+    const timezoneInput = document.createElement("select");
+    Intl.supportedValuesOf("timeZone").forEach((tz) => {
+      const opt = document.createElement("option");
+      opt.value = tz;
+      opt.textContent = tz;
+      if (tz === (cfg.timezone || "UTC")) opt.selected = true;
+      timezoneInput.append(opt);
+    });
 
     const durationInput = document.createElement("input");
     durationInput.type = "number";
@@ -6036,7 +6040,17 @@ export class UIController {
     const calendarTimeInput = document.createElement("input");
     calendarTimeInput.type = "time";
     calendarTimeInput.value = task.calendarTime || "";
-    calendarControls.append(calendarInput, calendarTimeInput);
+    const calendarEndTimeInput = document.createElement("input");
+    calendarEndTimeInput.type = "time";
+    calendarEndTimeInput.value = task.calendarEndTime || "";
+    calendarEndTimeInput.title = "End time";
+    const syncEndTimeVisibility = () => {
+      calendarEndTimeInput.hidden = !calendarTimeInput.value;
+      if (!calendarTimeInput.value) calendarEndTimeInput.value = "";
+    };
+    calendarTimeInput.addEventListener("change", syncEndTimeVisibility);
+    syncEndTimeVisibility();
+    calendarControls.append(calendarInput, calendarTimeInput, calendarEndTimeInput);
     calendarGroup.append(calendarControls);
 
     const waitingGroup = document.createElement("label");
@@ -6123,6 +6137,7 @@ export class UIController {
         dueDate: dueInput.value || null,
         calendarDate: calendarInput.value || null,
         calendarTime: calendarTimeInput.value || null,
+        calendarEndTime: calendarEndTimeInput.value || null,
         waitingFor: waitingInput.value.trim() || null,
         closureNotes: closureInput.value.trim() || null,
         recurrenceRule:
@@ -6176,6 +6191,7 @@ export class UIController {
       dueInput,
       calendarInput,
       calendarTimeInput,
+      calendarEndTimeInput,
       waitingInput,
       closureInput,
       recurrenceSelect,

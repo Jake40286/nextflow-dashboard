@@ -6,6 +6,9 @@ const taskManager = new TaskManager();
 const ui = new UIController(taskManager);
 const analytics = new AnalyticsController(taskManager);
 
+// Dev helper: run `_testUpdateBanner()` in the browser console to preview the banner.
+window._testUpdateBanner = () => ui.showUpdateBanner();
+
 document.addEventListener("DOMContentLoaded", () => {
   ui.init();
   analytics.init();

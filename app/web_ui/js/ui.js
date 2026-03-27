@@ -134,6 +134,10 @@ export class UIController {
     this.calendarDayContextMenuHandlersBound = false;
     this.handleCalendarDayMenuDismiss = null;
     this.handleCalendarDayMenuEscape = null;
+    this.contextColumnMenuState = null;
+    this.contextColumnMenuHandlersBound = false;
+    this.handleContextColumnMenuDismiss = null;
+    this.handleContextColumnMenuEscape = null;
     this.showMissingNextOnly = false;
     this.showProjectCompletedTasks = false;
     this.selectedSettingsContext = null;
@@ -155,6 +159,7 @@ export class UIController {
     this.setupTaskNoteContextMenu();
     this.setupTaskListItemContextMenu();
     this.setupCalendarDayContextMenu();
+    this.setupContextColumnContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
@@ -1357,8 +1362,8 @@ export class UIController {
       })
       .filter((task) => this.isTaskScheduledInPast(task, todayKey))
       .sort((a, b) => {
-        const dateA = a.calendarDate || "";
-        const dateB = b.calendarDate || "";
+        const dateA = a.calendarDate || a.myDayDate || "";
+        const dateB = b.calendarDate || b.myDayDate || "";
         if (dateA !== dateB) {
           return dateA.localeCompare(dateB);
         }
@@ -1367,8 +1372,9 @@ export class UIController {
   }
 
   isTaskScheduledInPast(task, todayKey = this.getTodayDateKey()) {
-    if (!task?.calendarDate) return false;
-    return task.calendarDate < todayKey;
+    if (task?.calendarDate && task.calendarDate < todayKey) return true;
+    if (task?.myDayDate && task.myDayDate < todayKey) return true;
+    return false;
   }
 
   isTaskInMyDay(task) {
@@ -1514,6 +1520,12 @@ export class UIController {
         more.textContent = `…and ${items.length - limit} more`;
         column.append(more);
       }
+      column.addEventListener("contextmenu", (event) => {
+        if (event.target.closest(".task-row")) return; // let task context menu handle task rows
+        event.preventDefault();
+        event.stopPropagation();
+        this.openContextColumnContextMenu(group.key, groupBy, group.label, event.clientX, event.clientY);
+      });
       board.append(column);
       this.attachDropzone(column, STATUS.NEXT, groupBy === "context" ? group.key : undefined);
     });
@@ -4891,6 +4903,103 @@ export class UIController {
     if (!created) return;
   }
 
+  setupContextColumnContextMenu() {
+    const menu = this.elements.contextColumnContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", async (event) => {
+      const actionButton = event.target.closest("[data-col-action]");
+      if (!actionButton) return;
+      const action = actionButton.dataset.colAction;
+      const state = this.contextColumnMenuState;
+      this.closeContextColumnContextMenu();
+      if (!state) return;
+      if (action === "add-task") {
+        this.promptContextColumnTaskCreate(state, STATUS.NEXT);
+      } else if (action === "add-to-inbox") {
+        this.promptContextColumnTaskCreate(state, STATUS.INBOX);
+      }
+    });
+  }
+
+  openContextColumnContextMenu(groupKey, groupBy, groupLabel, x, y) {
+    const menu = this.elements.contextColumnContextMenu;
+    if (!menu) return;
+    this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
+    this.closeCalendarDayContextMenu();
+    this.contextColumnMenuState = { groupKey, groupBy, groupLabel };
+
+    // Update the "add task here" label to reflect the group
+    const addHereBtn = menu.querySelector("[data-col-action='add-task']");
+    if (addHereBtn) {
+      addHereBtn.textContent = groupBy === "none" ? "Add next action" : `Add to "${groupLabel}"`;
+    }
+
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindContextColumnContextMenuDismiss();
+  }
+
+  bindContextColumnContextMenuDismiss() {
+    if (this.contextColumnMenuHandlersBound) return;
+    this.handleContextColumnMenuDismiss = (event) => {
+      const menu = this.elements.contextColumnContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeContextColumnContextMenu();
+    };
+    this.handleContextColumnMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeContextColumnContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleContextColumnMenuDismiss, true);
+    document.addEventListener("scroll", this.handleContextColumnMenuDismiss, true);
+    window.addEventListener("resize", this.handleContextColumnMenuDismiss);
+    document.addEventListener("keydown", this.handleContextColumnMenuEscape);
+    this.contextColumnMenuHandlersBound = true;
+  }
+
+  closeContextColumnContextMenu() {
+    const menu = this.elements.contextColumnContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.contextColumnMenuState = null;
+    if (this.contextColumnMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleContextColumnMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleContextColumnMenuDismiss, true);
+      window.removeEventListener("resize", this.handleContextColumnMenuDismiss);
+      document.removeEventListener("keydown", this.handleContextColumnMenuEscape);
+      this.contextColumnMenuHandlersBound = false;
+    }
+  }
+
+  async promptContextColumnTaskCreate({ groupKey, groupBy, groupLabel }, status) {
+    const label = groupBy === "none" ? "new next action" : `task in "${groupLabel}"`;
+    const title = await this.showPrompt(`Add ${label}:`);
+    if (title === null) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      this.taskManager.notify("warn", "Task title cannot be empty.");
+      return;
+    }
+    const payload = { title: trimmedTitle, status };
+    if (status === STATUS.NEXT) {
+      if (groupBy === "context") payload.contexts = [groupKey];
+      else if (groupBy === "project") payload.projectId = groupKey;
+      else if (groupBy === "area") payload.areaOfFocus = groupKey === "No Area" ? null : groupKey;
+      else if (groupBy === "effort") payload.effortLevel = groupKey === "no-effort" ? null : groupKey;
+    }
+    this.taskManager.addTask(payload);
+  }
+
   openProjectFromTask(task) {
     if (!task?.projectId) {
       this.taskManager.notify("warn", "This task is not linked to a project.");
@@ -8034,6 +8143,7 @@ function mapElements() {
     taskNoteContextMenu: byId("taskNoteContextMenu"),
     taskListItemContextMenu: byId("taskListItemContextMenu"),
     calendarDayContextMenu: byId("calendarDayContextMenu"),
+    contextColumnContextMenu: byId("contextColumnContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),

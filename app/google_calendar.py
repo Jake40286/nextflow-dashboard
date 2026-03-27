@@ -138,11 +138,11 @@ class GoogleCalendarSync:
             start_payload = {"date": start_date.isoformat()}
             end_payload = {"date": end_date.isoformat()}
         description = task.get("description") or ""
-        context = task.get("context")
+        contexts = task.get("contexts") or ([task["context"]] if task.get("context") else [])
         project = task.get("projectId")
         extra_lines = []
-        if context:
-            extra_lines.append(f"Context: {context}")
+        if contexts:
+            extra_lines.append(f"Context: {', '.join(contexts)}")
         if project:
             extra_lines.append(f"Project: {project}")
         if task.get("slug"):

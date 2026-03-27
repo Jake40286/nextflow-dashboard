@@ -11,7 +11,7 @@ export const STATUS = Object.freeze({
 
 export const PHYSICAL_CONTEXTS = ["@Phone", "@Office", "@Home", "@Errands", "@Lab", "@Work", "@Team", "@Desk"];
 export const PEOPLE_TAG_PATTERN = /^\+[A-Za-z0-9][A-Za-z0-9_-]*$/;
-export const ENERGY_LEVELS = ["low", "medium", "high"];
+export const EFFORT_LEVELS = ["low", "medium", "high"];
 export const TIME_REQUIREMENTS = ["<5min", "<15min", "<30min", "30min+"];
 export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
@@ -108,7 +108,15 @@ const CUSTOM_THEME_PALETTE_NAME_MAX = 40;
 const DEFAULT_FEATURE_FLAGS = Object.freeze({
   showFiltersCard: true,
   showDaysSinceTouched: false,
+  highlightStaleTasks: false,
   googleCalendarEnabled: true,
+});
+
+const DEFAULT_STALE_TASK_THRESHOLDS = Object.freeze({
+  warn: 7,
+  stale: 14,
+  old: 30,
+  ancient: 90,
 });
 
 const DEFAULT_GOOGLE_CALENDAR_CONFIG = Object.freeze({
@@ -162,6 +170,7 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   peopleOptions: normalizePeopleOptions(),
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
+  staleTaskThresholds: { ...DEFAULT_STALE_TASK_THRESHOLDS },
   googleCalendarConfig: { ...DEFAULT_GOOGLE_CALENDAR_CONFIG },
 });
 
@@ -500,8 +509,11 @@ export class TaskManager extends EventTarget {
       throw new Error("Remote sync unavailable.");
     }
     this.persistLocally();
+    // Load (and merge) the latest server state into local first, so that
+    // flushRemoteQueue writes the fully-merged result rather than overwriting
+    // remote changes that arrived since the last auto-save.
+    await this.loadRemoteState({ rethrow: true });
     await this.flushRemoteQueue({ rethrow: true });
-    await this.loadRemoteState({ rethrow: true, replaceLocal: true });
     this.persistLocally();
   }
 
@@ -534,8 +546,8 @@ export class TaskManager extends EventTarget {
     people,
     waitingFor,
     waitingFors,
-    energy,
-    energies,
+    effort,
+    efforts,
     time,
     times,
     myDayDate,
@@ -548,7 +560,7 @@ export class TaskManager extends EventTarget {
       projectId: projectIds ?? projectId,
       person: people ?? person,
       waitingFor: waitingFors ?? waitingFor,
-      energy: energies ?? energy,
+      effort: efforts ?? effort,
       time: times ?? time,
       myDayDate: myDayDates ?? myDayDate,
       searchTerm,
@@ -564,7 +576,7 @@ export class TaskManager extends EventTarget {
         const d = today.getUTCDate();
         const cutoff = new Date(Date.UTC(y, m, d));
         const when = new Date(task.calendarDate);
-        if (!Number.isNaN(when.getTime()) && when >= cutoff) {
+        if (!Number.isNaN(when.getTime()) && when > cutoff) {
           return false;
         }
       }
@@ -642,10 +654,7 @@ export class TaskManager extends EventTarget {
       title: payload.title.trim(),
       description: payload.description?.trim() || "",
       status: payload.status || STATUS.INBOX,
-      context:
-        typeof payload.context === "string" && payload.context.trim()
-          ? payload.context.trim()
-          : null,
+      contexts: normalizeContextsField(payload.contexts ?? payload.context),
       dueDate: payload.dueDate || null,
       myDayDate: linkedSchedule.myDayDate,
       areaOfFocus:
@@ -705,9 +714,8 @@ export class TaskManager extends EventTarget {
       nextUpdates.calendarTime = null;
     }
     const draft = normalizeTask({ ...task, ...nextUpdates });
-    const enforceContext = draft.status !== STATUS.INBOX;
-    normalizeTaskTags(draft, { enforceContext });
-    const tagError = validateTaskTags(draft, { requireContext: enforceContext });
+    normalizeTaskTags(draft);
+    const tagError = validateTaskTags(draft);
     if (tagError) {
       this.notify("error", tagError);
       return null;
@@ -1179,9 +1187,9 @@ export class TaskManager extends EventTarget {
       title: entry.title,
       description: entry.description || "",
       status: entry.status || STATUS.NEXT,
-      context: entry.context || null,
+      contexts: normalizeContextsField(entry.contexts ?? entry.context),
       peopleTag: entry.peopleTag || null,
-      energyLevel: entry.energyLevel || null,
+      effortLevel: entry.effortLevel || entry.energyLevel || null,
       timeRequired: entry.timeRequired || null,
       areaOfFocus:
         typeof entry.areaOfFocus === "string" && entry.areaOfFocus.trim()
@@ -1500,9 +1508,9 @@ export class TaskManager extends EventTarget {
       if (normalized) contexts.add(normalized);
     };
     (this.state.settings?.contextOptions || []).forEach((value) => addContext(value));
-    this.state.tasks.forEach((task) => addContext(task.context));
-    (this.state.reference || []).forEach((entry) => addContext(entry.context));
-    (this.state.completionLog || []).forEach((entry) => addContext(entry.context));
+    this.state.tasks.forEach((task) => (task.contexts || []).forEach((c) => addContext(c)));
+    (this.state.reference || []).forEach((entry) => (entry.contexts || []).forEach((c) => addContext(c)));
+    (this.state.completionLog || []).forEach((entry) => (entry.contexts || []).forEach((c) => addContext(c)));
     if (!contexts.size) {
       PHYSICAL_CONTEXTS.forEach((context) => contexts.add(context));
     }
@@ -1607,43 +1615,27 @@ export class TaskManager extends EventTarget {
       return false;
     }
     if (from === to) return false;
-    let changed = false;
     this.state.tasks.forEach((task) => {
-      if (task.context === from) {
-        task.context = to;
-        task.updatedAt = nowIso();
-        changed = true;
-      }
+      if (!Array.isArray(task.contexts) || !task.contexts.includes(from)) return;
+      task.contexts = task.contexts.map((c) => (c === from ? to : c));
+      task.updatedAt = nowIso();
     });
     (this.state.reference || []).forEach((entry) => {
-      if (entry.context === from) {
-        entry.context = to;
-        entry.updatedAt = nowIso();
-        changed = true;
-      }
+      if (!Array.isArray(entry.contexts) || !entry.contexts.includes(from)) return;
+      entry.contexts = entry.contexts.map((c) => (c === from ? to : c));
+      entry.updatedAt = nowIso();
     });
     (this.state.completionLog || []).forEach((entry) => {
-      if (entry.context === from) {
-        entry.context = to;
-        entry.updatedAt = nowIso();
-        changed = true;
-      }
+      if (!Array.isArray(entry.contexts) || !entry.contexts.includes(from)) return;
+      entry.contexts = entry.contexts.map((c) => (c === from ? to : c));
+      entry.updatedAt = nowIso();
     });
-    const contextOptions = Array.isArray(this.state.settings?.contextOptions)
-      ? [...this.state.settings.contextOptions]
-      : [];
-    const optionIndex = contextOptions.findIndex((value) => value.toLowerCase() === from.toLowerCase());
-    if (optionIndex !== -1) {
-      contextOptions[optionIndex] = to;
-      this.state.settings.contextOptions = normalizeContextOptions(
-        contextOptions,
-        this.state.tasks,
-        this.state.reference,
-        this.state.completionLog
-      );
-      changed = true;
-    }
-    if (!changed) return false;
+    this.state.settings.contextOptions = normalizeContextOptions(
+      [],
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
     this.emitChange();
     this.notify("info", `Renamed context "${from}" to "${to}".`);
     return true;
@@ -1656,24 +1648,22 @@ export class TaskManager extends EventTarget {
       this.getContexts().find((context) => context !== target) || PHYSICAL_CONTEXTS[0];
     let changed = false;
     this.state.tasks.forEach((task) => {
-      if (task.context !== target) return;
-      task.context = task.status === STATUS.INBOX ? null : fallback;
+      if (!Array.isArray(task.contexts) || !task.contexts.includes(target)) return;
+      task.contexts = task.contexts.filter((c) => c !== target);
       task.updatedAt = nowIso();
       changed = true;
     });
     (this.state.reference || []).forEach((entry) => {
-      if (entry.context === target) {
-        entry.context = null;
-        entry.updatedAt = nowIso();
-        changed = true;
-      }
+      if (!Array.isArray(entry.contexts) || !entry.contexts.includes(target)) return;
+      entry.contexts = entry.contexts.filter((c) => c !== target);
+      entry.updatedAt = nowIso();
+      changed = true;
     });
     (this.state.completionLog || []).forEach((entry) => {
-      if (entry.context === target) {
-        entry.context = null;
-        entry.updatedAt = nowIso();
-        changed = true;
-      }
+      if (!Array.isArray(entry.contexts) || !entry.contexts.includes(target)) return;
+      entry.contexts = entry.contexts.filter((c) => c !== target);
+      entry.updatedAt = nowIso();
+      changed = true;
     });
     const contextOptions = Array.isArray(this.state.settings?.contextOptions)
       ? this.state.settings.contextOptions
@@ -1702,43 +1692,30 @@ export class TaskManager extends EventTarget {
       return false;
     }
     if (from === to) return false;
-    let changed = false;
     this.state.tasks.forEach((task) => {
       if (task.peopleTag === from) {
         task.peopleTag = to;
         task.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.reference || []).forEach((entry) => {
       if (entry.peopleTag === from) {
         entry.peopleTag = to;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.completionLog || []).forEach((entry) => {
       if (entry.peopleTag === from) {
         entry.peopleTag = to;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
-    const peopleOptions = Array.isArray(this.state.settings?.peopleOptions)
-      ? [...this.state.settings.peopleOptions]
-      : [];
-    const optionIndex = peopleOptions.findIndex((value) => value.toLowerCase() === from.toLowerCase());
-    if (optionIndex !== -1) {
-      peopleOptions[optionIndex] = to;
-      this.state.settings.peopleOptions = normalizePeopleOptions(
-        peopleOptions,
-        this.state.tasks,
-        this.state.reference,
-        this.state.completionLog
-      );
-      changed = true;
-    }
-    if (!changed) return false;
+    this.state.settings.peopleOptions = normalizePeopleOptions(
+      [],
+      this.state.tasks,
+      this.state.reference,
+      this.state.completionLog
+    );
     this.emitChange();
     this.notify("info", `Renamed people tag "${from}" to "${to}".`);
     return true;
@@ -1803,9 +1780,32 @@ export class TaskManager extends EventTarget {
     const optionIndex = areaOptions.findIndex((area) => area === from);
     if (optionIndex !== -1) {
       areaOptions[optionIndex] = to;
-      this.state.settings.areaOptions = Array.from(new Set(areaOptions));
-      changed = true;
+    } else {
+      areaOptions.push(to);
     }
+    this.state.settings.areaOptions = Array.from(new Set(areaOptions.filter((a) => a !== from)));
+    changed = true;
+    this.state.tasks.forEach((task) => {
+      if (task.areaOfFocus === from) {
+        task.areaOfFocus = to;
+        task.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.areaOfFocus === from) {
+        entry.areaOfFocus = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.areaOfFocus === from) {
+        entry.areaOfFocus = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
     this.state.projects.forEach((project) => {
       if (project.areaOfFocus === from) {
         project.areaOfFocus = to;
@@ -1913,7 +1913,7 @@ export class TaskManager extends EventTarget {
       return {
         date,
         title: task.title,
-        context: task.context,
+        contexts: task.contexts ?? [],
         status: task.status,
         projectId: task.projectId,
         taskId: task.id,
@@ -1933,7 +1933,7 @@ export class TaskManager extends EventTarget {
         entries.push({
           date: entry.completedAt,
           title: entry.title || "Completed task",
-          context: entry.context,
+          contexts: entry.contexts ?? [],
           status: entry.status || "completed",
           projectId: entry.projectId || null,
           taskId: entry.sourceId || entry.id,
@@ -1961,7 +1961,7 @@ export class TaskManager extends EventTarget {
       .filter((entry) => entry && entry.archiveType !== "deleted");
   }
 
-  getCompletedTasks({ year, context, contexts, projectId, projectIds } = {}) {
+  getCompletedTasks({ year, context, contexts, projectId, projectIds, areas } = {}) {
     const entries = this.getCompletionEntries();
     return entries.filter((entry) => {
       if (!entry.completedAt) return false;
@@ -1969,13 +1969,14 @@ export class TaskManager extends EventTarget {
         const completedYear = new Date(entry.completedAt).getFullYear();
         if (completedYear !== year) return false;
       }
-      if (!matchesFilterValue(entry.context, contexts ?? context)) return false;
+      if (!matchesContextsFilter(entry.contexts, contexts ?? context)) return false;
       if (!matchesFilterValue(entry.projectId, projectIds ?? projectId)) return false;
+      if (!matchesFilterValue(entry.areaOfFocus, areas)) return false;
       return true;
     });
   }
 
-  getCompletionSummary({ grouping = "week", year, context, contexts, projectId, projectIds } = {}) {
+  getCompletionSummary({ grouping = "week", year, context, contexts, projectId, projectIds, areas } = {}) {
     const formatter = getCompletionFormatter(grouping);
     if (!formatter) return [];
     const tasks = this.getCompletedTasks({
@@ -1983,6 +1984,7 @@ export class TaskManager extends EventTarget {
       contexts,
       projectId,
       projectIds,
+      areas,
       year: grouping === "year" ? undefined : year,
     });
     if (!tasks.length) return [];
@@ -2048,7 +2050,7 @@ export class TaskManager extends EventTarget {
         if (task.dueDate) parts.push(`📅 ${task.dueDate}`);
         if (task.calendarDate) parts.push(`📆 ${task.calendarDate}`);
 
-        if (task.context) parts.push(formatContextToken(task.context));
+        if (task.contexts?.length) task.contexts.forEach((ctx) => parts.push(formatContextToken(ctx)));
 
         if (task.projectId) {
           const project = projectsById.get(task.projectId);
@@ -2277,6 +2279,28 @@ export class TaskManager extends EventTarget {
     return Boolean(this.getFeatureFlags()[flag]);
   }
 
+  getStaleTaskThresholds() {
+    return normalizeStaleTaskThresholds(this.state.settings?.staleTaskThresholds);
+  }
+
+  updateStaleTaskThresholds(nextThresholds = {}) {
+    const normalized = normalizeStaleTaskThresholds({ ...this.getStaleTaskThresholds(), ...nextThresholds });
+    if (
+      normalized.warn >= normalized.stale ||
+      normalized.stale >= normalized.old ||
+      normalized.old >= normalized.ancient
+    ) {
+      this.notify("error", "Stale task thresholds must be increasing: warn < stale < old < ancient.");
+      return false;
+    }
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    this.state.settings.staleTaskThresholds = normalized;
+    this.emitChange();
+    return true;
+  }
+
   getGoogleCalendarConfig() {
     return normalizeGoogleCalendarConfig(this.state.settings?.googleCalendarConfig);
   }
@@ -2398,6 +2422,30 @@ function normalizeFeatureFlags(featureFlags, fallbackFlags = DEFAULT_FEATURE_FLA
   return normalized;
 }
 
+function normalizeStaleTaskThresholds(thresholds, fallback = DEFAULT_STALE_TASK_THRESHOLDS) {
+  const normalized = {
+    warn: fallback.warn,
+    stale: fallback.stale,
+    old: fallback.old,
+    ancient: fallback.ancient,
+  };
+
+  if (typeof thresholds?.warn === "number" && thresholds.warn > 0) {
+    normalized.warn = Math.max(1, Math.floor(thresholds.warn));
+  }
+  if (typeof thresholds?.stale === "number" && thresholds.stale > 0) {
+    normalized.stale = Math.max(1, Math.floor(thresholds.stale));
+  }
+  if (typeof thresholds?.old === "number" && thresholds.old > 0) {
+    normalized.old = Math.max(1, Math.floor(thresholds.old));
+  }
+  if (typeof thresholds?.ancient === "number" && thresholds.ancient > 0) {
+    normalized.ancient = Math.max(1, Math.floor(thresholds.ancient));
+  }
+
+  return normalized;
+}
+
 function normalizeListItems(items) {
   if (!Array.isArray(items)) return [];
   return items
@@ -2425,9 +2473,9 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     sourceId: task.id,
     title: task.title,
     description: task.description,
-    context: task.context,
+    contexts: task.contexts ?? [],
     peopleTag: task.peopleTag,
-    energyLevel: task.energyLevel,
+    effortLevel: task.effortLevel,
     timeRequired: task.timeRequired,
     areaOfFocus: task.areaOfFocus || null,
     projectId: task.projectId,
@@ -2467,9 +2515,9 @@ function normalizeTask(task) {
     originDeviceId: task.originDeviceId || null,
     calendarDate: linkedSchedule.calendarDate,
     calendarTime: linkedSchedule.calendarTime,
-    context: task.context ?? task.physicalContext ?? null,
+    contexts: normalizeContextsField(task.contexts ?? task.context ?? task.physicalContext),
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
-    energyLevel: task.energyLevel ?? null,
+    effortLevel: task.effortLevel ?? task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
     myDayDate: linkedSchedule.myDayDate,
     areaOfFocus:
@@ -2481,8 +2529,7 @@ function normalizeTask(task) {
     listItems: normalizeListItems(task.listItems),
     updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
-  const enforceContext = normalized.status && normalized.status !== STATUS.INBOX;
-  return normalizeTaskTags(normalized, { enforceContext });
+  return normalizeTaskTags(normalized);
 }
 
 function normalizeCompletionEntry(entry) {
@@ -2492,9 +2539,9 @@ function normalizeCompletionEntry(entry) {
     id: entry.id || entry.sourceId || generateId("completed"),
     title: entry.title || "Completed task",
     description: entry.description || "",
-    context: entry.context || null,
+    contexts: normalizeContextsField(entry.contexts ?? entry.context),
     peopleTag: entry.peopleTag || null,
-    energyLevel: entry.energyLevel || null,
+    effortLevel: entry.effortLevel || entry.energyLevel || null,
     timeRequired: entry.timeRequired || null,
     areaOfFocus:
       typeof entry.areaOfFocus === "string" && entry.areaOfFocus.trim()
@@ -2548,25 +2595,23 @@ function normalizeCompletedProject(entry) {
   };
 }
 
-function normalizeTaskTags(task, { enforceContext = true } = {}) {
-  const sanitizedContext = sanitizePhysicalContext(task.context, { allowEmpty: !enforceContext });
-  if (sanitizedContext) {
-    task.context = sanitizedContext;
-  } else if (enforceContext) {
-    task.context = PHYSICAL_CONTEXTS[0];
-  } else {
-    task.context = null;
-  }
+function normalizeTaskTags(task) {
+  const explicit = normalizeContextsField(task.contexts ?? task.context);
+  const fromText = [
+    ...extractContextTagsFromText(task.title),
+    ...extractContextTagsFromText(task.description),
+    ...(Array.isArray(task.listItems) ? task.listItems.flatMap((item) => extractContextTagsFromText(item?.text)) : []),
+  ];
+  const merged = [...explicit];
+  fromText.forEach((ctx) => { if (!merged.includes(ctx)) merged.push(ctx); });
+  task.contexts = merged;
   task.peopleTag = sanitizePeopleTag(task.peopleTag);
-  task.energyLevel = sanitizeChoice(task.energyLevel, ENERGY_LEVELS, { allowCustom: false });
+  task.effortLevel = sanitizeChoice(task.effortLevel, EFFORT_LEVELS, { allowCustom: false });
   task.timeRequired = sanitizeChoice(task.timeRequired, TIME_REQUIREMENTS, { allowCustom: false });
   return task;
 }
 
-function validateTaskTags(task, { requireContext = true } = {}) {
-  if (requireContext && !task.context) {
-    return `Task requires a physical context such as ${PHYSICAL_CONTEXTS.join(", ")}.`;
-  }
+function validateTaskTags(task) {
   if (task.peopleTag && !PEOPLE_TAG_PATTERN.test(task.peopleTag)) {
     return "People tag must start with + and contain only letters, numbers, underscores, or dashes.";
   }
@@ -2620,6 +2665,20 @@ function sanitizeChoice(value, allowed, { allowCustom = false, allowEmpty = true
 
 function sanitizePhysicalContext(value, { allowEmpty = false } = {}) {
   return sanitizeChoice(value, PHYSICAL_CONTEXTS, { allowCustom: true, allowEmpty });
+}
+
+function normalizeContextsField(value) {
+  const items = Array.isArray(value) ? value : (typeof value === "string" && value.trim() ? [value] : []);
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const normalized = sanitizePhysicalContext(item, { allowEmpty: false });
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+  return result;
 }
 
 function sanitizePeopleTag(value) {
@@ -2711,17 +2770,15 @@ function normalizeLinkedSchedule({ calendarDate, myDayDate, calendarTime } = {})
 }
 
 function normalizeContextOptions(options, tasks = [], reference = [], completionLog = []) {
-  const values = new Set(PHYSICAL_CONTEXTS);
+  // Only keep contexts that are actually in use — unused ones are auto-purged.
+  const values = new Set();
   const addContext = (value) => {
     const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
-    if (normalized) {
-      values.add(normalized);
-    }
+    if (normalized) values.add(normalized);
   };
-  (Array.isArray(options) ? options : []).forEach((value) => addContext(value));
-  (Array.isArray(tasks) ? tasks : []).forEach((entry) => addContext(entry?.context));
-  (Array.isArray(reference) ? reference : []).forEach((entry) => addContext(entry?.context));
-  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => addContext(entry?.context));
+  (Array.isArray(tasks) ? tasks : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
+  (Array.isArray(reference) ? reference : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
+  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
   return Array.from(values).sort((a, b) => a.localeCompare(b));
 }
 
@@ -2757,6 +2814,19 @@ function normalizePeopleTagCollection(values = []) {
   return result;
 }
 
+function extractContextTagsFromText(rawText) {
+  if (typeof rawText !== "string" || !rawText) return [];
+  const results = [];
+  const tokenRegex = /(?:^|[\s([{,;])(@[A-Za-z][A-Za-z0-9_-]*)/g;
+  let match = tokenRegex.exec(rawText);
+  while (match) {
+    const normalized = sanitizePhysicalContext(match[1], { allowEmpty: false });
+    if (normalized && !results.includes(normalized)) results.push(normalized);
+    match = tokenRegex.exec(rawText);
+  }
+  return results;
+}
+
 function extractPeopleMentionTagsFromText(rawText) {
   if (typeof rawText !== "string" || !rawText) return [];
   const matches = [];
@@ -2782,6 +2852,11 @@ function extractPeopleMentionTagsFromNotes(notes) {
 function collectEntryPeopleTags(entry, { includeNoteMentions = true } = {}) {
   if (!entry || typeof entry !== "object") return [];
   const values = [entry.peopleTag];
+  values.push(...extractPeopleMentionTagsFromText(entry.title));
+  values.push(...extractPeopleMentionTagsFromText(entry.description));
+  if (Array.isArray(entry.listItems)) {
+    entry.listItems.forEach((item) => values.push(...extractPeopleMentionTagsFromText(item?.text)));
+  }
   if (includeNoteMentions) {
     values.push(...extractPeopleMentionTagsFromNotes(entry.notes));
   }
@@ -3029,9 +3104,9 @@ function matchesSearch(task, rawTerm) {
   const fields = [
     task.title,
     task.description,
-    task.context,
+    ...(task.contexts || []),
     task.peopleTag,
-    task.energyLevel,
+    task.effortLevel,
     task.timeRequired,
     task.waitingFor,
     task.slug,
@@ -3039,6 +3114,18 @@ function matchesSearch(task, rawTerm) {
     ...noteFields,
   ];
   return fields.some((value) => typeof value === "string" && value.toLowerCase().includes(term));
+}
+
+function matchesContextsFilter(taskContexts, filter) {
+  if (!filter) return true;
+  const list = Array.isArray(filter) ? filter : [filter];
+  if (!list.length || list.includes("all")) return true;
+  return list.some((item) => {
+    if (item === "none") {
+      return !taskContexts || taskContexts.length === 0;
+    }
+    return Array.isArray(taskContexts) && taskContexts.includes(item);
+  });
 }
 
 function matchesFilterValue(value, filter) {
@@ -3071,7 +3158,7 @@ function matchesPeopleFilter(task, filter) {
 
 function matchesTaskFilters(task, filters = {}) {
   if (!filters) return true;
-  if (!matchesFilterValue(task.context, filters.contexts ?? filters.context)) {
+  if (!matchesContextsFilter(task.contexts, filters.contexts ?? filters.context)) {
     return false;
   }
   if (!matchesFilterValue(task.projectId, filters.projectIds ?? filters.projectId)) {
@@ -3083,7 +3170,7 @@ function matchesTaskFilters(task, filters = {}) {
   if (!matchesFilterValue(task.waitingFor, filters.waitingFors ?? filters.waitingFor)) {
     return false;
   }
-  if (!matchesFilterValue(task.energyLevel, filters.energies ?? filters.energy)) {
+  if (!matchesFilterValue(task.effortLevel, filters.efforts ?? filters.effort)) {
     return false;
   }
   if (!matchesFilterValue(task.timeRequired, filters.times ?? filters.time)) {
@@ -3280,13 +3367,15 @@ function parseMarkdownDocument(markdown, existingProjects) {
       const projectToken = projectTokens[0];
       const projectInstance = ensureProject(projectToken);
 
-      const contextToken = metadata.context ? metadata.context : contexts[0] || null;
+      const contextTokens = metadata.context
+        ? [metadata.context]
+        : contexts.length ? contexts : [];
       const task = {
         id: generateId("task"),
         title,
         description: descriptionLines.join("\n").trim() || "",
         status: resolvedStatus,
-        context: normalizeContext(contextToken),
+        contexts: contextTokens.map((t) => normalizeContext(t)).filter(Boolean),
         dueDate: metadata.due || null,
         projectId: projectInstance ? projectInstance.id : null,
         createdAt: new Date().toISOString(),

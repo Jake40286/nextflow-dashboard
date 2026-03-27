@@ -118,6 +118,21 @@ test("mergeStates honors removal markers from reference entries", () => {
   );
 });
 
+test("feature flags include highlightStaleTasks and can be toggled", () => {
+  const manager = createManager();
+  assert.equal(manager.getFeatureFlag("highlightStaleTasks"), false);
+  manager.updateFeatureFlag("highlightStaleTasks", true);
+  assert.equal(manager.getFeatureFlag("highlightStaleTasks"), true);
+});
+
+test("stale task thresholds can be read and updated", () => {
+  const manager = createManager();
+  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 7, stale: 14, old: 30, ancient: 90 });
+  const result = manager.updateStaleTaskThresholds({ warn: 5, stale: 12, old: 28, ancient: 60 });
+  assert.equal(result, true);
+  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 5, stale: 12, old: 28, ancient: 60 });
+});
+
 test("mergeStates keeps restored tasks that are newer than their removal markers", () => {
   const remoteState = {
     tasks: [{ id: "t-2", title: "Stale remote copy", updatedAt: "2024-02-01T00:00:00.000Z" }],

@@ -185,12 +185,12 @@
           </details>
           <small id="waitingHelp" class="muted">Show items based on who you're waiting on.</small>
 
-          <label class="filter-control" for="energyFilterToggle">Energy</label>
-          <details class="multi-select" id="energyFilterPicker">
-            <summary id="energyFilterToggle">All energy levels</summary>
-            <div class="multi-select-options" id="energyFilterOptions"></div>
+          <label class="filter-control" for="effortFilterToggle">Effort</label>
+          <details class="multi-select" id="effortFilterPicker">
+            <summary id="effortFilterToggle">All effort levels</summary>
+            <div class="multi-select-options" id="effortFilterOptions"></div>
           </details>
-          <small id="energyHelp" class="muted">Filter tasks by tracked energy.</small>
+          <small id="effortHelp" class="muted">Filter tasks by tracked effort.</small>
 
           <label class="filter-control" for="timeFilterToggle">Time</label>
           <details class="multi-select" id="timeFilterPicker">
@@ -272,6 +272,25 @@
                 <input id="toggleHideScheduledNext" type="checkbox" />
                 <span>Hide scheduled items</span>
               </label>
+              <label class="filter-control" for="nextGroupBySelect">Group by</label>
+              <select id="nextGroupBySelect">
+                <option value="context">Context</option>
+                <option value="project">Project</option>
+                <option value="area">Area of focus</option>
+                <option value="effort">Effort level</option>
+                <option value="none">None (flat list)</option>
+              </select>
+              <label class="filter-control" for="nextGroupLimitInput">Max per group</label>
+              <input id="nextGroupLimitInput" type="number" min="1" step="1" placeholder="No limit" style="width:6rem" />
+              <label class="filter-control" for="taskSortSelect">Sort by</label>
+              <select id="taskSortSelect">
+                <option value="default">Default order</option>
+                <option value="updated-asc">Least recently updated</option>
+                <option value="updated-desc">Most recently updated</option>
+                <option value="title-asc">Title A→Z</option>
+                <option value="title-desc">Title Z→A</option>
+                <option value="due-asc">Due date (soonest)</option>
+              </select>
               <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
               <button id="expandProjects" class="btn btn-light" type="button">Expand active projects</button>
               <label id="projectCompletedTasksControl" class="toolbar-toggle" for="toggleProjectCompletedTasks">
@@ -298,7 +317,7 @@
 
       <section class="workspace-view" data-panel="next" role="tabpanel" aria-labelledby="summary-tab-next" id="panel-next" hidden>
         <div class="panel-content">
-          <div class="panel-subheading muted">Grouped by context</div>
+          <div id="nextPanelSubheading" class="panel-subheading muted">Grouped by context</div>
           <div class="panel-body contexts" data-context-board></div>
         </div>
       </section>
@@ -328,7 +347,10 @@
           <label class="visually-hidden" for="projectVision">Project outcome</label>
           <input id="projectVision" name="projectVision" type="text" placeholder="Desired outcome (optional)" autocomplete="off" />
           <label class="visually-hidden" for="projectArea">Area of focus</label>
-          <input id="projectArea" name="projectArea" type="text" placeholder="Area of focus" list="projectAreaSuggestions" value="Work" required />
+          <div class="area-select-group">
+            <select id="projectArea" name="projectArea" required></select>
+            <button type="button" class="btn btn-light btn-small" id="projectAreaNewBtn">+ New</button>
+          </div>
           <label class="visually-hidden" for="projectTheme">Theme</label>
           <input id="projectTheme" name="projectTheme" type="text" placeholder="Theme (optional)" list="projectThemeSuggestions" />
           <label class="visually-hidden" for="projectStatus">Status</label>
@@ -384,24 +406,39 @@
       <section class="workspace-view" data-panel="reports" role="tabpanel" aria-labelledby="summary-tab-reports" id="panel-reports" hidden>
         <div class="panel-content">
           <div class="report-controls">
-            <label class="filter-control" for="reportGrouping">View by</label>
-            <select id="reportGrouping">
-              <option value="week">Weekly</option>
-              <option value="month">Monthly</option>
-              <option value="year">Yearly</option>
-            </select>
-            <label class="filter-control" for="reportYear">Year</label>
-            <select id="reportYear"></select>
-            <label class="filter-control" for="reportContextToggle">Context</label>
-            <details class="multi-select" id="reportContextPicker">
-              <summary id="reportContextToggle">All contexts</summary>
-              <div class="multi-select-options" id="reportContextOptions"></div>
-            </details>
-            <label class="filter-control" for="reportProjectToggle">Project</label>
-            <details class="multi-select" id="reportProjectPicker">
-              <summary id="reportProjectToggle">All projects</summary>
-              <div class="multi-select-options" id="reportProjectOptions"></div>
-            </details>
+            <div class="report-filter-group">
+              <label class="filter-control" for="reportGrouping">View by</label>
+              <select id="reportGrouping">
+                <option value="week">Weekly</option>
+                <option value="month">Monthly</option>
+                <option value="year">Yearly</option>
+              </select>
+            </div>
+            <div class="report-filter-group">
+              <label class="filter-control" for="reportYear">Year</label>
+              <select id="reportYear"></select>
+            </div>
+            <div class="report-filter-group">
+              <label class="filter-control" for="reportContextToggle">Context</label>
+              <details class="multi-select" id="reportContextPicker">
+                <summary id="reportContextToggle">All contexts</summary>
+                <div class="multi-select-options" id="reportContextOptions"></div>
+              </details>
+            </div>
+            <div class="report-filter-group">
+              <label class="filter-control" for="reportProjectToggle">Project</label>
+              <details class="multi-select" id="reportProjectPicker">
+                <summary id="reportProjectToggle">All projects</summary>
+                <div class="multi-select-options" id="reportProjectOptions"></div>
+              </details>
+            </div>
+            <div class="report-filter-group">
+              <label class="filter-control" for="reportAreaToggle">Area of focus</label>
+              <details class="multi-select" id="reportAreaPicker">
+                <summary id="reportAreaToggle">All areas</summary>
+                <div class="multi-select-options" id="reportAreaOptions"></div>
+              </details>
+            </div>
           </div>
           <div class="panel-body report-body">
             <div id="reportEmpty" class="muted small-text" hidden>No matching completions. Adjust the filters or mark tasks complete to start building this report.</div>
@@ -663,7 +700,7 @@
   </script>
 
   <datalist id="contextSuggestions"></datalist>
-  <datalist id="energySuggestions"></datalist>
+  <datalist id="effortSuggestions"></datalist>
   <datalist id="timeSuggestions"></datalist>
   <datalist id="projectAreaSuggestions"></datalist>
   <datalist id="projectThemeSuggestions"></datalist>
@@ -689,9 +726,14 @@
             <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">Trash</button>
           </div>
         </div>
-        <!-- Compact summary shown after actionable is answered -->
+        <!-- Editable summary shown after actionable is answered -->
         <div id="clarifyActionableSummary" class="clarify-answered-summary" hidden>
-          <blockquote id="clarifyPreviewTextSummary" class="clarify-preview-compact"></blockquote>
+          <div class="clarify-summary-block">
+            <label class="clarify-summary-label">Title</label>
+            <div id="clarifyTitleSummary" class="clarify-summary-field" contenteditable="true" role="textbox" aria-label="Task title" spellcheck="true"></div>
+            <label class="clarify-summary-label">Description</label>
+            <div id="clarifyDescSummary" class="clarify-summary-field clarify-summary-desc" contenteditable="true" role="textbox" aria-label="Task description" spellcheck="true"></div>
+          </div>
         </div>
 
         <!-- All following fields revealed after clicking Yes -->
@@ -724,11 +766,13 @@
               <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
               <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
               <select id="clarifyFollowupTiming">
-                <option value="24h">Follow up in 24 hours</option>
+                <option value="24h">Follow up tomorrow</option>
                 <option value="7d">Follow up in 7 days</option>
                 <option value="custom">Custom date</option>
               </select>
               <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
+              <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
+              <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
               <div class="clarify-option-buttons">
                 <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Waiting For</button>
                 <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
@@ -777,18 +821,23 @@
             <div class="clarify-field clarify-field-section">
               <p class="clarify-question">Optional details</p>
               <div class="clarify-project-option">
-                <label for="clarifyContextSelect">Context</label>
-                <div class="clarify-context-control">
-                  <select id="clarifyContextSelect">
-                    <option value="">Choose a context</option>
-                  </select>
-                  <button id="clarifyAddContext" class="btn btn-light" type="button">Add context</button>
+                <label for="clarifyAreaInput">Area of focus</label>
+                <div class="area-select-group">
+                  <select id="clarifyAreaInput"></select>
+                  <button type="button" class="btn btn-light btn-small" id="clarifyAreaNewBtn">+ New</button>
                 </div>
               </div>
               <div class="clarify-project-option">
-                <label for="clarifyEnergySelect">Energy required</label>
-                <select id="clarifyEnergySelect">
-                  <option value="">Select energy</option>
+                <label>Context</label>
+                <div class="clarify-context-control">
+                  <div id="clarifyContextList" class="clarify-context-list"></div>
+                  <button id="clarifyAddContext" class="btn btn-light" type="button">+ Add context</button>
+                </div>
+              </div>
+              <div class="clarify-project-option">
+                <label for="clarifyEffortSelect">Effort required</label>
+                <select id="clarifyEffortSelect">
+                  <option value="">Select effort</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>

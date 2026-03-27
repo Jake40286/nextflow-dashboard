@@ -188,8 +188,6 @@ export class UIController {
       calendarNextMonth,
       calendarShowCompleted,
       manualSyncButton,
-      waitingFilterToggle,
-      waitingFilterOptions,
       summaryAllActive,
       toggleNextProjectFanout,
       toggleHideScheduledNext,
@@ -715,7 +713,6 @@ export class UIController {
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     this.updateSuggestionLists();
     this.renderSummary();
-    this.renderFilters();
     this.renderAssociationFlyout();
     this.renderInbox();
     this.renderMyDay();
@@ -729,7 +726,6 @@ export class UIController {
     this.renderStatistics();
     this.renderAllActive();
     this.renderSettings();
-    this.applyFeatureFlags();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
@@ -845,102 +841,6 @@ export class UIController {
     }
   }
 
-  renderFilters() {
-    const contexts = this.taskManager.getContexts();
-    this.renderFilterPicker("context", {
-      options: contexts.map((context) => ({ label: context, value: context })),
-      toggle: this.elements.contextFilterToggle,
-      container: this.elements.contextFilterOptions,
-      defaultLabel: "All contexts",
-    });
-    if (this.elements.randomContext) {
-      fillSelect(this.elements.randomContext, contexts, this.randomContext || "all");
-    }
-
-    const projects = (this.projectCache || [])
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name));
-    this.renderFilterPicker("project", {
-      options: projects.map((project) => ({
-        label: project.name + (project.someday ? " (Someday)" : ""),
-        value: project.id,
-      })),
-      toggle: this.elements.projectFilterToggle,
-      container: this.elements.projectFilterOptions,
-      defaultLabel: "All projects",
-      singleValueLabel: (value) => {
-        const project = this.projectLookup?.get(value);
-        if (!project) return "1 project";
-        return project.name + (project.someday ? " (Someday)" : "");
-      },
-    });
-
-    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
-    const waitingOn = new Set();
-    const effortLevels = new Set([...EFFORT_LEVELS]);
-    const timeEstimates = new Set([...TIME_REQUIREMENTS]);
-    allTasks.forEach((task) => {
-      if (task.waitingFor) waitingOn.add(task.waitingFor);
-      if (task.effortLevel) effortLevels.add(task.effortLevel);
-      if (task.timeRequired) timeEstimates.add(task.timeRequired);
-    });
-
-    this.renderFilterPicker("waiting", {
-      options: Array.from(waitingOn)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.waitingFilterToggle,
-      container: this.elements.waitingFilterOptions,
-      defaultLabel: "All waiting",
-    });
-
-    this.renderFilterPicker("effort", {
-      options: Array.from(effortLevels)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.effortFilterToggle,
-      container: this.elements.effortFilterOptions,
-      defaultLabel: "All effort levels",
-    });
-
-    this.renderFilterPicker("time", {
-      options: Array.from(timeEstimates)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.timeFilterToggle,
-      container: this.elements.timeFilterOptions,
-      defaultLabel: "All durations",
-    });
-  }
-
-  renderFilterPicker(key, { options, toggle, container, defaultLabel, singleValueLabel }) {
-    if (!container) return;
-    const entries = [{ label: defaultLabel, value: "all" }, ...options];
-    container.innerHTML = "";
-    entries.forEach((option) => {
-      const safeValue = option.value?.toString().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "all";
-      const id = `${key}-filter-${safeValue}`;
-      const label = document.createElement("label");
-      label.setAttribute("for", id);
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.id = id;
-      checkbox.value = option.value;
-      checkbox.checked = this.isFilterValueSelected(key, option.value);
-      checkbox.addEventListener("change", () => {
-        this.updateFilterSelection(key, option.value, checkbox.checked);
-        this.renderAll();
-      });
-      const text = document.createElement("span");
-      text.textContent = option.label;
-      label.append(checkbox, text);
-      container.append(label);
-    });
-    this.updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel);
-  }
 
   updateFilterSelection(key, value, checked) {
     const current = Array.isArray(this.filters[key]) ? [...this.filters[key]] : [this.filters[key]];
@@ -972,25 +872,6 @@ export class UIController {
       return false;
     }
     return selections.includes(value);
-  }
-
-  updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel) {
-    if (!toggle) return;
-    const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
-    if (!selections.length || selections.includes("all")) {
-      toggle.textContent = defaultLabel;
-      return;
-    }
-    if (selections.length === 1) {
-      const value = selections[0];
-      if (typeof singleValueLabel === "function") {
-        toggle.textContent = singleValueLabel(value);
-      } else {
-        toggle.textContent = value;
-      }
-      return;
-    }
-    toggle.textContent = `${selections.length} selected`;
   }
 
   setupAssociationFlyout() {
@@ -1025,9 +906,6 @@ export class UIController {
       const value = checkbox.dataset.associationFilterValue;
       if (!key || value === undefined) return;
       this.updateFilterSelection(key, value, checkbox.checked);
-      if (this.hasAssociationSelections() && this.activePanel !== "all-active") {
-        this.setActivePanel("all-active", { focus: false });
-      }
       this.renderAll();
     });
 
@@ -1035,6 +913,9 @@ export class UIController {
       this.filters.context = ["all"];
       this.filters.project = ["all"];
       this.filters.person = ["all"];
+      this.filters.waiting = ["all"];
+      this.filters.effort = ["all"];
+      this.filters.time = ["all"];
       this.renderAll();
     });
 
@@ -1072,30 +953,30 @@ export class UIController {
   formatAssociationExpression() {
     const clauses = [];
     const people = this.getFilterSelections("person");
-    if (people.length) {
-      clauses.push(`(${people.join(" OR ")})`);
-    }
+    if (people.length) clauses.push(`(${people.join(" OR ")})`);
     const contexts = this.getFilterSelections("context");
-    if (contexts.length) {
-      clauses.push(`(${contexts.join(" OR ")})`);
-    }
+    if (contexts.length) clauses.push(`(${contexts.join(" OR ")})`);
     const projects = this.getFilterSelections("project").map((projectId) => {
       if (projectId === "none") return "No project";
       return this.projectLookup.get(projectId)?.name || "Unknown project";
     });
-    if (projects.length) {
-      clauses.push(`(${projects.join(" OR ")})`);
-    }
-    if (!clauses.length) {
-      return "All tasks";
-    }
-    return clauses.join(" AND ");
+    if (projects.length) clauses.push(`(${projects.join(" OR ")})`);
+    const waiting = this.getFilterSelections("waiting");
+    if (waiting.length) clauses.push(`(${waiting.join(" OR ")})`);
+    const effort = this.getFilterSelections("effort");
+    if (effort.length) clauses.push(`(${effort.join(" OR ")})`);
+    const time = this.getFilterSelections("time");
+    if (time.length) clauses.push(`(${time.join(" OR ")})`);
+    return clauses.length ? clauses.join(" AND ") : "All tasks";
   }
 
   renderAssociationFlyout() {
     const contextContainer = this.elements.associationContextOptions;
     const peopleContainer = this.elements.associationPeopleOptions;
     const projectContainer = this.elements.associationProjectOptions;
+    const waitingContainer = this.elements.associationWaitingOptions;
+    const effortContainer = this.elements.associationEffortOptions;
+    const timeContainer = this.elements.associationTimeOptions;
     if (!contextContainer || !peopleContainer || !projectContainer) return;
 
     const contexts = this.taskManager
@@ -1119,9 +1000,25 @@ export class UIController {
         })),
     ];
 
+    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
+    const waitingOn = new Set();
+    const effortLevels = new Set([...EFFORT_LEVELS]);
+    const timeEstimates = new Set([...TIME_REQUIREMENTS]);
+    allTasks.forEach((task) => {
+      if (task.waitingFor) waitingOn.add(task.waitingFor);
+      if (task.effortLevel) effortLevels.add(task.effortLevel);
+      if (task.timeRequired) timeEstimates.add(task.timeRequired);
+    });
+    const waiting = Array.from(waitingOn).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+    const effort = Array.from(effortLevels).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+    const time = Array.from(timeEstimates).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+
     this.renderAssociationFlyoutGroup("person", peopleContainer, people, "No people tags yet.");
     this.renderAssociationFlyoutGroup("context", contextContainer, contexts, "No contexts yet.");
     this.renderAssociationFlyoutGroup("project", projectContainer, projects, "No projects yet.");
+    this.renderAssociationFlyoutGroup("waiting", waitingContainer, waiting, "No waiting items.");
+    this.renderAssociationFlyoutGroup("effort", effortContainer, effort, "No effort levels used.");
+    this.renderAssociationFlyoutGroup("time", timeContainer, time, "No time estimates used.");
 
     if (this.elements.associationFlyoutSummary) {
       this.elements.associationFlyoutSummary.textContent = this.formatAssociationExpression();
@@ -3240,11 +3137,6 @@ export class UIController {
     const flags = this.taskManager.getFeatureFlags();
     const entries = [
       {
-        key: "showFiltersCard",
-        label: "Show Filters Sidebar Card",
-        description: "Display the Filters card in the left sidebar.",
-      },
-      {
         key: "showDaysSinceTouched",
         label: "Show Days Since Touched",
         description: "Display how many days ago each task was last updated on task cards.",
@@ -3544,13 +3436,6 @@ export class UIController {
       makeField("Default event duration (minutes)", durationInput),
       saveBtn,
     );
-  }
-
-  applyFeatureFlags() {
-    const flags = this.taskManager.getFeatureFlags();
-    if (this.elements.sidebarFiltersCard) {
-      this.elements.sidebarFiltersCard.hidden = !flags.showFiltersCard;
-    }
   }
 
   buildSettingsUsageCounts() {
@@ -8050,7 +7935,9 @@ function mapElements() {
     associationContextOptions: byId("associationContextOptions"),
     associationPeopleOptions: byId("associationPeopleOptions"),
     associationProjectOptions: byId("associationProjectOptions"),
-    sidebarFiltersCard: document.querySelector(".filters-card"),
+    associationWaitingOptions: byId("associationWaitingOptions"),
+    associationEffortOptions: byId("associationEffortOptions"),
+    associationTimeOptions: byId("associationTimeOptions"),
     alerts: document.querySelector(".alerts"),
     workspaceToolbar: document.querySelector(".workspace-toolbar"),
     toolbarSearchSection: byId("toolbarSearchSection"),
@@ -8060,24 +7947,6 @@ function mapElements() {
     toolbarActionsNote: byId("toolbarActionsNote"),
     nextProjectFanoutControl: byId("nextProjectFanoutControl"),
     nextHideScheduledControl: byId("nextHideScheduledControl"),
-    contextFilterPicker: byId("contextFilterPicker"),
-    contextFilterToggle: byId("contextFilterToggle"),
-    contextFilterOptions: byId("contextFilterOptions"),
-    projectFilterPicker: byId("projectFilterPicker"),
-    projectFilterToggle: byId("projectFilterToggle"),
-    projectFilterOptions: byId("projectFilterOptions"),
-    personFilterPicker: byId("personFilterPicker"),
-    personFilterToggle: byId("personFilterToggle"),
-    personFilterOptions: byId("personFilterOptions"),
-    waitingFilterPicker: byId("waitingFilterPicker"),
-    waitingFilterToggle: byId("waitingFilterToggle"),
-    waitingFilterOptions: byId("waitingFilterOptions"),
-    effortFilterPicker: byId("effortFilterPicker"),
-    effortFilterToggle: byId("effortFilterToggle"),
-    effortFilterOptions: byId("effortFilterOptions"),
-    timeFilterPicker: byId("timeFilterPicker"),
-    timeFilterToggle: byId("timeFilterToggle"),
-    timeFilterOptions: byId("timeFilterOptions"),
     quickAddInput: byId("quickAddInput"),
     quickAddDescription: byId("quickAddDescription"),
     searchTasks: byId("searchTasks"),

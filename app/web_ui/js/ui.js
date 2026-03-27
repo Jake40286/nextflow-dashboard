@@ -472,6 +472,10 @@ export class UIController {
       const { remoteDevice } = event.detail;
       this.showToast("warn", `Merged changes from ${remoteDevice}. Review your tasks — last-write-wins was applied.`);
     });
+
+    this.taskManager.addEventListener("versionchange", () => {
+      this.showUpdateBanner();
+    });
   }
 
   setupSummaryTabs() {
@@ -7641,6 +7645,26 @@ export class UIController {
       modal.removeAttribute("hidden");
       setTimeout(() => okBtn?.focus(), 50);
     });
+  }
+
+  showUpdateBanner() {
+    // Defer if user is mid-clarify flow; re-check when state settles
+    if (this.clarifyState?.taskId) {
+      this.taskManager.addEventListener(
+        "statechange",
+        () => { if (!this.clarifyState?.taskId) this.showUpdateBanner(); },
+        { once: true },
+      );
+      return;
+    }
+    if (document.getElementById("update-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "update-banner";
+    banner.className = "update-banner";
+    banner.innerHTML = `<span class="update-banner-text">A new version is available.</span><button class="update-banner-reload btn-sm" type="button">Reload</button><button class="update-banner-dismiss" type="button" aria-label="Dismiss">✕</button>`;
+    banner.querySelector(".update-banner-reload").addEventListener("click", () => location.reload());
+    banner.querySelector(".update-banner-dismiss").addEventListener("click", () => banner.remove());
+    document.body.prepend(banner);
   }
 
   showToast(level, message) {

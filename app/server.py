@@ -4,8 +4,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 import json
 import os
+import subprocess
 import sys
 import threading
+import time
 
 try:
     from google_calendar import GoogleCalendarSync
@@ -17,6 +19,21 @@ except Exception:  # noqa: BLE001
     StateBackupManager = None
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _compute_server_version():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=BASE_DIR,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:  # noqa: BLE001
+        return str(int(time.time()))
+
+
+SERVER_VERSION = _compute_server_version()
 WEB_ROOT = BASE_DIR / "web_ui"
 STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
@@ -186,6 +203,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     payload["completedProjects"] = completed_blob.get("completedProjects", payload.get("completedProjects"))
             except json.JSONDecodeError:
                 pass
+        payload["_serverVersion"] = SERVER_VERSION
         self._send_json(payload)
 
     def _handle_state_write(self):

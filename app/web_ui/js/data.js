@@ -379,6 +379,7 @@ export class TaskManager extends EventTarget {
     this.lastLocalSignature = hashState(this.state);
     this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
+    this.serverVersion = null;
     this.loadFromLocal();
     if (this.remoteSyncEnabled) {
       this.loadRemoteState();
@@ -388,6 +389,7 @@ export class TaskManager extends EventTarget {
   async loadRemoteState(options = {}) {
     try {
       const remoteState = await readServerState();
+      this._checkServerVersion(remoteState);
       const nextState = options.replaceLocal
         ? hydrateState(remoteState || EMPTY_STATE)
         : hydrateState(mergeStates(remoteState || {}, this.state || {}));
@@ -440,6 +442,7 @@ export class TaskManager extends EventTarget {
     this.pendingRemoteState = payload;
     try {
       const serverState = await readServerState();
+      this._checkServerVersion(serverState);
       const serverSig = hashState(serverState || {});
       if (serverSig && serverSig !== this.remoteSignature) {
         // Merge conflicts: prefer most recently updated entities.
@@ -480,6 +483,17 @@ export class TaskManager extends EventTarget {
       if (options?.rethrow) {
         throw error;
       }
+    }
+  }
+
+  _checkServerVersion(remoteState) {
+    const v = remoteState?._serverVersion;
+    if (!v) return;
+    if (this.serverVersion === null) {
+      this.serverVersion = v;
+    } else if (v !== this.serverVersion) {
+      this.serverVersion = v;
+      this.dispatchEvent(new CustomEvent("versionchange"));
     }
   }
 

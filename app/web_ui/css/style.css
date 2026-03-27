@@ -3407,6 +3407,43 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px var(--space-4);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  color: color-mix(in srgb, var(--accent-strong) 80%, var(--text));
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.update-banner-text {
+  flex: 1;
+}
+
+.update-banner-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.update-banner-dismiss:hover {
+  opacity: 1;
+}
+
 .toast {
   display: inline-flex;
   align-items: center;

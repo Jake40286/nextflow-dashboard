@@ -186,6 +186,7 @@ export class UIController {
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
     this.setupLightbox();
+    this.setupFeedbackWidget();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -5006,6 +5007,62 @@ export class UIController {
     const nextIndex = currentIndex + direction;
     if (nextIndex < 0 || nextIndex >= taskIds.length) return;
     this.openTaskFlyout(taskIds[nextIndex]);
+  }
+
+  setupFeedbackWidget() {
+    const toggle = document.getElementById("feedbackToggle");
+    const popover = document.getElementById("feedbackPopover");
+    const closeBtn = document.getElementById("feedbackClose");
+    const form = document.getElementById("feedbackForm");
+    const textarea = document.getElementById("feedbackDescription");
+    if (!toggle || !popover || !form) return;
+
+    const setOpen = (open) => {
+      popover.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.textContent = open ? "×" : "+";
+      if (open) textarea?.focus();
+    };
+
+    toggle.addEventListener("click", () => setOpen(popover.hidden));
+    closeBtn?.addEventListener("click", () => setOpen(false));
+
+    // Close on outside click
+    document.addEventListener("click", (event) => {
+      if (!popover.hidden && !event.target.closest("#feedbackWidget")) {
+        setOpen(false);
+      }
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const type = data.get("feedbackType");
+      const description = textarea.value.trim();
+      if (!type || !description) return;
+      const submitBtn = form.querySelector(".feedback-submit");
+      submitBtn.disabled = true;
+      try {
+        const response = await fetch("/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            description,
+            panel: this.activePanel || "",
+            createdAt: new Date().toISOString(),
+          }),
+        });
+        if (!response.ok) throw new Error("Submit failed");
+        form.reset();
+        setOpen(false);
+        this.showToast("info", "Feedback received. Thanks!");
+      } catch (error) {
+        this.showToast("error", "Could not submit feedback. Check connection.");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
   }
 
   setupLightbox() {

@@ -903,5 +903,24 @@
   <dialog id="lightboxDialog" class="lightbox-dialog" aria-label="Image viewer">
     <img id="lightboxImg" src="" alt="" class="lightbox-img" />
   </dialog>
+
+  <div id="feedbackWidget" class="feedback-widget">
+    <button id="feedbackToggle" class="feedback-toggle" type="button" aria-label="Send feedback" aria-expanded="false" aria-controls="feedbackPopover">&#43;</button>
+    <div id="feedbackPopover" class="feedback-popover" hidden>
+      <header class="feedback-popover-header">
+        <span>Send feedback</span>
+        <button id="feedbackClose" class="feedback-close" type="button" aria-label="Close feedback">&#215;</button>
+      </header>
+      <form id="feedbackForm" class="feedback-form">
+        <fieldset class="feedback-type-group">
+          <legend class="visually-hidden">Feedback type</legend>
+          <label class="feedback-type-pill"><input type="radio" name="feedbackType" value="bug" required /> Bug</label>
+          <label class="feedback-type-pill"><input type="radio" name="feedbackType" value="feature" /> Feature</label>
+        </fieldset>
+        <textarea id="feedbackDescription" class="feedback-textarea" rows="4" placeholder="Describe the bug or feature request..." required></textarea>
+        <button type="submit" class="btn btn-primary feedback-submit">Submit</button>
+      </form>
+    </div>
+  </div>
 </body>
 </html>

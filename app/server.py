@@ -44,6 +44,8 @@ COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
 CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json"))
 STATE_LOCK = threading.Lock()
 IMAGES_DIR = Path(os.getenv("IMAGES_DIR", "/data/images"))
+FEEDBACK_FILE = Path(os.getenv("FEEDBACK_FILE", "/data/feedback.json"))
+FEEDBACK_LOCK = threading.Lock()
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 _ALLOWED_IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
 _CALENDAR_SYNC_LOCK = threading.Lock()
@@ -181,6 +183,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def _is_cleanup_endpoint(self):
         return urlparse(self.path).path.rstrip("/") == "/admin/cleanup-images"
 
+    def _is_feedback_endpoint(self):
+        return urlparse(self.path).path.rstrip("/") == "/feedback"
+
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -204,6 +209,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         if self._is_image_endpoint():
             self._handle_image_get()
             return
+        if self._is_feedback_endpoint():
+            self._handle_feedback_get()
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -218,6 +226,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         if self._is_cleanup_endpoint():
             self._handle_cleanup()
+            return
+        if self._is_feedback_endpoint():
+            self._handle_feedback_post()
             return
         super().do_POST()
 
@@ -334,6 +345,47 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(result)
         except Exception as error:  # noqa: BLE001
             self._send_json({"error": str(error)}, status=500)
+
+    def _handle_feedback_get(self):
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+        self._send_json(items)
+
+    def _handle_feedback_post(self):
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            self._send_json({"error": "Request body required"}, status=400)
+            return
+        try:
+            raw = self.rfile.read(content_length)
+            payload = json.loads(raw.decode("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+        feedback_type = str(payload.get("type", "")).strip()
+        description = str(payload.get("description", "")).strip()
+        if feedback_type not in ("bug", "feature") or not description:
+            self._send_json({"error": "type (bug|feature) and description are required"}, status=400)
+            return
+        item = {
+            "id": _uuid.uuid4().hex,
+            "type": feedback_type,
+            "description": description,
+            "createdAt": payload.get("createdAt", ""),
+            "panel": str(payload.get("panel", "")).strip(),
+        }
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            items.append(item)
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok", "id": item["id"]})
 
     def _handle_state_get(self):
         self._ensure_state_dir()

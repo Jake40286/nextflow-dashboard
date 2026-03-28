@@ -452,7 +452,7 @@ export class TaskManager extends EventTarget {
       this.state = nextState;
       // Signature uses only the slim payload so it stays comparable with
       // future flushRemoteQueue reads (which also receive a slim /state).
-      this.remoteSignature = hashState(_slimStateForHash(remoteState) || {});
+      this.remoteSignature = hashState(slimStateForHash(remoteState) || {});
       this._completedDataLoaded = true;
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
@@ -540,7 +540,7 @@ export class TaskManager extends EventTarget {
       this._checkServerVersion(serverState);
       // Compare using slim signatures — /state no longer includes completion
       // collections, so hash only the fields the server actually returns.
-      const serverSig = hashState(_slimStateForHash(serverState) || {});
+      const serverSig = hashState(slimStateForHash(serverState) || {});
       if (serverSig && serverSig !== this.remoteSignature) {
         // Conflict detected. Fetch completion history so mergeStates() has
         // full tombstone data and won't resurrect tasks deleted on another device.
@@ -565,7 +565,7 @@ export class TaskManager extends EventTarget {
       await writeServerState(this.pendingRemoteState);
       // Keep signature in sync with what the server will return on the next
       // read — a slim payload without completion collections.
-      this.remoteSignature = hashState(_slimStateForHash(this.pendingRemoteState) || {});
+      this.remoteSignature = hashState(slimStateForHash(this.pendingRemoteState) || {});
       this.lastSyncInfo = this.pendingRemoteState.syncMeta;
       this.pendingRemoteState = null;
       this.setConnectionStatus("online");
@@ -3033,10 +3033,12 @@ function hashState(state) {
 // Strip completion-log collections before hashing so that local state (which
 // always holds completion history) produces a signature compatible with the
 // slim /state payload the server returns (which omits those collections).
-function _slimStateForHash(state) {
+function slimStateForHash(state) {
   if (!state || typeof state !== "object") return state;
-  // eslint-disable-next-line no-unused-vars
-  const { completionLog, reference, completedProjects, ...slim } = state;
+  const slim = { ...state };
+  delete slim.completionLog;
+  delete slim.reference;
+  delete slim.completedProjects;
   return slim;
 }
 
@@ -3169,6 +3171,7 @@ export const __testing = {
   toTimestamp,
   advanceRecurrence,
   normalizeRecurrenceRule,
+  slimStateForHash,
 };
 
 function getCompletionFormatter(grouping) {

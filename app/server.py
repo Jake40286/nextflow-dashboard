@@ -195,20 +195,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         accept_encoding = self.headers.get("Accept-Encoding", "")
         if "gzip" in accept_encoding and len(encoded) > 512:
             body = gzip.compress(encoded, compresslevel=6)
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Encoding", "gzip")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            extra_headers = [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
         else:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
+            body = encoded
+            extra_headers = []
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        for name, value in extra_headers:
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _ensure_state_dir(self):
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -450,6 +448,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._send_json({"status": "ok", "removed": before - len(kept)})
 
     def _handle_state_get(self):
+        # Completion history (completionLog, reference, completedProjects) is
+        # intentionally excluded here — it is served separately at GET /completed
+        # and lazy-loaded by the Statistics and Reports panels only.
         self._ensure_state_dir()
         with STATE_LOCK:
             payload = {}
@@ -458,20 +459,6 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     payload = json.loads(STATE_FILE.read_text(encoding="utf-8") or "{}")
             except json.JSONDecodeError:
                 payload = {}
-            try:
-                if COMPLETED_FILE.exists():
-                    completed_blob = json.loads(COMPLETED_FILE.read_text(encoding="utf-8") or "{}")
-                    payload["reference"] = completed_blob.get("reference", payload.get("reference"))
-                    payload["completionLog"] = completed_blob.get("completionLog", payload.get("completionLog"))
-                    payload["completedProjects"] = completed_blob.get("completedProjects", payload.get("completedProjects"))
-            except json.JSONDecodeError:
-                pass
-        # Strip completion history — served separately at GET /completed.
-        # This keeps the /state payload small; clients lazy-load /completed
-        # only for the Statistics and Reports panels.
-        payload.pop("completionLog", None)
-        payload.pop("reference", None)
-        payload.pop("completedProjects", None)
         payload["_serverVersion"] = SERVER_VERSION
         self._send_json(payload)
 

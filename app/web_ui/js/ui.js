@@ -6684,10 +6684,12 @@ export class UIController {
     emptyEffort.value = "";
     emptyEffort.textContent = "Select effort";
     effortInput.append(emptyEffort);
+    const effortTooltips = { low: "Low — routine tasks needing little mental energy", medium: "Medium — tasks requiring sustained focus", high: "High — complex tasks needing deep concentration" };
     EFFORT_LEVELS.forEach((level) => {
       const option = document.createElement("option");
       option.value = level;
       option.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+      option.title = effortTooltips[level] || "";
       effortInput.append(option);
     });
     effortInput.value = task.effortLevel || "";

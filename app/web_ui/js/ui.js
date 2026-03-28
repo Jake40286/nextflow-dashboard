@@ -1651,9 +1651,11 @@ export class UIController {
     const filterArea = this.elements.projectAreaFilter?.value || "all";
     const allTasks = this.taskManager.getTasks({ includeCompleted: false });
     const hasNextAction = new Map();
+    const taskCountByProject = new Map();
     allTasks.forEach((task) => {
-      if (!task.projectId || task.status !== STATUS.NEXT) return;
-      hasNextAction.set(task.projectId, true);
+      if (!task.projectId) return;
+      if (task.status === STATUS.NEXT) hasNextAction.set(task.projectId, true);
+      taskCountByProject.set(task.projectId, (taskCountByProject.get(task.projectId) || 0) + 1);
     });
     const projects = (this.projectCache || []).filter((project) => {
       if (!filterArea || filterArea === "all") return true;
@@ -1687,12 +1689,14 @@ export class UIController {
 
       const missingNext = !project.someday && !hasNextAction.get(project.id);
       const missingArea = !project.areaOfFocus;
+      const taskCount = taskCountByProject.get(project.id) || 0;
       const summary = document.createElement("summary");
       summary.innerHTML = `
         <strong>${project.name}</strong>
         <span class="muted small-text">${project.tags.join(", ") || "No tags"}</span>
         ${missingNext ? '<span class="badge badge-warning">No next action</span>' : ""}
         ${missingArea ? '<span class="badge badge-warning">No area</span>' : ""}
+        <span class="badge project-task-count" title="${taskCount} active task${taskCount !== 1 ? "s" : ""}">${taskCount}</span>
       `;
 
       summary.addEventListener("click", () => {

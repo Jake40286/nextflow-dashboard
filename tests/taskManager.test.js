@@ -89,7 +89,7 @@ test("restoreCompletedTask rehydrates task and reattaches to project", () => {
   assert.deepEqual(manager.state.projects[0].tasks, ["task-sample"], "project relinked");
 });
 
-const { mergeStates } = __testing;
+const { mergeStates, slimStateForHash } = __testing;
 
 test("mergeStates honors removal markers from reference entries", () => {
   const remoteState = {
@@ -610,6 +610,247 @@ test("archived task notes can be edited and deleted", () => {
   assert.equal(deleted, true);
   const archived = manager.getCompletedTaskById(task.id);
   assert.equal(archived.notes.length, 0);
+});
+
+// ─── slimStateForHash ────────────────────────────────────────────────────────
+
+test("slimStateForHash strips completion collections and preserves other fields", () => {
+  const full = {
+    tasks: [{ id: "t-1" }],
+    projects: [{ id: "p-1" }],
+    completionLog: [{ id: "c-1" }],
+    reference: [{ id: "r-1" }],
+    completedProjects: [{ id: "cp-1" }],
+    settings: { theme: "dark" },
+    syncMeta: { deviceId: "dev-1" },
+  };
+
+  const slim = slimStateForHash(full);
+
+  assert.ok(!("completionLog" in slim), "completionLog stripped");
+  assert.ok(!("reference" in slim), "reference stripped");
+  assert.ok(!("completedProjects" in slim), "completedProjects stripped");
+  assert.deepEqual(slim.tasks, full.tasks, "tasks preserved");
+  assert.deepEqual(slim.projects, full.projects, "projects preserved");
+  assert.deepEqual(slim.settings, full.settings, "settings preserved");
+  assert.deepEqual(slim.syncMeta, full.syncMeta, "syncMeta preserved");
+});
+
+test("slimStateForHash does not mutate the original object", () => {
+  const full = {
+    tasks: [],
+    completionLog: [{ id: "c-1" }],
+    reference: [],
+    completedProjects: [],
+  };
+
+  slimStateForHash(full);
+
+  assert.deepEqual(full.completionLog, [{ id: "c-1" }], "original completionLog unchanged");
+});
+
+test("slimStateForHash handles null and non-object input safely", () => {
+  assert.equal(slimStateForHash(null), null);
+  assert.equal(slimStateForHash(undefined), undefined);
+  assert.equal(slimStateForHash("string"), "string");
+  assert.equal(slimStateForHash(42), 42);
+});
+
+// ─── mergeStates with slim (Phase-6b) remote payloads ────────────────────────
+
+test("mergeStates with absent completionLog on remote preserves local completion log", () => {
+  const remoteState = {
+    tasks: [{ id: "t-1", title: "Remote task", updatedAt: "2026-01-01T00:00:00.000Z" }],
+    // completionLog intentionally absent — simulates Phase-6b slim /state response
+  };
+  const localState = {
+    tasks: [{ id: "t-1", title: "Remote task", updatedAt: "2026-01-01T00:00:00.000Z" }],
+    completionLog: [{ id: "c-1", title: "Done task", completedAt: "2025-12-01T00:00:00.000Z" }],
+    reference: [{ id: "r-1", title: "Archived task", completedAt: "2025-11-01T00:00:00.000Z" }],
+    completedProjects: [],
+  };
+
+  const merged = mergeStates(remoteState, localState);
+
+  assert.equal(merged.completionLog.length, 1, "local completionLog preserved when remote omits it");
+  assert.equal(merged.reference.length, 1, "local reference preserved when remote omits it");
+});
+
+test("mergeStates with slim remote still prevents task resurrection via local completion markers", () => {
+  // Simulates: task completed locally, remote still has it (slim payload, no remoteState.completionLog)
+  const remoteState = {
+    tasks: [{ id: "t-zombie", title: "Should stay gone", updatedAt: "2026-01-01T00:00:00.000Z" }],
+    // no completionLog
+  };
+  const localState = {
+    tasks: [],
+    completionLog: [],
+    reference: [
+      {
+        id: "t-zombie",
+        archivedAt: "2026-02-01T00:00:00.000Z",
+        completedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ],
+  };
+
+  const merged = mergeStates(remoteState, localState);
+
+  assert.equal(merged.tasks.length, 0, "task completed locally stays removed even with slim remote state");
+});
+
+// ─── persistLocally debounce ─────────────────────────────────────────────────
+
+function createManagerWithStorage() {
+  const stored = {};
+  const storage = {
+    setItem: (key, value) => { stored[key] = value; },
+    getItem: (key) => stored[key] ?? null,
+    _stored: stored,
+  };
+  const manager = createManager();
+  manager.storage = storage;
+  return { manager, storage };
+}
+
+test("persistLocally sets a debounce timer without writing immediately", () => {
+  const { manager } = createManagerWithStorage();
+  // No mutations — storage injection alone must not set a timer
+  assert.equal(manager._localPersistTimer, null, "no timer before call");
+
+  manager.persistLocally();
+  assert.ok(manager._localPersistTimer !== null, "timer set after persistLocally()");
+
+  clearTimeout(manager._localPersistTimer);
+  manager._localPersistTimer = null;
+});
+
+test("persistLocally resets the timer when called multiple times rapidly", () => {
+  const { manager } = createManagerWithStorage();
+
+  manager.persistLocally();
+  const firstTimer = manager._localPersistTimer;
+
+  manager.persistLocally();
+  const secondTimer = manager._localPersistTimer;
+
+  assert.notEqual(firstTimer, secondTimer, "timer is replaced on each call");
+
+  clearTimeout(manager._localPersistTimer);
+  manager._localPersistTimer = null;
+});
+
+test("_persistLocallyNow writes state to storage synchronously and clears the timer", () => {
+  const { manager, storage } = createManagerWithStorage();
+  manager.addTask({ title: "Flush me now" });
+
+  manager.persistLocally(); // set debounce timer
+  assert.ok(manager._localPersistTimer !== null);
+
+  manager._persistLocallyNow(); // immediate flush
+  assert.equal(manager._localPersistTimer, null, "timer cleared after immediate flush");
+  assert.ok(storage._stored[manager.storageKey] !== undefined, "state written to storage");
+
+  const parsed = JSON.parse(storage._stored[manager.storageKey]);
+  assert.equal(parsed.tasks[0].title, "Flush me now", "correct state persisted");
+});
+
+test("_persistLocallyNow writes current state even without a pending timer", () => {
+  const { manager, storage } = createManagerWithStorage();
+  manager.addTask({ title: "Direct flush" });
+  // addTask triggers persistLocally() — clear that timer to isolate _persistLocallyNow
+  clearTimeout(manager._localPersistTimer);
+  manager._localPersistTimer = null;
+
+  assert.equal(manager._localPersistTimer, null);
+  manager._persistLocallyNow();
+
+  assert.ok(storage._stored[manager.storageKey] !== undefined);
+  const parsed = JSON.parse(storage._stored[manager.storageKey]);
+  assert.equal(parsed.tasks[0].title, "Direct flush");
+});
+
+// ─── ensureCompletedLoaded ───────────────────────────────────────────────────
+
+function mockFetchCompleted(completedPayload) {
+  globalThis.fetch = async () => ({
+    ok: true,
+    text: async () => JSON.stringify(completedPayload),
+  });
+}
+
+test("ensureCompletedLoaded does nothing when remoteSyncEnabled is false", async () => {
+  const manager = createManager();
+  // remoteSyncEnabled is already false from createManager()
+  assert.equal(manager._completedDataLoaded, false);
+
+  await manager.ensureCompletedLoaded();
+
+  assert.equal(manager._completedDataLoaded, false, "not marked loaded when sync disabled");
+  assert.equal(manager.state.completionLog.length, 0, "state untouched");
+});
+
+test("ensureCompletedLoaded merges completionLog and reference into state on first call", async () => {
+  const manager = createManager();
+  manager.remoteSyncEnabled = true;
+  mockFetchCompleted({
+    completionLog: [{ id: "cl-1", title: "Logged done", completedAt: "2026-01-15T00:00:00.000Z", archiveType: "completed" }],
+    reference: [{ id: "ref-1", title: "Ref done", completedAt: "2026-01-10T00:00:00.000Z", archiveType: "reference" }],
+    completedProjects: [{ id: "cp-1", name: "Old project", completedAt: "2026-01-01T00:00:00.000Z" }],
+  });
+
+  await manager.ensureCompletedLoaded();
+
+  assert.equal(manager.state.completionLog.length, 1, "completionLog merged");
+  assert.equal(manager.state.reference.length, 1, "reference merged");
+  assert.equal(manager.state.completedProjects.length, 1, "completedProjects merged");
+  assert.equal(manager._completedDataLoaded, true, "flagged as loaded");
+
+  globalThis.fetch = undefined;
+});
+
+test("ensureCompletedLoaded is idempotent — second call skips the fetch", async () => {
+  const manager = createManager();
+  manager.remoteSyncEnabled = true;
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return { ok: true, text: async () => JSON.stringify({ completionLog: [], reference: [], completedProjects: [] }) };
+  };
+
+  await manager.ensureCompletedLoaded();
+  await manager.ensureCompletedLoaded();
+
+  assert.equal(fetchCount, 1, "fetch called only once");
+
+  globalThis.fetch = undefined;
+});
+
+test("ensureCompletedLoaded leaves _completedDataLoaded false on fetch failure to allow retry", async () => {
+  const manager = createManager();
+  manager.remoteSyncEnabled = true;
+  globalThis.fetch = async () => { throw new Error("Network error"); };
+
+  await manager.ensureCompletedLoaded(); // should not throw
+
+  assert.equal(manager._completedDataLoaded, false, "not marked loaded after failure — retry allowed");
+
+  globalThis.fetch = undefined;
+});
+
+test("ensureCompletedLoaded does not overwrite existing state when server returns empty arrays", async () => {
+  const manager = createManager({
+    completionLog: [{ id: "existing", title: "Keep me", completedAt: "2026-01-01T00:00:00.000Z", archiveType: "completed" }],
+  });
+  manager.remoteSyncEnabled = true;
+  mockFetchCompleted({ completionLog: [], reference: [], completedProjects: [] });
+
+  await manager.ensureCompletedLoaded();
+
+  assert.equal(manager.state.completionLog.length, 1, "existing completionLog not overwritten by empty server response");
+  assert.equal(manager._completedDataLoaded, true);
+
+  globalThis.fetch = undefined;
 });
 
 test.after(() => {

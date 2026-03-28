@@ -3171,6 +3171,7 @@ export const __testing = {
   toTimestamp,
   advanceRecurrence,
   normalizeRecurrenceRule,
+  slimStateForHash,
 };
 
 function getCompletionFormatter(grouping) {

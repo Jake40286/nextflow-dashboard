@@ -195,20 +195,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         accept_encoding = self.headers.get("Accept-Encoding", "")
         if "gzip" in accept_encoding and len(encoded) > 512:
             body = gzip.compress(encoded, compresslevel=6)
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Encoding", "gzip")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            extra_headers = [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
         else:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
+            body = encoded
+            extra_headers = []
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        for name, value in extra_headers:
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _ensure_state_dir(self):
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)

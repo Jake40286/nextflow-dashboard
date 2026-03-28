@@ -401,8 +401,16 @@ export class TaskManager extends EventTarget {
     this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
     this.serverVersion = null;
+    this._localPersistTimer = null;
     migrateStorageKeys(this.storage);
     this.loadFromLocal();
+    if (typeof window !== "undefined") {
+      const flush = () => this._persistLocallyNow();
+      window.addEventListener("beforeunload", flush);
+      window.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") flush();
+      });
+    }
     if (this.remoteSyncEnabled) {
       this.loadRemoteState();
     }
@@ -445,13 +453,26 @@ export class TaskManager extends EventTarget {
     }
   }
 
-  persistLocally() {
+  _persistLocallyNow() {
     if (!this.storage) return;
+    if (this._localPersistTimer) {
+      clearTimeout(this._localPersistTimer);
+      this._localPersistTimer = null;
+    }
     try {
       this.storage.setItem(this.storageKey, JSON.stringify(this.state));
     } catch (error) {
       console.error("Failed to cache state locally", error);
     }
+  }
+
+  persistLocally() {
+    if (!this.storage) return;
+    if (this._localPersistTimer) clearTimeout(this._localPersistTimer);
+    this._localPersistTimer = setTimeout(() => {
+      this._localPersistTimer = null;
+      this._persistLocallyNow();
+    }, 500);
   }
 
   persistRemotely() {
@@ -544,13 +565,13 @@ export class TaskManager extends EventTarget {
     if (!this.remoteSyncEnabled) {
       throw new Error("Remote sync unavailable.");
     }
-    this.persistLocally();
+    this._persistLocallyNow();
     // Load (and merge) the latest server state into local first, so that
     // flushRemoteQueue writes the fully-merged result rather than overwriting
     // remote changes that arrived since the last auto-save.
     await this.loadRemoteState({ rethrow: true });
     await this.flushRemoteQueue({ rethrow: true });
-    this.persistLocally();
+    this._persistLocallyNow();
   }
 
   save() {

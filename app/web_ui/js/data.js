@@ -3120,7 +3120,14 @@ function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map(
     if (removedAt) {
       const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
       if (updatedAt <= removedAt) {
-        map.delete(task.id);
+        // Remote task is stale relative to the removal marker.
+        // Only suppress it if the local copy (if any) is also not newer than the marker —
+        // a newer local copy means the task was deliberately restored after deletion.
+        const localTask = map.get(task.id);
+        const localTime = localTask ? toTimestamp(localTask.updatedAt || localTask.createdAt) : 0;
+        if (localTime <= removedAt) {
+          map.delete(task.id);
+        }
         return;
       }
     }

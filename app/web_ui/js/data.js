@@ -2886,12 +2886,13 @@ function normalizeLinkedSchedule({ calendarDate, myDayDate, calendarTime } = {})
 }
 
 function normalizeContextOptions(options, tasks = [], reference = [], completionLog = []) {
-  // Only keep contexts that are actually in use — unused ones are auto-purged.
+  // Keep explicitly-added options plus any contexts currently in use on tasks.
   const values = new Set();
   const addContext = (value) => {
     const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
     if (normalized) values.add(normalized);
   };
+  (Array.isArray(options) ? options : []).forEach((value) => addContext(value));
   (Array.isArray(tasks) ? tasks : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
   (Array.isArray(reference) ? reference : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
   (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));

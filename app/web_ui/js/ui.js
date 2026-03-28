@@ -1527,16 +1527,18 @@ export class UIController {
   buildNextActionsGroups(tasks, groupBy) {
     if (groupBy === "context") {
       const contexts = this.taskManager.getContexts();
-      if (tasks.some((t) => !t.contexts?.length) && !contexts.includes("No context")) {
-        contexts.push("No context");
-      }
+      const byContext = new Map(contexts.map((c) => [c, []]));
+      const noContext = [];
+      tasks.forEach((task) => {
+        if (!task.contexts?.length) { noContext.push(task); return; }
+        task.contexts.forEach((c) => { if (byContext.has(c)) byContext.get(c).push(task); });
+      });
+      if (noContext.length && !contexts.includes("No context")) contexts.push("No context");
       return contexts
         .map((context) => ({
           key: context,
           label: stripTagPrefix(context),
-          tasks: context === "No context"
-            ? tasks.filter((t) => !t.contexts?.length)
-            : tasks.filter((t) => t.contexts?.includes(context)),
+          tasks: context === "No context" ? noContext : (byContext.get(context) || []),
         }))
         .filter((g) => g.tasks.length);
     }
@@ -1610,11 +1612,13 @@ export class UIController {
       return;
     }
 
-    const lanes = new Set();
+    const laneTaskMap = new Map();
     activeTasks.forEach((task) => {
-      lanes.add(this.getTaskAreaOfFocus(task));
+      const lane = this.getTaskAreaOfFocus(task);
+      if (!laneTaskMap.has(lane)) laneTaskMap.set(lane, []);
+      laneTaskMap.get(lane).push(task);
     });
-    const laneOrder = Array.from(lanes).sort((a, b) => a.localeCompare(b));
+    const laneOrder = Array.from(laneTaskMap.keys()).sort((a, b) => a.localeCompare(b));
 
     laneOrder.forEach((lane) => {
       const laneSection = document.createElement("section");
@@ -1629,6 +1633,7 @@ export class UIController {
       laneGrid.className = "kanban-lane-grid";
       const laneStatuses = lane === "No Area" ? statuses : baseStatuses;
       laneGrid.style.gridTemplateColumns = `repeat(${laneStatuses.length}, minmax(200px, 1fr))`;
+      const laneTasks = laneTaskMap.get(lane);
 
       laneStatuses.forEach((status) => {
         const column = document.createElement("section");
@@ -1636,9 +1641,7 @@ export class UIController {
         column.dataset.dropzone = status;
         column.dataset.area = lane;
 
-        const items = activeTasks.filter(
-          (task) => task.status === status && this.getTaskAreaOfFocus(task) === lane
-        );
+        const items = laneTasks.filter((task) => task.status === status);
 
         const header = document.createElement("header");
         header.className = "kanban-column-header";

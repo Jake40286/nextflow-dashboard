@@ -167,28 +167,30 @@ def get_server_address():
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     """Serve static assets and expose a simple JSON state API."""
 
+    @property
+    def _parsed_path(self):
+        return urlparse(self.path).path
+
     def _is_state_endpoint(self):
-        parsed = urlparse(self.path)
-        return parsed.path.rstrip("/") == "/state"
+        return self._parsed_path.rstrip("/") == "/state"
 
     def _is_credentials_endpoint(self):
-        parsed = urlparse(self.path)
-        return parsed.path.rstrip("/") == "/credentials/google"
+        return self._parsed_path.rstrip("/") == "/credentials/google"
 
     def _is_upload_endpoint(self):
-        return urlparse(self.path).path.rstrip("/") == "/upload"
+        return self._parsed_path.rstrip("/") == "/upload"
 
     def _is_image_endpoint(self):
-        return urlparse(self.path).path.startswith("/images/")
+        return self._parsed_path.startswith("/images/")
 
     def _is_cleanup_endpoint(self):
-        return urlparse(self.path).path.rstrip("/") == "/admin/cleanup-images"
+        return self._parsed_path.rstrip("/") == "/admin/cleanup-images"
 
     def _is_feedback_endpoint(self):
-        return urlparse(self.path).path.rstrip("/") == "/feedback"
+        return self._parsed_path.rstrip("/") == "/feedback"
 
     def _is_completed_endpoint(self):
-        return urlparse(self.path).path.rstrip("/") == "/completed"
+        return self._parsed_path.rstrip("/") == "/completed"
 
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")

@@ -185,6 +185,7 @@ export class UIController {
     this.setupFlyout();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
+    this.setupLightbox();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -5005,6 +5006,33 @@ export class UIController {
     const nextIndex = currentIndex + direction;
     if (nextIndex < 0 || nextIndex >= taskIds.length) return;
     this.openTaskFlyout(taskIds[nextIndex]);
+  }
+
+  setupLightbox() {
+    const dialog = document.getElementById("lightboxDialog");
+    const img = document.getElementById("lightboxImg");
+    if (!dialog || !img) return;
+
+    // Event delegation — works for all .note-image elements rendered at any time
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest(".note-image");
+      if (!target) return;
+      img.src = target.src;
+      img.alt = target.alt;
+      dialog.showModal();
+    });
+
+    // Click on backdrop (outside the image) closes the dialog
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) {
+        dialog.close();
+      }
+    });
+
+    // Clear src after close so stale image doesn't flash on next open
+    dialog.addEventListener("close", () => {
+      img.src = "";
+    });
   }
 
   bindClarifyModal() {

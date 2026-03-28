@@ -3407,6 +3407,29 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
+.lightbox-dialog {
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 95vw;
+  max-height: 95vh;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lightbox-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+
+.lightbox-img {
+  display: block;
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+
 .note-image {
   display: block;
   max-width: 100%;

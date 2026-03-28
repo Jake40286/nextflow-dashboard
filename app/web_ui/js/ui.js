@@ -1587,9 +1587,6 @@ export class UIController {
     activeTasks.forEach((task) => {
       lanes.add(this.getTaskAreaOfFocus(task));
     });
-    if (activeTasks.some((task) => !task.projectId)) {
-      lanes.add("No Area");
-    }
     const laneOrder = Array.from(lanes).sort((a, b) => a.localeCompare(b));
 
     laneOrder.forEach((lane) => {

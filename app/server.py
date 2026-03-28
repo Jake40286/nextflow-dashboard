@@ -238,9 +238,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         super().do_PUT()
 
+    def do_PATCH(self):
+        if self._is_feedback_endpoint():
+            self._handle_feedback_patch()
+            return
+        self.send_error(405)
+
     def do_DELETE(self):
         if self._is_credentials_endpoint():
             self._handle_credentials_delete()
+            return
+        if self._is_feedback_endpoint():
+            self._handle_feedback_delete()
             return
         self.send_error(405)
 
@@ -386,6 +395,41 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
             FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
         self._send_json({"status": "ok", "id": item["id"]})
+
+    def _handle_feedback_patch(self):
+        """Mark a set of feedback items as resolved. Body: { "ids": [...] }"""
+        content_length = int(self.headers.get("Content-Length") or 0)
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8")) if content_length > 0 else {}
+        except (OSError, json.JSONDecodeError):
+            self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+        ids = set(payload.get("ids") or [])
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            for item in items:
+                if item.get("id") in ids:
+                    item["resolved"] = True
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok", "resolved": len(ids)})
+
+    def _handle_feedback_delete(self):
+        """Remove all resolved feedback items (or all if ?all=1)."""
+        purge_all = "all=1" in (urlparse(self.path).query or "")
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            before = len(items)
+            kept = [] if purge_all else [i for i in items if not i.get("resolved")]
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok", "removed": before - len(kept)})
 
     def _handle_state_get(self):
         self._ensure_state_dir()

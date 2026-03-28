@@ -481,6 +481,26 @@ export class UIController {
       }
     });
 
+    this.elements.settingsClearFeedbackBtn?.addEventListener("click", async () => {
+      const btn = this.elements.settingsClearFeedbackBtn;
+      btn.disabled = true;
+      btn.textContent = "Clearing…";
+      try {
+        const response = await fetch("/feedback", { method: "DELETE" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Clear failed");
+        const msg = data.removed === 0
+          ? "No resolved feedback to clear."
+          : `Cleared ${data.removed} resolved item${data.removed === 1 ? "" : "s"}.`;
+        this.showToast("info", msg);
+      } catch (error) {
+        this.showToast("error", error.message || "Could not clear feedback.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Clear resolved";
+      }
+    });
+
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
       if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
@@ -8381,6 +8401,7 @@ function mapElements() {
     settingsPeopleList: byId("settingsPeopleList"),
     settingsAreasList: byId("settingsAreasList"),
     settingsCleanupBtn: byId("settingsCleanupBtn"),
+    settingsClearFeedbackBtn: byId("settingsClearFeedbackBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     topbarSettings: byId("topbarSettings"),

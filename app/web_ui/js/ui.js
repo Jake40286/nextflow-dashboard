@@ -864,7 +864,9 @@ export class UIController {
 
   renderSummary() {
     const summary = this.taskManager.getSummary();
-    const calendarTotal = this.taskManager.getCalendarEntries({ filters: this.buildTaskFilters() }).length;
+    const taskFilters = this.buildTaskFilters();
+    const filteredTasks = this.taskManager.getTasks(taskFilters);
+    const calendarTotal = this.taskManager.getCalendarEntries({ filters: taskFilters }).length;
     const currentYear = new Date().getFullYear();
     const completedThisYear = this.taskManager.getCompletedTasks({ year: currentYear }).length;
     const {
@@ -888,8 +890,7 @@ export class UIController {
       summaryMyDay.textContent = this.getMyDayTasks({ applyFilters: false }).length;
     }
     if (summaryKanban) {
-      const kanbanCount = this.taskManager
-        .getTasks(this.buildTaskFilters())
+      const kanbanCount = filteredTasks
         .filter((task) => [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING].includes(task.status)).length;
       summaryKanban.textContent = kanbanCount;
     }
@@ -905,8 +906,7 @@ export class UIController {
       summaryStatistics.textContent = summary.next + summary.waiting + summary.projects + completedAll;
     }
     if (summaryAllActive) {
-      const activeCount = this.taskManager.getTasks(this.buildTaskFilters()).length;
-      summaryAllActive.textContent = activeCount;
+      summaryAllActive.textContent = filteredTasks.length;
     }
   }
 
@@ -1770,8 +1770,7 @@ export class UIController {
       });
       actions.append(deleteButton);
 
-      const allProjectTasks = this.taskManager.getTasks(this.buildTaskFilters());
-      let projectTasks = allProjectTasks
+      let projectTasks = filteredTasks
         .filter((task) => task.projectId === project.id)
         .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
 

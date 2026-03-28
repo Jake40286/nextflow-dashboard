@@ -5743,6 +5743,10 @@ export class UIController {
     const container = this.elements.clarifyContextList;
     if (!container) return;
     const normalized = nextContext.trim();
+    if (normalized.startsWith("+")) {
+      this.taskManager.notify("warn", "Use + prefixes for people tags, not contexts. Assign a person in the Who step.");
+      return;
+    }
     const label = document.createElement("label");
     label.className = "clarify-context-checkbox";
     const checkbox = document.createElement("input");

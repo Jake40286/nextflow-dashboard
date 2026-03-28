@@ -466,6 +466,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     payload["completedProjects"] = completed_blob.get("completedProjects", payload.get("completedProjects"))
             except json.JSONDecodeError:
                 pass
+        # Strip completion history — served separately at GET /completed.
+        # This keeps the /state payload small; clients lazy-load /completed
+        # only for the Statistics and Reports panels.
+        payload.pop("completionLog", None)
+        payload.pop("reference", None)
+        payload.pop("completedProjects", None)
         payload["_serverVersion"] = SERVER_VERSION
         self._send_json(payload)
 

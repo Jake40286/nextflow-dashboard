@@ -437,13 +437,23 @@ export class TaskManager extends EventTarget {
 
   async loadRemoteState(options = {}) {
     try {
-      const remoteState = await readServerState();
+      // Fetch slim /state and completion history in parallel.
+      const [remoteState, completedData] = await Promise.all([
+        readServerState(),
+        readCompletedState().catch(() => ({})),
+      ]);
       this._checkServerVersion(remoteState);
+      // Reconstitute a full remote state for merging so that removal markers
+      // (tasks completed on another device) are preserved correctly.
+      const remoteStateFull = { ...remoteState, ...completedData };
       const nextState = options.replaceLocal
-        ? hydrateState(remoteState || EMPTY_STATE)
-        : hydrateState(mergeStates(remoteState || {}, this.state || {}));
+        ? hydrateState(remoteStateFull)
+        : hydrateState(mergeStates(remoteStateFull, this.state || {}));
       this.state = nextState;
-      this.remoteSignature = hashState(remoteState || {});
+      // Signature uses only the slim payload so it stays comparable with
+      // future flushRemoteQueue reads (which also receive a slim /state).
+      this.remoteSignature = hashState(_slimStateForHash(remoteState) || {});
+      this._completedDataLoaded = true;
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
     } catch (error) {
@@ -528,10 +538,15 @@ export class TaskManager extends EventTarget {
     try {
       const serverState = await readServerState();
       this._checkServerVersion(serverState);
-      const serverSig = hashState(serverState || {});
+      // Compare using slim signatures — /state no longer includes completion
+      // collections, so hash only the fields the server actually returns.
+      const serverSig = hashState(_slimStateForHash(serverState) || {});
       if (serverSig && serverSig !== this.remoteSignature) {
-        // Merge conflicts: prefer most recently updated entities.
-        const merged = mergeStates(serverState || {}, payload);
+        // Conflict detected. Fetch completion history so mergeStates() has
+        // full tombstone data and won't resurrect tasks deleted on another device.
+        const completedData = await readCompletedState().catch(() => ({}));
+        const serverStateFull = { ...serverState, ...completedData };
+        const merged = mergeStates(serverStateFull, payload);
         this.state = hydrateState(merged);
         this.pendingRemoteState = merged;
         this.emitChange({ persist: false });
@@ -548,7 +563,9 @@ export class TaskManager extends EventTarget {
         },
       };
       await writeServerState(this.pendingRemoteState);
-      this.remoteSignature = hashState(this.pendingRemoteState);
+      // Keep signature in sync with what the server will return on the next
+      // read — a slim payload without completion collections.
+      this.remoteSignature = hashState(_slimStateForHash(this.pendingRemoteState) || {});
       this.lastSyncInfo = this.pendingRemoteState.syncMeta;
       this.pendingRemoteState = null;
       this.setConnectionStatus("online");
@@ -3011,6 +3028,16 @@ function hashState(state) {
     console.error("Failed to hash state", error);
     return null;
   }
+}
+
+// Strip completion-log collections before hashing so that local state (which
+// always holds completion history) produces a signature compatible with the
+// slim /state payload the server returns (which omits those collections).
+function _slimStateForHash(state) {
+  if (!state || typeof state !== "object") return state;
+  // eslint-disable-next-line no-unused-vars
+  const { completionLog, reference, completedProjects, ...slim } = state;
+  return slim;
 }
 
 function mergeStates(remoteState = {}, localState = {}) {

@@ -3,6 +3,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 import datetime
+import gzip
 import json
 import mimetypes
 import os
@@ -188,12 +189,23 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        accept_encoding = self.headers.get("Accept-Encoding", "")
+        if "gzip" in accept_encoding and len(encoded) > 512:
+            body = gzip.compress(encoded, compresslevel=6)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
 
     def _ensure_state_dir(self):
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -475,8 +487,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 "completionLog": core_payload.pop("completionLog", []),
                 "completedProjects": core_payload.pop("completedProjects", []),
             }
-            STATE_FILE.write_text(json.dumps(core_payload, indent=2), encoding="utf-8")
-            COMPLETED_FILE.write_text(json.dumps(completed_payload, indent=2), encoding="utf-8")
+            STATE_FILE.write_text(json.dumps(core_payload), encoding="utf-8")
+            COMPLETED_FILE.write_text(json.dumps(completed_payload), encoding="utf-8")
         self._send_json({"status": "ok"})
         settings = core_payload.get("settings", {})
         flags = settings.get("featureFlags", {})

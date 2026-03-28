@@ -586,6 +586,13 @@ export class UIController {
     this.setActivePanel(this.activePanel, { focus: false });
   }
 
+  _renderPanelIfDirty(panelId) {
+    if (!this._dirtyPanels.has(panelId)) return;
+    const method = PANEL_RENDER_FNS[panelId];
+    if (method) this[method]();
+    this._dirtyPanels.delete(panelId);
+  }
+
   setActivePanel(panelName, { focus = false } = {}) {
     if (!panelName) return;
     if (!this.panels?.some((panel) => panel.dataset.panel === panelName)) {
@@ -594,6 +601,7 @@ export class UIController {
     this.activePanel = panelName;
     storeActivePanel(panelName);
     this.applyPanelVisibility();
+    this._renderPanelIfDirty(panelName);
     if (focus) {
       const activeButton = this.panelButtons?.find((btn) => btn.dataset.panelTarget === panelName);
       activeButton?.focus();
@@ -796,25 +804,18 @@ export class UIController {
     this.closeCalendarDayContextMenu();
     this.projectCache = this.taskManager.getProjects({ includeSomeday: true });
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
+    // Always-unconditional: summary bar, flyout, global UI state
     this.updateSuggestionLists();
     this.renderSummary();
     this.renderAssociationFlyout();
-    this.renderInbox();
-    this.renderMyDay();
-    this.renderNextActions();
-    this.renderKanban();
-    this.renderProjects();
-    this.renderWaitingFor();
-    this.renderSomeday();
-    this.renderCalendar();
-    this.renderReports();
-    this.renderStatistics();
-    this.renderAllActive();
-    this.renderSettings();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
     this.applyPanelVisibility();
+    // Mark all panels dirty; only render the visible one now.
+    // Hidden panels render on-demand when the user switches to them.
+    Object.keys(PANEL_RENDER_FNS).forEach((id) => this._dirtyPanels.add(id));
+    this._renderPanelIfDirty(this.activePanel);
   }
 
   applySearchVisibility() {

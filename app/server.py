@@ -187,6 +187,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def _is_feedback_endpoint(self):
         return urlparse(self.path).path.rstrip("/") == "/feedback"
 
+    def _is_completed_endpoint(self):
+        return urlparse(self.path).path.rstrip("/") == "/completed"
+
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
         accept_encoding = self.headers.get("Accept-Encoding", "")
@@ -223,6 +226,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         if self._is_feedback_endpoint():
             self._handle_feedback_get()
+            return
+        if self._is_completed_endpoint():
+            self._handle_completed_get()
             return
         super().do_GET()
 
@@ -461,6 +467,16 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             except json.JSONDecodeError:
                 pass
         payload["_serverVersion"] = SERVER_VERSION
+        self._send_json(payload)
+
+    def _handle_completed_get(self):
+        """Return the completion-log portion of state (completionLog, reference, completedProjects)."""
+        self._ensure_state_dir()
+        with STATE_LOCK:
+            try:
+                payload = json.loads(COMPLETED_FILE.read_text(encoding="utf-8")) if COMPLETED_FILE.exists() else {}
+            except json.JSONDecodeError:
+                payload = {}
         self._send_json(payload)
 
     def _handle_state_write(self):

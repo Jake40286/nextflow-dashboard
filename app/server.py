@@ -2,12 +2,16 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
+import datetime
 import json
+import mimetypes
 import os
+import re as _re
 import subprocess
 import sys
 import threading
 import time
+import uuid as _uuid
 
 try:
     from google_calendar import GoogleCalendarSync
@@ -39,6 +43,9 @@ STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
 CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json"))
 STATE_LOCK = threading.Lock()
+IMAGES_DIR = Path(os.getenv("IMAGES_DIR", "/data/images"))
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+_ALLOWED_IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
 _CALENDAR_SYNC_LOCK = threading.Lock()
 _calendar_sync = GoogleCalendarSync.from_env() if GoogleCalendarSync else None
 _calendar_sync_key = None  # tracks (calendarId, timezone, duration) of current sync
@@ -74,6 +81,76 @@ def _get_calendar_sync(calendar_id, timezone, duration):
             return None
 
 
+def cleanup_orphaned_images():
+    """Delete images in IMAGES_DIR not referenced in any task notes or descriptions."""
+    if not IMAGES_DIR.exists():
+        return {"removed": 0, "bytes_freed": 0}
+    img_pattern = _re.compile(r'!\[[^\]]*\]\(/images/([^)]+)\)')
+    referenced = set()
+
+    def _extract(text):
+        if text:
+            for m in img_pattern.finditer(text):
+                referenced.add(m.group(1))
+
+    def _scan(tasks):
+        for task in tasks or []:
+            _extract(task.get("description"))
+            for note in task.get("notes") or []:
+                _extract(note.get("text"))
+
+    with STATE_LOCK:
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8")) if STATE_FILE.exists() else {}
+        except json.JSONDecodeError:
+            state = {}
+        try:
+            completed = json.loads(COMPLETED_FILE.read_text(encoding="utf-8")) if COMPLETED_FILE.exists() else {}
+        except json.JSONDecodeError:
+            completed = {}
+
+    _scan(state.get("tasks", []))
+    _scan(completed.get("reference", []))
+    _scan(completed.get("completionLog", []))
+
+    removed = 0
+    bytes_freed = 0
+    for f in IMAGES_DIR.iterdir():
+        if not f.is_file():
+            continue
+        if f.name not in referenced:
+            size = f.stat().st_size
+            try:
+                f.unlink()
+                removed += 1
+                bytes_freed += size
+            except OSError as error:
+                print(f"Failed to delete orphan {f.name}: {error}", file=sys.stderr)
+    return {"removed": removed, "bytes_freed": bytes_freed}
+
+
+def _schedule_nightly_cleanup():
+    """Reschedule cleanup_orphaned_images() to run daily at midnight UTC."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    delay = (midnight - now).total_seconds()
+
+    def run():
+        try:
+            result = cleanup_orphaned_images()
+            print(
+                f"Nightly image cleanup: removed {result['removed']} orphan(s), "
+                f"freed {result['bytes_freed']} bytes",
+            )
+        except Exception as error:  # noqa: BLE001
+            print(f"Nightly image cleanup failed: {error}", file=sys.stderr)
+        _schedule_nightly_cleanup()
+
+    t = threading.Timer(delay, run)
+    t.daemon = True
+    t.start()
+
+
 def get_server_address():
     host = os.getenv("HOST", "0.0.0.0")
     try:
@@ -95,6 +172,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         return parsed.path.rstrip("/") == "/credentials/google"
 
+    def _is_upload_endpoint(self):
+        return urlparse(self.path).path.rstrip("/") == "/upload"
+
+    def _is_image_endpoint(self):
+        return urlparse(self.path).path.startswith("/images/")
+
+    def _is_cleanup_endpoint(self):
+        return urlparse(self.path).path.rstrip("/") == "/admin/cleanup-images"
+
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -115,6 +201,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         if self._is_credentials_endpoint():
             self._handle_credentials_get()
             return
+        if self._is_image_endpoint():
+            self._handle_image_get()
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -123,6 +212,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         if self._is_credentials_endpoint():
             self._handle_credentials_write()
+            return
+        if self._is_upload_endpoint():
+            self._handle_upload()
+            return
+        if self._is_cleanup_endpoint():
+            self._handle_cleanup()
             return
         super().do_POST()
 
@@ -185,6 +280,60 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok"})
         except OSError as error:
             self._send_json({"error": f"Failed to remove credentials: {error}"}, status=500)
+
+    def _handle_upload(self):
+        content_type = self.headers.get("Content-Type", "").split(";")[0].strip()
+        if content_type not in _ALLOWED_IMAGE_TYPES:
+            self._send_json({"error": "Only PNG, JPEG, GIF, and WebP images are accepted"}, status=415)
+            return
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            self._send_json({"error": "Empty upload"}, status=400)
+            return
+        if content_length > MAX_UPLOAD_BYTES:
+            self._send_json({"error": f"File exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit"}, status=413)
+            return
+        try:
+            data = self.rfile.read(content_length)
+        except OSError:
+            self._send_json({"error": "Failed to read upload"}, status=500)
+            return
+        ext = _ALLOWED_IMAGE_TYPES[content_type]
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{_uuid.uuid4().hex}{ext}"
+        (IMAGES_DIR / filename).write_bytes(data)
+        self._send_json({"url": f"/images/{filename}"})
+
+    def _handle_image_get(self):
+        parsed_path = urlparse(self.path).path
+        filename = parsed_path[len("/images/"):]
+        # Prevent path traversal — filename must be a plain name with no separators
+        if not filename or "/" in filename or "\\" in filename or filename.startswith("."):
+            self.send_error(400)
+            return
+        image_path = IMAGES_DIR / filename
+        if not image_path.exists() or not image_path.is_file():
+            self.send_error(404)
+            return
+        content_type, _ = mimetypes.guess_type(str(image_path))
+        try:
+            data = image_path.read_bytes()
+        except OSError:
+            self.send_error(500)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _handle_cleanup(self):
+        try:
+            result = cleanup_orphaned_images()
+            self._send_json(result)
+        except Exception as error:  # noqa: BLE001
+            self._send_json({"error": str(error)}, status=500)
 
     def _handle_state_get(self):
         self._ensure_state_dir()
@@ -263,6 +412,7 @@ def start_server():
     httpd = ThreadingHTTPServer(server_address, DashboardRequestHandler)
     host, port = server_address
     print(f"Serving NextFlow on http://{host}:{port}")
+    _schedule_nightly_cleanup()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

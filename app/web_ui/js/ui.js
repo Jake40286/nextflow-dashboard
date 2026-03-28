@@ -458,6 +458,27 @@ export class UIController {
       this.taskManager.updateFeatureFlag(input.dataset.featureFlag, input.checked);
     });
 
+    this.elements.settingsCleanupBtn?.addEventListener("click", async () => {
+      const btn = this.elements.settingsCleanupBtn;
+      btn.disabled = true;
+      btn.textContent = "Cleaning…";
+      try {
+        const response = await fetch("/admin/cleanup-images", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Cleanup failed");
+        const mb = (data.bytes_freed / (1024 * 1024)).toFixed(2);
+        const msg = data.removed === 0
+          ? "No orphaned images found."
+          : `Removed ${data.removed} orphaned image${data.removed === 1 ? "" : "s"} (${mb} MB freed).`;
+        this.showToast("info", msg);
+      } catch (error) {
+        this.showToast("error", error.message || "Image cleanup failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Clean up now";
+      }
+    });
+
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
       if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
@@ -5872,9 +5893,9 @@ export class UIController {
     }
 
     const descriptionText = task.description?.trim();
-    const description = descriptionText ? document.createElement("p") : null;
+    const description = descriptionText ? document.createElement("div") : null;
     if (description) {
-      this.setEntityLinkedText(description, descriptionText);
+      this.setEntityLinkedTextWithImages(description, descriptionText);
       description.className = "muted";
     }
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
@@ -6318,9 +6339,9 @@ export class UIController {
         timestamp.dateTime = note.createdAt || "";
         timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
         meta.append(timestamp);
-        const text = document.createElement("p");
+        const text = document.createElement("div");
         text.className = "task-note-text";
-        this.setEntityLinkedText(text, note.text || "");
+        this.setEntityLinkedTextWithImages(text, note.text || "");
         item.append(meta, text);
         list.append(item);
       });
@@ -6345,6 +6366,20 @@ export class UIController {
     noteInput.rows = 3;
     noteInput.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
     this.attachEntityMentionAutocomplete(noteInput);
+    noteInput.addEventListener("paste", (event) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+      if (!imageItem) return;
+      event.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+      this.uploadImage(blob).then((url) => {
+        if (!url) return;
+        const md = `![](${url})`;
+        const start = noteInput.selectionStart;
+        noteInput.value = noteInput.value.slice(0, start) + md + noteInput.value.slice(noteInput.selectionEnd);
+        noteInput.selectionStart = noteInput.selectionEnd = start + md.length;
+      });
+    });
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
     const addButton = document.createElement("button");
@@ -6399,6 +6434,20 @@ export class UIController {
     descriptionInput.rows = 3;
     descriptionInput.value = task.description || "";
     this.attachEntityMentionAutocomplete(descriptionInput);
+    descriptionInput.addEventListener("paste", (event) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+      if (!imageItem) return;
+      event.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+      this.uploadImage(blob).then((url) => {
+        if (!url) return;
+        const md = `![](${url})`;
+        const start = descriptionInput.selectionStart;
+        descriptionInput.value = descriptionInput.value.slice(0, start) + md + descriptionInput.value.slice(descriptionInput.selectionEnd);
+        descriptionInput.selectionStart = descriptionInput.selectionEnd = start + md.length;
+      });
+    });
     descriptionGroup.append(descriptionInput);
 
     const slugGroup = document.createElement("label");
@@ -7101,6 +7150,61 @@ export class UIController {
     const source = typeof text === "string" ? text : "";
     element.textContent = "";
     element.append(this.createEntityLinkFragment(source));
+  }
+
+  // Like setEntityLinkedText but also renders ![alt](src) as inline <img> elements.
+  // Only /images/ paths (served by our own server) are rendered; all other src values
+  // are emitted as plain text to prevent XSS.
+  setEntityLinkedTextWithImages(element, text) {
+    if (!element) return;
+    const source = typeof text === "string" ? text : "";
+    element.textContent = "";
+    if (!source) return;
+    const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+    while ((match = imagePattern.exec(source)) !== null) {
+      if (match.index > lastIndex) {
+        fragment.append(this.createEntityLinkFragment(source.slice(lastIndex, match.index)));
+      }
+      const [, alt, src] = match;
+      if (src.startsWith("/images/")) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = alt;
+        img.className = "note-image";
+        img.loading = "lazy";
+        fragment.append(img);
+      } else {
+        fragment.append(document.createTextNode(match[0]));
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < source.length) {
+      fragment.append(this.createEntityLinkFragment(source.slice(lastIndex)));
+    }
+    element.append(fragment);
+  }
+
+  async uploadImage(blob) {
+    try {
+      const response = await fetch("/upload", {
+        method: "POST",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Upload failed (${response.status})`);
+      }
+      const data = await response.json();
+      return data.url || null;
+    } catch (error) {
+      console.error("Image upload failed", error);
+      this.showToast("error", error.message || "Image upload failed.");
+      return null;
+    }
   }
 
   createEntityLinkFragment(text) {
@@ -8108,6 +8212,7 @@ function mapElements() {
     settingsContextsList: byId("settingsContextsList"),
     settingsPeopleList: byId("settingsPeopleList"),
     settingsAreasList: byId("settingsAreasList"),
+    settingsCleanupBtn: byId("settingsCleanupBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     topbarSettings: byId("topbarSettings"),

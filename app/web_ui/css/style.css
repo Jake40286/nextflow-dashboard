@@ -3407,6 +3407,22 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
+.note-image {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  margin: var(--space-2) 0;
+  cursor: zoom-in;
+}
+
+.note-image:active {
+  cursor: zoom-out;
+}
+
+.settings-card-body {
+  padding: var(--space-3) var(--space-4);
+}
+
 .update-banner {
   position: fixed;
   top: 0;

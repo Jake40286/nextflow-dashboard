@@ -602,6 +602,16 @@ export class UIController {
     storeActivePanel(panelName);
     this.applyPanelVisibility();
     this._renderPanelIfDirty(panelName);
+    if (panelName === "statistics" || panelName === "reports") {
+      this.taskManager.ensureCompletedLoaded().then(() => {
+        // Re-render the panel once the completion data arrives, but only if still active.
+        if (this.activePanel === panelName) {
+          const method = PANEL_RENDER_FNS[panelName];
+          if (method) this[method]();
+          this.updateActivePanelMeta();
+        }
+      });
+    }
     if (focus) {
       const activeButton = this.panelButtons?.find((btn) => btn.dataset.panelTarget === panelName);
       activeButton?.focus();

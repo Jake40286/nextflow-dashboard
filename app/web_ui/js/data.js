@@ -260,6 +260,24 @@ async function readServerState() {
   }
 }
 
+async function readCompletedState() {
+  if (typeof fetch === "undefined") {
+    throw new Error("Fetch API is unavailable");
+  }
+  const response = await fetch("/completed", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Server responded with ${response.status}`);
+  }
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Invalid /completed payload", error);
+    return {};
+  }
+}
+
 async function writeServerState(state) {
   if (typeof fetch === "undefined") {
     throw new Error("Fetch API is unavailable");
@@ -402,6 +420,7 @@ export class TaskManager extends EventTarget {
     this.connectionStatus = "unknown";
     this.serverVersion = null;
     this._localPersistTimer = null;
+    this._completedDataLoaded = false;
     migrateStorageKeys(this.storage);
     this.loadFromLocal();
     if (typeof window !== "undefined") {
@@ -473,6 +492,29 @@ export class TaskManager extends EventTarget {
       this._localPersistTimer = null;
       this._persistLocallyNow();
     }, 500);
+  }
+
+  async ensureCompletedLoaded() {
+    if (this._completedDataLoaded || !this.remoteSyncEnabled) return;
+    try {
+      const completed = await readCompletedState();
+      const hasData =
+        completed.completionLog?.length ||
+        completed.reference?.length ||
+        completed.completedProjects?.length;
+      if (hasData) {
+        this.state = {
+          ...this.state,
+          completionLog: completed.completionLog || this.state.completionLog || [],
+          reference: completed.reference || this.state.reference || [],
+          completedProjects: completed.completedProjects || this.state.completedProjects || [],
+        };
+      }
+      this._completedDataLoaded = true;
+    } catch (error) {
+      console.error("Failed to load completed state", error);
+      // Leave _completedDataLoaded false so the panel can retry on next visit
+    }
   }
 
   persistRemotely() {

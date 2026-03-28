@@ -151,12 +151,12 @@ class GoogleCalendarSync:
             description = f"{description}\n\n" if description else ""
             description += "\n".join(extra_lines)
         return {
-            "summary": task.get("title", "GTD Task"),
-            "description": description or "Synced from GTD Dashboard",
+            "summary": task.get("title", "NextFlow Task"),
+            "description": description or "Synced from NextFlow",
             "start": start_payload,
             "end": end_payload,
             "extendedProperties": {
-                "private": {"taskId": task.get("id", ""), "source": "gtd-dashboard"}
+                "private": {"taskId": task.get("id", ""), "source": "nextflow"}
             },
         }
 

@@ -10,11 +10,33 @@ import {
   THEME_OPTIONS,
 } from "./data.js";
 
-const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
-const NEXT_FANOUT_KEY = "gtd-dashboard-next-fanout";
-const NEXT_HIDE_SCHEDULED_KEY = "gtd-dashboard-next-hide-scheduled";
-const NEXT_GROUP_BY_KEY = "gtd-dashboard-next-group-by";
-const NEXT_GROUP_LIMIT_KEY = "gtd-dashboard-next-group-limit";
+const TAB_STORAGE_KEY = "nextflow-active-panel";
+const NEXT_FANOUT_KEY = "nextflow-next-fanout";
+const NEXT_HIDE_SCHEDULED_KEY = "nextflow-next-hide-scheduled";
+const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
+const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
+
+// One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
+(function migrateUiStorageKeys() {
+  const pairs = [
+    ["gtd-dashboard-active-panel", TAB_STORAGE_KEY],
+    ["gtd-dashboard-next-fanout", NEXT_FANOUT_KEY],
+    ["gtd-dashboard-next-hide-scheduled", NEXT_HIDE_SCHEDULED_KEY],
+    ["gtd-dashboard-next-group-by", NEXT_GROUP_BY_KEY],
+    ["gtd-dashboard-next-group-limit", NEXT_GROUP_LIMIT_KEY],
+  ];
+  try {
+    for (const [oldKey, newKey] of pairs) {
+      const val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+      if (val !== null) localStorage.removeItem(oldKey);
+    }
+  } catch (error) {
+    /* noop — localStorage unavailable */
+  }
+})();
 const ENTITY_LINK_TOKEN_PATTERN = /([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
 
 const TRANSITIONS = {

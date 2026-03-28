@@ -1,4 +1,5 @@
-const STORAGE_KEY = "gtd-dashboard-state-v1";
+const STORAGE_KEY = "nextflow-state-v1";
+const STORAGE_KEY_LEGACY = "gtd-dashboard-state-v1";
 const STATE_ENDPOINT = "/state";
 
 export const STATUS = Object.freeze({
@@ -17,7 +18,8 @@ export const PROJECT_AREAS = ["Work", "Personal", "Home", "Finance", "Health"];
 export const PROJECT_THEMES = ["Networking", "DevOps", "Automations", "Family", "Admin", "Research"];
 export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
 const SLUG_MIN_LENGTH = 5;
-const DEVICE_INFO_KEY = "gtd-dashboard-device-info";
+const DEVICE_INFO_KEY = "nextflow-device-info";
+const DEVICE_INFO_KEY_LEGACY = "gtd-dashboard-device-info";
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
@@ -365,6 +367,25 @@ function getDeviceIdentity(storage) {
   return info;
 }
 
+function migrateStorageKeys(storage) {
+  if (!storage) return;
+  const pairs = [
+    [STORAGE_KEY_LEGACY, STORAGE_KEY],
+    [DEVICE_INFO_KEY_LEGACY, DEVICE_INFO_KEY],
+  ];
+  for (const [oldKey, newKey] of pairs) {
+    try {
+      const val = storage.getItem(oldKey);
+      if (val !== null && storage.getItem(newKey) === null) {
+        storage.setItem(newKey, val);
+      }
+      if (val !== null) storage.removeItem(oldKey);
+    } catch (error) {
+      console.warn("Storage migration failed for", oldKey, error);
+    }
+  }
+}
+
 export class TaskManager extends EventTarget {
   constructor(storageKey = STORAGE_KEY) {
     super();
@@ -380,6 +401,7 @@ export class TaskManager extends EventTarget {
     this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
     this.serverVersion = null;
+    migrateStorageKeys(this.storage);
     this.loadFromLocal();
     if (this.remoteSyncEnabled) {
       this.loadRemoteState();
@@ -1319,7 +1341,7 @@ export class TaskManager extends EventTarget {
     this.state.completionLog = [];
     this.state.completedProjects = [];
     this.emitChange();
-    this.notify("info", "Restored starter GTD sample data.");
+    this.notify("info", "Restored starter sample data.");
   }
 
   deleteTask(id) {
@@ -2044,7 +2066,7 @@ export class TaskManager extends EventTarget {
 
   exportToMarkdown() {
     const headerLines = [
-      "# GTD Dashboard Tasks",
+      "# NextFlow Tasks",
       "",
       `> Exported ${new Date().toISOString()}`,
       "",

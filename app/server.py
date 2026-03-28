@@ -1,4 +1,4 @@
-"""Simple HTTP server for the GTD dashboard static files and shared state."""
+"""Simple HTTP server for the NextFlow dashboard static files and shared state."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
@@ -262,7 +262,7 @@ def start_server():
     server_address = get_server_address()
     httpd = ThreadingHTTPServer(server_address, DashboardRequestHandler)
     host, port = server_address
-    print(f"Serving GTD dashboard on http://{host}:{port}")
+    print(f"Serving NextFlow on http://{host}:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

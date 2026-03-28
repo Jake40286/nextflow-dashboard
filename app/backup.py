@@ -1,4 +1,4 @@
-"""Backup utilities for GTD Dashboard state."""
+"""Backup utilities for NextFlow state."""
 
 from __future__ import annotations
 

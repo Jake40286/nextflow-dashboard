@@ -169,7 +169,7 @@ function setupMarkdownSync() {
     const link = document.createElement("a");
     link.href = url;
     const dateStamp = new Date().toISOString().slice(0, 10);
-    link.download = `gtd-dashboard-${dateStamp}.md`;
+    link.download = `nextflow-${dateStamp}.md`;
     document.body.append(link);
     link.click();
     link.remove();

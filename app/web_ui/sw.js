@@ -1,4 +1,4 @@
-const CACHE_NAME = "gtd-dashboard-shell-v1";
+const CACHE_NAME = "nextflow-shell-v1";
 const CORE_ASSETS = [
   "/",
   "/index.html",

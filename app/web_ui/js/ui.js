@@ -5013,25 +5013,104 @@ export class UIController {
     const img = document.getElementById("lightboxImg");
     if (!dialog || !img) return;
 
+    // --- pinch-zoom state ---
+    let scale = 1;
+    let originX = 0; // transform origin within the image (px from top-left)
+    let originY = 0;
+    let panX = 0;
+    let panY = 0;
+    let lastPinchDist = null;
+    let lastPanX = null;
+    let lastPanY = null;
+    const MIN_SCALE = 1;
+    const MAX_SCALE = 8;
+
+    const applyTransform = () => {
+      img.style.transformOrigin = `${originX}px ${originY}px`;
+      img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    };
+
+    const resetTransform = () => {
+      scale = 1; originX = 0; originY = 0; panX = 0; panY = 0;
+      lastPinchDist = null; lastPanX = null; lastPanY = null;
+      img.style.transform = "";
+      img.style.transformOrigin = "";
+    };
+
+    const pinchDist = (touches) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+
+    const pinchMidpoint = (touches) => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
+
+    dialog.addEventListener("touchstart", (event) => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+        lastPinchDist = pinchDist(event.touches);
+        const mid = pinchMidpoint(event.touches);
+        const rect = img.getBoundingClientRect();
+        // Set transform origin to the pinch midpoint relative to the image
+        originX = (mid.x - rect.left) / scale;
+        originY = (mid.y - rect.top) / scale;
+        lastPanX = null;
+      } else if (event.touches.length === 1 && scale > 1) {
+        event.preventDefault();
+        lastPanX = event.touches[0].clientX;
+        lastPanY = event.touches[0].clientY;
+      }
+    }, { passive: false });
+
+    dialog.addEventListener("touchmove", (event) => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+        const dist = pinchDist(event.touches);
+        if (lastPinchDist !== null) {
+          const ratio = dist / lastPinchDist;
+          scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * ratio));
+        }
+        lastPinchDist = dist;
+        applyTransform();
+      } else if (event.touches.length === 1 && scale > 1 && lastPanX !== null) {
+        event.preventDefault();
+        panX += event.touches[0].clientX - lastPanX;
+        panY += event.touches[0].clientY - lastPanY;
+        lastPanX = event.touches[0].clientX;
+        lastPanY = event.touches[0].clientY;
+        applyTransform();
+      }
+    }, { passive: false });
+
+    dialog.addEventListener("touchend", (event) => {
+      if (event.touches.length < 2) lastPinchDist = null;
+      if (event.touches.length === 0) {
+        // Reset pan origin tracking
+        lastPanX = null;
+        // Snap back to fit if over-zoomed out
+        if (scale <= MIN_SCALE) resetTransform();
+      }
+    });
+
     // Event delegation — works for all .note-image elements rendered at any time
     document.addEventListener("click", (event) => {
       const target = event.target.closest(".note-image");
       if (!target) return;
       img.src = target.src;
       img.alt = target.alt;
+      resetTransform();
       dialog.showModal();
     });
 
     // Click on backdrop (outside the image) closes the dialog
     dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) {
-        dialog.close();
-      }
+      if (event.target === dialog) dialog.close();
     });
 
-    // Clear src after close so stale image doesn't flash on next open
+    // Clear src and transform after close
     dialog.addEventListener("close", () => {
       img.src = "";
+      resetTransform();
     });
   }
 

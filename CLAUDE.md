@@ -69,7 +69,7 @@ Env vars for overriding paths (set in `.env`): `STATE_FILE`, `COMPLETED_FILE`, `
 
 Key sync flow: every mutation calls `emitChange()` → `save()` → `persistLocally()` (debounced 500ms, flushes immediately on `beforeunload`/`visibilitychange`) + `persistRemotely()` → `flushRemoteQueue()`. On conflict, `mergeStates()` resolves with last-write-wins per entity using `updatedAt` timestamps; `collectRemovalMarkers()` prevents zombie-resurrection of deleted tasks.
 
-On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a conflict is actually detected (not on every flush). Conflict detection uses `_slimStateForHash()` to compare only the fields `/state` returns, keeping local and server signatures compatible.
+On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a conflict is actually detected (not on every flush). Conflict detection uses `slimStateForHash()` to compare only the fields `/state` returns, keeping local and server signatures compatible.
 
 **`ui.js`** — `UIController`. All DOM rendering and event handling, organized by panel. `PANEL_RENDER_FNS` is a frozen map of panel-id → render method name. `_dirtyPanels` is a Set tracking which panels need re-rendering. On `statechange`, `renderAll()` marks all panels dirty and renders only the active one; hidden panels render on-demand when `setActivePanel()` is called. Always-unconditional calls in `renderAll()`: `renderSummary()`, `renderAssociationFlyout()`, `updateSuggestionLists()`, `updateCounts()`, `syncTheme()`, `applyPanelVisibility()`.
 
@@ -103,7 +103,7 @@ Triggered asynchronously after each `POST /state`. Requires `GOOGLE_CREDENTIALS_
 Tests live in `tests/taskManager.test.js` and use Node's built-in test runner. The file:
 - Sets `globalThis.fetch = undefined` to prevent any network calls.
 - Uses `manager.remoteSyncEnabled = false` on every constructed instance.
-- Imports `__testing` from `data.js` for access to internal helpers (`mergeStates`, `hydrateState`, etc.).
+- Imports `__testing` from `data.js` for access to internal helpers (`mergeStates`, `slimStateForHash`, `hydrateState`, etc.).
 
 New tests should follow this pattern — no server required, no mocking framework.
 

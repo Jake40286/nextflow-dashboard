@@ -89,6 +89,21 @@ const CUSTOM_THEME_CSS_VARIABLES = Object.freeze([
   "--ring",
 ]);
 
+const PANEL_RENDER_FNS = Object.freeze({
+  inbox: "renderInbox",
+  "my-day": "renderMyDay",
+  next: "renderNextActions",
+  kanban: "renderKanban",
+  projects: "renderProjects",
+  waiting: "renderWaitingFor",
+  someday: "renderSomeday",
+  calendar: "renderCalendar",
+  reports: "renderReports",
+  statistics: "renderStatistics",
+  "all-active": "renderAllActive",
+  settings: "renderSettings",
+});
+
 export class UIController {
   constructor(taskManager) {
     this.taskManager = taskManager;
@@ -169,6 +184,7 @@ export class UIController {
     this.boundEntityMentionInputs = new WeakSet();
     this.entityMentionDismissHandler = null;
     this.entityMentionRepositionHandler = null;
+    this._dirtyPanels = new Set();
   }
 
   init() {

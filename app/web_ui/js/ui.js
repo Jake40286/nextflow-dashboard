@@ -10,11 +10,33 @@ import {
   THEME_OPTIONS,
 } from "./data.js";
 
-const TAB_STORAGE_KEY = "gtd-dashboard-active-panel";
-const NEXT_FANOUT_KEY = "gtd-dashboard-next-fanout";
-const NEXT_HIDE_SCHEDULED_KEY = "gtd-dashboard-next-hide-scheduled";
-const NEXT_GROUP_BY_KEY = "gtd-dashboard-next-group-by";
-const NEXT_GROUP_LIMIT_KEY = "gtd-dashboard-next-group-limit";
+const TAB_STORAGE_KEY = "nextflow-active-panel";
+const NEXT_FANOUT_KEY = "nextflow-next-fanout";
+const NEXT_HIDE_SCHEDULED_KEY = "nextflow-next-hide-scheduled";
+const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
+const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
+
+// One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
+(function migrateUiStorageKeys() {
+  const pairs = [
+    ["gtd-dashboard-active-panel", TAB_STORAGE_KEY],
+    ["gtd-dashboard-next-fanout", NEXT_FANOUT_KEY],
+    ["gtd-dashboard-next-hide-scheduled", NEXT_HIDE_SCHEDULED_KEY],
+    ["gtd-dashboard-next-group-by", NEXT_GROUP_BY_KEY],
+    ["gtd-dashboard-next-group-limit", NEXT_GROUP_LIMIT_KEY],
+  ];
+  try {
+    for (const [oldKey, newKey] of pairs) {
+      const val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+      if (val !== null) localStorage.removeItem(oldKey);
+    }
+  } catch (error) {
+    /* noop — localStorage unavailable */
+  }
+})();
 const ENTITY_LINK_TOKEN_PATTERN = /([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
 
 const TRANSITIONS = {
@@ -134,6 +156,10 @@ export class UIController {
     this.calendarDayContextMenuHandlersBound = false;
     this.handleCalendarDayMenuDismiss = null;
     this.handleCalendarDayMenuEscape = null;
+    this.contextColumnMenuState = null;
+    this.contextColumnMenuHandlersBound = false;
+    this.handleContextColumnMenuDismiss = null;
+    this.handleContextColumnMenuEscape = null;
     this.showMissingNextOnly = false;
     this.showProjectCompletedTasks = false;
     this.selectedSettingsContext = null;
@@ -155,9 +181,11 @@ export class UIController {
     this.setupTaskNoteContextMenu();
     this.setupTaskListItemContextMenu();
     this.setupCalendarDayContextMenu();
+    this.setupContextColumnContextMenu();
     this.setupFlyout();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
+    this.setupLightbox();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -183,8 +211,6 @@ export class UIController {
       calendarNextMonth,
       calendarShowCompleted,
       manualSyncButton,
-      waitingFilterToggle,
-      waitingFilterOptions,
       summaryAllActive,
       toggleNextProjectFanout,
       toggleHideScheduledNext,
@@ -433,6 +459,27 @@ export class UIController {
       this.taskManager.updateFeatureFlag(input.dataset.featureFlag, input.checked);
     });
 
+    this.elements.settingsCleanupBtn?.addEventListener("click", async () => {
+      const btn = this.elements.settingsCleanupBtn;
+      btn.disabled = true;
+      btn.textContent = "Cleaning…";
+      try {
+        const response = await fetch("/admin/cleanup-images", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Cleanup failed");
+        const mb = (data.bytes_freed / (1024 * 1024)).toFixed(2);
+        const msg = data.removed === 0
+          ? "No orphaned images found."
+          : `Removed ${data.removed} orphaned image${data.removed === 1 ? "" : "s"} (${mb} MB freed).`;
+        this.showToast("info", msg);
+      } catch (error) {
+        this.showToast("error", error.message || "Image cleanup failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Clean up now";
+      }
+    });
+
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
       if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
@@ -468,6 +515,10 @@ export class UIController {
     this.taskManager.addEventListener("syncconflict", (event) => {
       const { remoteDevice } = event.detail;
       this.showToast("warn", `Merged changes from ${remoteDevice}. Review your tasks — last-write-wins was applied.`);
+    });
+
+    this.taskManager.addEventListener("versionchange", () => {
+      this.showUpdateBanner();
     });
   }
 
@@ -710,7 +761,6 @@ export class UIController {
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     this.updateSuggestionLists();
     this.renderSummary();
-    this.renderFilters();
     this.renderAssociationFlyout();
     this.renderInbox();
     this.renderMyDay();
@@ -724,7 +774,6 @@ export class UIController {
     this.renderStatistics();
     this.renderAllActive();
     this.renderSettings();
-    this.applyFeatureFlags();
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
@@ -840,102 +889,6 @@ export class UIController {
     }
   }
 
-  renderFilters() {
-    const contexts = this.taskManager.getContexts();
-    this.renderFilterPicker("context", {
-      options: contexts.map((context) => ({ label: context, value: context })),
-      toggle: this.elements.contextFilterToggle,
-      container: this.elements.contextFilterOptions,
-      defaultLabel: "All contexts",
-    });
-    if (this.elements.randomContext) {
-      fillSelect(this.elements.randomContext, contexts, this.randomContext || "all");
-    }
-
-    const projects = (this.projectCache || [])
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name));
-    this.renderFilterPicker("project", {
-      options: projects.map((project) => ({
-        label: project.name + (project.someday ? " (Someday)" : ""),
-        value: project.id,
-      })),
-      toggle: this.elements.projectFilterToggle,
-      container: this.elements.projectFilterOptions,
-      defaultLabel: "All projects",
-      singleValueLabel: (value) => {
-        const project = this.projectLookup?.get(value);
-        if (!project) return "1 project";
-        return project.name + (project.someday ? " (Someday)" : "");
-      },
-    });
-
-    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
-    const waitingOn = new Set();
-    const effortLevels = new Set([...EFFORT_LEVELS]);
-    const timeEstimates = new Set([...TIME_REQUIREMENTS]);
-    allTasks.forEach((task) => {
-      if (task.waitingFor) waitingOn.add(task.waitingFor);
-      if (task.effortLevel) effortLevels.add(task.effortLevel);
-      if (task.timeRequired) timeEstimates.add(task.timeRequired);
-    });
-
-    this.renderFilterPicker("waiting", {
-      options: Array.from(waitingOn)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.waitingFilterToggle,
-      container: this.elements.waitingFilterOptions,
-      defaultLabel: "All waiting",
-    });
-
-    this.renderFilterPicker("effort", {
-      options: Array.from(effortLevels)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.effortFilterToggle,
-      container: this.elements.effortFilterOptions,
-      defaultLabel: "All effort levels",
-    });
-
-    this.renderFilterPicker("time", {
-      options: Array.from(timeEstimates)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ label: value, value })),
-      toggle: this.elements.timeFilterToggle,
-      container: this.elements.timeFilterOptions,
-      defaultLabel: "All durations",
-    });
-  }
-
-  renderFilterPicker(key, { options, toggle, container, defaultLabel, singleValueLabel }) {
-    if (!container) return;
-    const entries = [{ label: defaultLabel, value: "all" }, ...options];
-    container.innerHTML = "";
-    entries.forEach((option) => {
-      const safeValue = option.value?.toString().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "all";
-      const id = `${key}-filter-${safeValue}`;
-      const label = document.createElement("label");
-      label.setAttribute("for", id);
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.id = id;
-      checkbox.value = option.value;
-      checkbox.checked = this.isFilterValueSelected(key, option.value);
-      checkbox.addEventListener("change", () => {
-        this.updateFilterSelection(key, option.value, checkbox.checked);
-        this.renderAll();
-      });
-      const text = document.createElement("span");
-      text.textContent = option.label;
-      label.append(checkbox, text);
-      container.append(label);
-    });
-    this.updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel);
-  }
 
   updateFilterSelection(key, value, checked) {
     const current = Array.isArray(this.filters[key]) ? [...this.filters[key]] : [this.filters[key]];
@@ -967,25 +920,6 @@ export class UIController {
       return false;
     }
     return selections.includes(value);
-  }
-
-  updateFilterPickerSummary(key, toggle, defaultLabel, singleValueLabel) {
-    if (!toggle) return;
-    const selections = Array.isArray(this.filters[key]) ? this.filters[key] : [this.filters[key]];
-    if (!selections.length || selections.includes("all")) {
-      toggle.textContent = defaultLabel;
-      return;
-    }
-    if (selections.length === 1) {
-      const value = selections[0];
-      if (typeof singleValueLabel === "function") {
-        toggle.textContent = singleValueLabel(value);
-      } else {
-        toggle.textContent = value;
-      }
-      return;
-    }
-    toggle.textContent = `${selections.length} selected`;
   }
 
   setupAssociationFlyout() {
@@ -1020,9 +954,6 @@ export class UIController {
       const value = checkbox.dataset.associationFilterValue;
       if (!key || value === undefined) return;
       this.updateFilterSelection(key, value, checkbox.checked);
-      if (this.hasAssociationSelections() && this.activePanel !== "all-active") {
-        this.setActivePanel("all-active", { focus: false });
-      }
       this.renderAll();
     });
 
@@ -1030,6 +961,9 @@ export class UIController {
       this.filters.context = ["all"];
       this.filters.project = ["all"];
       this.filters.person = ["all"];
+      this.filters.waiting = ["all"];
+      this.filters.effort = ["all"];
+      this.filters.time = ["all"];
       this.renderAll();
     });
 
@@ -1067,30 +1001,30 @@ export class UIController {
   formatAssociationExpression() {
     const clauses = [];
     const people = this.getFilterSelections("person");
-    if (people.length) {
-      clauses.push(`(${people.join(" OR ")})`);
-    }
+    if (people.length) clauses.push(`(${people.join(" OR ")})`);
     const contexts = this.getFilterSelections("context");
-    if (contexts.length) {
-      clauses.push(`(${contexts.join(" OR ")})`);
-    }
+    if (contexts.length) clauses.push(`(${contexts.join(" OR ")})`);
     const projects = this.getFilterSelections("project").map((projectId) => {
       if (projectId === "none") return "No project";
       return this.projectLookup.get(projectId)?.name || "Unknown project";
     });
-    if (projects.length) {
-      clauses.push(`(${projects.join(" OR ")})`);
-    }
-    if (!clauses.length) {
-      return "All tasks";
-    }
-    return clauses.join(" AND ");
+    if (projects.length) clauses.push(`(${projects.join(" OR ")})`);
+    const waiting = this.getFilterSelections("waiting");
+    if (waiting.length) clauses.push(`(${waiting.join(" OR ")})`);
+    const effort = this.getFilterSelections("effort");
+    if (effort.length) clauses.push(`(${effort.join(" OR ")})`);
+    const time = this.getFilterSelections("time");
+    if (time.length) clauses.push(`(${time.join(" OR ")})`);
+    return clauses.length ? clauses.join(" AND ") : "All tasks";
   }
 
   renderAssociationFlyout() {
     const contextContainer = this.elements.associationContextOptions;
     const peopleContainer = this.elements.associationPeopleOptions;
     const projectContainer = this.elements.associationProjectOptions;
+    const waitingContainer = this.elements.associationWaitingOptions;
+    const effortContainer = this.elements.associationEffortOptions;
+    const timeContainer = this.elements.associationTimeOptions;
     if (!contextContainer || !peopleContainer || !projectContainer) return;
 
     const contexts = this.taskManager
@@ -1114,9 +1048,25 @@ export class UIController {
         })),
     ];
 
+    const allTasks = this.taskManager.getTasks({ includeCompleted: true });
+    const waitingOn = new Set();
+    const effortLevels = new Set([...EFFORT_LEVELS]);
+    const timeEstimates = new Set([...TIME_REQUIREMENTS]);
+    allTasks.forEach((task) => {
+      if (task.waitingFor) waitingOn.add(task.waitingFor);
+      if (task.effortLevel) effortLevels.add(task.effortLevel);
+      if (task.timeRequired) timeEstimates.add(task.timeRequired);
+    });
+    const waiting = Array.from(waitingOn).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+    const effort = Array.from(effortLevels).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+    const time = Array.from(timeEstimates).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
+
     this.renderAssociationFlyoutGroup("person", peopleContainer, people, "No people tags yet.");
     this.renderAssociationFlyoutGroup("context", contextContainer, contexts, "No contexts yet.");
     this.renderAssociationFlyoutGroup("project", projectContainer, projects, "No projects yet.");
+    this.renderAssociationFlyoutGroup("waiting", waitingContainer, waiting, "No waiting items.");
+    this.renderAssociationFlyoutGroup("effort", effortContainer, effort, "No effort levels used.");
+    this.renderAssociationFlyoutGroup("time", timeContainer, time, "No time estimates used.");
 
     if (this.elements.associationFlyoutSummary) {
       this.elements.associationFlyoutSummary.textContent = this.formatAssociationExpression();
@@ -1357,8 +1307,8 @@ export class UIController {
       })
       .filter((task) => this.isTaskScheduledInPast(task, todayKey))
       .sort((a, b) => {
-        const dateA = a.calendarDate || "";
-        const dateB = b.calendarDate || "";
+        const dateA = a.calendarDate || a.myDayDate || "";
+        const dateB = b.calendarDate || b.myDayDate || "";
         if (dateA !== dateB) {
           return dateA.localeCompare(dateB);
         }
@@ -1367,8 +1317,9 @@ export class UIController {
   }
 
   isTaskScheduledInPast(task, todayKey = this.getTodayDateKey()) {
-    if (!task?.calendarDate) return false;
-    return task.calendarDate < todayKey;
+    if (task?.calendarDate && task.calendarDate < todayKey) return true;
+    if (task?.myDayDate && task.myDayDate < todayKey) return true;
+    return false;
   }
 
   isTaskInMyDay(task) {
@@ -1514,6 +1465,12 @@ export class UIController {
         more.textContent = `…and ${items.length - limit} more`;
         column.append(more);
       }
+      column.addEventListener("contextmenu", (event) => {
+        if (event.target.closest(".task-row")) return; // let task context menu handle task rows
+        event.preventDefault();
+        event.stopPropagation();
+        this.openContextColumnContextMenu(group.key, groupBy, group.label, event.clientX, event.clientY);
+      });
       board.append(column);
       this.attachDropzone(column, STATUS.NEXT, groupBy === "context" ? group.key : undefined);
     });
@@ -3228,11 +3185,6 @@ export class UIController {
     const flags = this.taskManager.getFeatureFlags();
     const entries = [
       {
-        key: "showFiltersCard",
-        label: "Show Filters Sidebar Card",
-        description: "Display the Filters card in the left sidebar.",
-      },
-      {
         key: "showDaysSinceTouched",
         label: "Show Days Since Touched",
         description: "Display how many days ago each task was last updated on task cards.",
@@ -3532,13 +3484,6 @@ export class UIController {
       makeField("Default event duration (minutes)", durationInput),
       saveBtn,
     );
-  }
-
-  applyFeatureFlags() {
-    const flags = this.taskManager.getFeatureFlags();
-    if (this.elements.sidebarFiltersCard) {
-      this.elements.sidebarFiltersCard.hidden = !flags.showFiltersCard;
-    }
   }
 
   buildSettingsUsageCounts() {
@@ -4891,6 +4836,103 @@ export class UIController {
     if (!created) return;
   }
 
+  setupContextColumnContextMenu() {
+    const menu = this.elements.contextColumnContextMenu;
+    if (!menu) return;
+    menu.addEventListener("click", async (event) => {
+      const actionButton = event.target.closest("[data-col-action]");
+      if (!actionButton) return;
+      const action = actionButton.dataset.colAction;
+      const state = this.contextColumnMenuState;
+      this.closeContextColumnContextMenu();
+      if (!state) return;
+      if (action === "add-task") {
+        this.promptContextColumnTaskCreate(state, STATUS.NEXT);
+      } else if (action === "add-to-inbox") {
+        this.promptContextColumnTaskCreate(state, STATUS.INBOX);
+      }
+    });
+  }
+
+  openContextColumnContextMenu(groupKey, groupBy, groupLabel, x, y) {
+    const menu = this.elements.contextColumnContextMenu;
+    if (!menu) return;
+    this.closeTaskContextMenu();
+    this.closeTaskNoteContextMenu();
+    this.closeCalendarDayContextMenu();
+    this.contextColumnMenuState = { groupKey, groupBy, groupLabel };
+
+    // Update the "add task here" label to reflect the group
+    const addHereBtn = menu.querySelector("[data-col-action='add-task']");
+    if (addHereBtn) {
+      addHereBtn.textContent = groupBy === "none" ? "Add next action" : `Add to "${groupLabel}"`;
+    }
+
+    menu.hidden = false;
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    this.positionFloatingMenu(menu, x, y);
+    this.bindContextColumnContextMenuDismiss();
+  }
+
+  bindContextColumnContextMenuDismiss() {
+    if (this.contextColumnMenuHandlersBound) return;
+    this.handleContextColumnMenuDismiss = (event) => {
+      const menu = this.elements.contextColumnContextMenu;
+      if (!menu) return;
+      if (event?.target instanceof Node && menu.contains(event.target)) return;
+      this.closeContextColumnContextMenu();
+    };
+    this.handleContextColumnMenuEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.closeContextColumnContextMenu();
+    };
+    document.addEventListener("pointerdown", this.handleContextColumnMenuDismiss, true);
+    document.addEventListener("scroll", this.handleContextColumnMenuDismiss, true);
+    window.addEventListener("resize", this.handleContextColumnMenuDismiss);
+    document.addEventListener("keydown", this.handleContextColumnMenuEscape);
+    this.contextColumnMenuHandlersBound = true;
+  }
+
+  closeContextColumnContextMenu() {
+    const menu = this.elements.contextColumnContextMenu;
+    if (menu) {
+      menu.classList.remove("is-open");
+      menu.setAttribute("aria-hidden", "true");
+      menu.hidden = true;
+      menu.style.left = "";
+      menu.style.top = "";
+    }
+    this.contextColumnMenuState = null;
+    if (this.contextColumnMenuHandlersBound) {
+      document.removeEventListener("pointerdown", this.handleContextColumnMenuDismiss, true);
+      document.removeEventListener("scroll", this.handleContextColumnMenuDismiss, true);
+      window.removeEventListener("resize", this.handleContextColumnMenuDismiss);
+      document.removeEventListener("keydown", this.handleContextColumnMenuEscape);
+      this.contextColumnMenuHandlersBound = false;
+    }
+  }
+
+  async promptContextColumnTaskCreate({ groupKey, groupBy, groupLabel }, status) {
+    const label = groupBy === "none" ? "new next action" : `task in "${groupLabel}"`;
+    const title = await this.showPrompt(`Add ${label}:`);
+    if (title === null) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      this.taskManager.notify("warn", "Task title cannot be empty.");
+      return;
+    }
+    const payload = { title: trimmedTitle, status };
+    if (status === STATUS.NEXT) {
+      if (groupBy === "context") payload.contexts = [groupKey];
+      else if (groupBy === "project") payload.projectId = groupKey;
+      else if (groupBy === "area") payload.areaOfFocus = groupKey === "No Area" ? null : groupKey;
+      else if (groupBy === "effort") payload.effortLevel = groupKey === "no-effort" ? null : groupKey;
+    }
+    this.taskManager.addTask(payload);
+  }
+
   openProjectFromTask(task) {
     if (!task?.projectId) {
       this.taskManager.notify("warn", "This task is not linked to a project.");
@@ -4964,6 +5006,33 @@ export class UIController {
     const nextIndex = currentIndex + direction;
     if (nextIndex < 0 || nextIndex >= taskIds.length) return;
     this.openTaskFlyout(taskIds[nextIndex]);
+  }
+
+  setupLightbox() {
+    const dialog = document.getElementById("lightboxDialog");
+    const img = document.getElementById("lightboxImg");
+    if (!dialog || !img) return;
+
+    // Event delegation — works for all .note-image elements rendered at any time
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest(".note-image");
+      if (!target) return;
+      img.src = target.src;
+      img.alt = target.alt;
+      dialog.showModal();
+    });
+
+    // Click on backdrop (outside the image) closes the dialog
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) {
+        dialog.close();
+      }
+    });
+
+    // Clear src after close so stale image doesn't flash on next open
+    dialog.addEventListener("close", () => {
+      img.src = "";
+    });
   }
 
   bindClarifyModal() {
@@ -5852,9 +5921,9 @@ export class UIController {
     }
 
     const descriptionText = task.description?.trim();
-    const description = descriptionText ? document.createElement("p") : null;
+    const description = descriptionText ? document.createElement("div") : null;
     if (description) {
-      this.setEntityLinkedText(description, descriptionText);
+      this.setEntityLinkedTextWithImages(description, descriptionText);
       description.className = "muted";
     }
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
@@ -6298,9 +6367,9 @@ export class UIController {
         timestamp.dateTime = note.createdAt || "";
         timestamp.textContent = this.formatTimestampDisplay(note.createdAt);
         meta.append(timestamp);
-        const text = document.createElement("p");
+        const text = document.createElement("div");
         text.className = "task-note-text";
-        this.setEntityLinkedText(text, note.text || "");
+        this.setEntityLinkedTextWithImages(text, note.text || "");
         item.append(meta, text);
         list.append(item);
       });
@@ -6325,6 +6394,20 @@ export class UIController {
     noteInput.rows = 3;
     noteInput.placeholder = "Capture findings, blockers, and progress updates... (e.g., +Alice for a person, @Home for a context, #ProjectName for a project)";
     this.attachEntityMentionAutocomplete(noteInput);
+    noteInput.addEventListener("paste", (event) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+      if (!imageItem) return;
+      event.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+      this.uploadImage(blob).then((url) => {
+        if (!url) return;
+        const md = `![](${url})`;
+        const start = noteInput.selectionStart;
+        noteInput.value = noteInput.value.slice(0, start) + md + noteInput.value.slice(noteInput.selectionEnd);
+        noteInput.selectionStart = noteInput.selectionEnd = start + md.length;
+      });
+    });
     const actions = document.createElement("div");
     actions.className = "task-note-actions";
     const addButton = document.createElement("button");
@@ -6379,6 +6462,20 @@ export class UIController {
     descriptionInput.rows = 3;
     descriptionInput.value = task.description || "";
     this.attachEntityMentionAutocomplete(descriptionInput);
+    descriptionInput.addEventListener("paste", (event) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+      if (!imageItem) return;
+      event.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+      this.uploadImage(blob).then((url) => {
+        if (!url) return;
+        const md = `![](${url})`;
+        const start = descriptionInput.selectionStart;
+        descriptionInput.value = descriptionInput.value.slice(0, start) + md + descriptionInput.value.slice(descriptionInput.selectionEnd);
+        descriptionInput.selectionStart = descriptionInput.selectionEnd = start + md.length;
+      });
+    });
     descriptionGroup.append(descriptionInput);
 
     const slugGroup = document.createElement("label");
@@ -7083,6 +7180,61 @@ export class UIController {
     element.append(this.createEntityLinkFragment(source));
   }
 
+  // Like setEntityLinkedText but also renders ![alt](src) as inline <img> elements.
+  // Only /images/ paths (served by our own server) are rendered; all other src values
+  // are emitted as plain text to prevent XSS.
+  setEntityLinkedTextWithImages(element, text) {
+    if (!element) return;
+    const source = typeof text === "string" ? text : "";
+    element.textContent = "";
+    if (!source) return;
+    const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+    while ((match = imagePattern.exec(source)) !== null) {
+      if (match.index > lastIndex) {
+        fragment.append(this.createEntityLinkFragment(source.slice(lastIndex, match.index)));
+      }
+      const [, alt, src] = match;
+      if (src.startsWith("/images/")) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = alt;
+        img.className = "note-image";
+        img.loading = "lazy";
+        fragment.append(img);
+      } else {
+        fragment.append(document.createTextNode(match[0]));
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < source.length) {
+      fragment.append(this.createEntityLinkFragment(source.slice(lastIndex)));
+    }
+    element.append(fragment);
+  }
+
+  async uploadImage(blob) {
+    try {
+      const response = await fetch("/upload", {
+        method: "POST",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Upload failed (${response.status})`);
+      }
+      const data = await response.json();
+      return data.url || null;
+    } catch (error) {
+      console.error("Image upload failed", error);
+      this.showToast("error", error.message || "Image upload failed.");
+      return null;
+    }
+  }
+
   createEntityLinkFragment(text) {
     const fragment = document.createDocumentFragment();
     const source = typeof text === "string" ? text : "";
@@ -7649,6 +7801,26 @@ export class UIController {
     });
   }
 
+  showUpdateBanner() {
+    // Defer if user is mid-clarify flow; re-check when state settles
+    if (this.clarifyState?.taskId) {
+      this.taskManager.addEventListener(
+        "statechange",
+        () => { if (!this.clarifyState?.taskId) this.showUpdateBanner(); },
+        { once: true },
+      );
+      return;
+    }
+    if (document.getElementById("update-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "update-banner";
+    banner.className = "update-banner";
+    banner.innerHTML = `<span class="update-banner-text">A new version is available.</span><button class="update-banner-reload btn-sm" type="button">Reload</button><button class="update-banner-dismiss" type="button" aria-label="Dismiss">✕</button>`;
+    banner.querySelector(".update-banner-reload").addEventListener("click", () => location.reload());
+    banner.querySelector(".update-banner-dismiss").addEventListener("click", () => banner.remove());
+    document.body.prepend(banner);
+  }
+
   showToast(level, message) {
     const region = this.elements.alerts;
     if (!message) return;
@@ -7941,7 +8113,9 @@ function mapElements() {
     associationContextOptions: byId("associationContextOptions"),
     associationPeopleOptions: byId("associationPeopleOptions"),
     associationProjectOptions: byId("associationProjectOptions"),
-    sidebarFiltersCard: document.querySelector(".filters-card"),
+    associationWaitingOptions: byId("associationWaitingOptions"),
+    associationEffortOptions: byId("associationEffortOptions"),
+    associationTimeOptions: byId("associationTimeOptions"),
     alerts: document.querySelector(".alerts"),
     workspaceToolbar: document.querySelector(".workspace-toolbar"),
     toolbarSearchSection: byId("toolbarSearchSection"),
@@ -7951,24 +8125,6 @@ function mapElements() {
     toolbarActionsNote: byId("toolbarActionsNote"),
     nextProjectFanoutControl: byId("nextProjectFanoutControl"),
     nextHideScheduledControl: byId("nextHideScheduledControl"),
-    contextFilterPicker: byId("contextFilterPicker"),
-    contextFilterToggle: byId("contextFilterToggle"),
-    contextFilterOptions: byId("contextFilterOptions"),
-    projectFilterPicker: byId("projectFilterPicker"),
-    projectFilterToggle: byId("projectFilterToggle"),
-    projectFilterOptions: byId("projectFilterOptions"),
-    personFilterPicker: byId("personFilterPicker"),
-    personFilterToggle: byId("personFilterToggle"),
-    personFilterOptions: byId("personFilterOptions"),
-    waitingFilterPicker: byId("waitingFilterPicker"),
-    waitingFilterToggle: byId("waitingFilterToggle"),
-    waitingFilterOptions: byId("waitingFilterOptions"),
-    effortFilterPicker: byId("effortFilterPicker"),
-    effortFilterToggle: byId("effortFilterToggle"),
-    effortFilterOptions: byId("effortFilterOptions"),
-    timeFilterPicker: byId("timeFilterPicker"),
-    timeFilterToggle: byId("timeFilterToggle"),
-    timeFilterOptions: byId("timeFilterOptions"),
     quickAddInput: byId("quickAddInput"),
     quickAddDescription: byId("quickAddDescription"),
     searchTasks: byId("searchTasks"),
@@ -8034,6 +8190,7 @@ function mapElements() {
     taskNoteContextMenu: byId("taskNoteContextMenu"),
     taskListItemContextMenu: byId("taskListItemContextMenu"),
     calendarDayContextMenu: byId("calendarDayContextMenu"),
+    contextColumnContextMenu: byId("contextColumnContextMenu"),
     taskFlyout: document.getElementById("taskFlyout"),
     taskFlyoutContent: byId("taskFlyoutContent"),
     taskFlyoutTitle: byId("taskFlyoutTitle"),
@@ -8083,6 +8240,7 @@ function mapElements() {
     settingsContextsList: byId("settingsContextsList"),
     settingsPeopleList: byId("settingsPeopleList"),
     settingsAreasList: byId("settingsAreasList"),
+    settingsCleanupBtn: byId("settingsCleanupBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     topbarSettings: byId("topbarSettings"),

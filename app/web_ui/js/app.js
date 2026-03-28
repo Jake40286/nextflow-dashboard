@@ -6,6 +6,9 @@ const taskManager = new TaskManager();
 const ui = new UIController(taskManager);
 const analytics = new AnalyticsController(taskManager);
 
+// Dev helper: run `_testUpdateBanner()` in the browser console to preview the banner.
+window._testUpdateBanner = () => ui.showUpdateBanner();
+
 document.addEventListener("DOMContentLoaded", () => {
   ui.init();
   analytics.init();
@@ -166,7 +169,7 @@ function setupMarkdownSync() {
     const link = document.createElement("a");
     link.href = url;
     const dateStamp = new Date().toISOString().slice(0, 10);
-    link.download = `gtd-dashboard-${dateStamp}.md`;
+    link.download = `nextflow-${dateStamp}.md`;
     document.body.append(link);
     link.click();
     link.remove();

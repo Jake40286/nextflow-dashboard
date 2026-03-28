@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GTD Dashboard</title>
+  <title>NextFlow</title>
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -18,7 +18,7 @@
     <header class="topbar" aria-label="Dashboard navigation">
       <div class="brand" role="heading" aria-level="1">
         <span class="brand-mark" aria-hidden="true">◎</span>
-        <span>GTD Dashboard</span>
+        <span>NextFlow</span>
       </div>
       <form id="quickAddForm" class="quick-add" aria-label="Quick capture">
         <div class="quick-add-main">
@@ -90,8 +90,20 @@
           <h3 id="associationFlyoutProjectLabel">Projects</h3>
           <div id="associationProjectOptions" class="association-flyout-options"></div>
         </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutWaitingLabel">
+          <h3 id="associationFlyoutWaitingLabel">Waiting for</h3>
+          <div id="associationWaitingOptions" class="association-flyout-options"></div>
+        </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutEffortLabel">
+          <h3 id="associationFlyoutEffortLabel">Effort</h3>
+          <div id="associationEffortOptions" class="association-flyout-options"></div>
+        </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutTimeLabel">
+          <h3 id="associationFlyoutTimeLabel">Time</h3>
+          <div id="associationTimeOptions" class="association-flyout-options"></div>
+        </section>
         <div class="association-flyout-actions">
-          <button id="associationFlyoutClear" class="btn btn-light btn-small" type="button">Clear association filters</button>
+          <button id="associationFlyoutClear" class="btn btn-light btn-small" type="button">Clear filters</button>
         </div>
       </aside>
     </div>
@@ -153,51 +165,6 @@
               <span class="summary-value" id="summaryAllActive">0</span>
             </button>
           </div>
-        </section>
-
-        <section class="card filters-card" aria-labelledby="filterHeading">
-          <header class="card-header">
-            <h2 id="filterHeading">Filters</h2>
-          </header>
-          <label class="filter-control" for="contextFilterToggle">Context</label>
-          <details class="multi-select" id="contextFilterPicker">
-            <summary id="contextFilterToggle">All contexts</summary>
-            <div class="multi-select-options" id="contextFilterOptions"></div>
-          </details>
-          <small id="contextHelp" class="muted">See tasks matching specific contexts.</small>
-
-          <label class="filter-control" for="projectFilterToggle">Project</label>
-          <details class="multi-select" id="projectFilterPicker">
-            <summary id="projectFilterToggle">All projects</summary>
-            <div class="multi-select-options" id="projectFilterOptions"></div>
-          </details>
-
-          <label class="filter-control" for="personFilterToggle">Person</label>
-          <details class="multi-select" id="personFilterPicker">
-            <summary id="personFilterToggle">All people</summary>
-            <div class="multi-select-options" id="personFilterOptions"></div>
-          </details>
-
-          <label class="filter-control" for="waitingFilterToggle">Waiting for</label>
-          <details class="multi-select" id="waitingFilterPicker">
-            <summary id="waitingFilterToggle">All waiting</summary>
-            <div class="multi-select-options" id="waitingFilterOptions"></div>
-          </details>
-          <small id="waitingHelp" class="muted">Show items based on who you're waiting on.</small>
-
-          <label class="filter-control" for="effortFilterToggle">Effort</label>
-          <details class="multi-select" id="effortFilterPicker">
-            <summary id="effortFilterToggle">All effort levels</summary>
-            <div class="multi-select-options" id="effortFilterOptions"></div>
-          </details>
-          <small id="effortHelp" class="muted">Filter tasks by tracked effort.</small>
-
-          <label class="filter-control" for="timeFilterToggle">Time</label>
-          <details class="multi-select" id="timeFilterPicker">
-            <summary id="timeFilterToggle">All durations</summary>
-            <div class="multi-select-options" id="timeFilterOptions"></div>
-          </details>
-          <small id="timeHelp" class="muted">Choose tasks based on estimated duration.</small>
         </section>
 
         <section class="card integrations-card" aria-labelledby="integrationsHeading">
@@ -589,6 +556,15 @@
             </header>
             <ul id="settingsAreasList" class="settings-list" role="list"></ul>
           </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>Storage</h3>
+              <p class="muted small-text">Remove images no longer referenced by any task.</p>
+            </header>
+            <div class="settings-card-body">
+              <button id="settingsCleanupBtn" class="btn btn-light" type="button">Clean up now</button>
+            </div>
+          </section>
         </div>
       </section>
     </section>
@@ -610,6 +586,10 @@
   </div>
   <div id="calendarDayContextMenu" class="task-context-menu" role="menu" aria-label="Calendar day actions" aria-hidden="true" hidden>
     <button class="task-context-menu-item" type="button" role="menuitem" data-calendar-day-action="add-task">Add task</button>
+  </div>
+  <div id="contextColumnContextMenu" class="task-context-menu" role="menu" aria-label="Group actions" aria-hidden="true" hidden>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-col-action="add-task">Add task here</button>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-col-action="add-to-inbox">Add to inbox</button>
   </div>
 
   <div id="taskFlyout" class="task-flyout" aria-hidden="true">
@@ -682,7 +662,7 @@
   </div>
 
     <footer class="app-footer">
-      <small>&copy; <span id="footerYear"></span> GTD Dashboard Prototype. Built for rapid capture, clarify, organize, reflect, and engage.</small>
+      <small>&copy; <span id="footerYear"></span> NextFlow. Built for rapid capture, clarify, organize, reflect, and engage.</small>
     </footer>
   </div>
 
@@ -871,7 +851,7 @@
     <div class="modal-backdrop" data-close="modal"></div>
     <div class="modal-dialog" role="document">
       <header class="modal-header">
-        <h2 id="helpTitle">GTD flow in this dashboard</h2>
+        <h2 id="helpTitle">How NextFlow works</h2>
         <button id="closeHelp" class="btn btn-light" type="button" aria-label="Close help dialog">Close</button>
       </header>
       <div class="modal-body">
@@ -920,5 +900,8 @@
       </footer>
     </div>
   </div>
+  <dialog id="lightboxDialog" class="lightbox-dialog" aria-label="Image viewer">
+    <img id="lightboxImg" src="" alt="" class="lightbox-img" />
+  </dialog>
 </body>
 </html>

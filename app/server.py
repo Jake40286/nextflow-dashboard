@@ -448,6 +448,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._send_json({"status": "ok", "removed": before - len(kept)})
 
     def _handle_state_get(self):
+        # Completion history (completionLog, reference, completedProjects) is
+        # intentionally excluded here — it is served separately at GET /completed
+        # and lazy-loaded by the Statistics and Reports panels only.
         self._ensure_state_dir()
         with STATE_LOCK:
             payload = {}
@@ -456,20 +459,6 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     payload = json.loads(STATE_FILE.read_text(encoding="utf-8") or "{}")
             except json.JSONDecodeError:
                 payload = {}
-            try:
-                if COMPLETED_FILE.exists():
-                    completed_blob = json.loads(COMPLETED_FILE.read_text(encoding="utf-8") or "{}")
-                    payload["reference"] = completed_blob.get("reference", payload.get("reference"))
-                    payload["completionLog"] = completed_blob.get("completionLog", payload.get("completionLog"))
-                    payload["completedProjects"] = completed_blob.get("completedProjects", payload.get("completedProjects"))
-            except json.JSONDecodeError:
-                pass
-        # Strip completion history — served separately at GET /completed.
-        # This keeps the /state payload small; clients lazy-load /completed
-        # only for the Statistics and Reports panels.
-        payload.pop("completionLog", None)
-        payload.pop("reference", None)
-        payload.pop("completedProjects", None)
         payload["_serverVersion"] = SERVER_VERSION
         self._send_json(payload)
 

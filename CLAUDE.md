@@ -71,7 +71,11 @@ Key sync flow: every mutation calls `emitChange()` → `save()` → `persistLoca
 
 On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a conflict is actually detected (not on every flush). Conflict detection uses `slimStateForHash()` to compare only the fields `/state` returns, keeping local and server signatures compatible.
 
-**`ui.js`** — `UIController`. All DOM rendering and event handling, organized by panel. `PANEL_RENDER_FNS` is a frozen map of panel-id → render method name. `_dirtyPanels` is a Set tracking which panels need re-rendering. On `statechange`, `renderAll()` marks all panels dirty and renders only the active one; hidden panels render on-demand when `setActivePanel()` is called. Always-unconditional calls in `renderAll()`: `renderSummary()`, `renderAssociationFlyout()`, `updateSuggestionLists()`, `updateCounts()`, `syncTheme()`, `applyPanelVisibility()`.
+**Client PUT payload never includes completion fields** — `writeServerState()` strips `completionLog`, `reference`, and `completedProjects` before sending. The server manages these exclusively in `completed.json`.
+
+**`ui.js`** — `UIController`. All DOM rendering and event handling, organized by panel. `PANEL_RENDER_FNS` is a frozen map of panel-id → render method name — **adding a new panel requires an entry here and a corresponding `render<Panel>()` method**. `_dirtyPanels` is a Set tracking which panels need re-rendering. On `statechange`, `renderAll()` marks all panels dirty and renders only the active one; hidden panels render on-demand when `setActivePanel()` is called. Always-unconditional calls in `renderAll()`: `renderSummary()`, `renderAssociationFlyout()`, `updateSuggestionLists()`, `updateCounts()`, `syncTheme()`, `applyPanelVisibility()`.
+
+All DOM element references are looked up once in `cacheElements()` and accessed via `this.elements.*` throughout — never query the DOM directly inside render methods.
 
 **`analytics.js`** — `AnalyticsController`. Chart rendering only, wrapping `chart.min.js`. Reads from `TaskManager`; no state mutations.
 
@@ -86,6 +90,20 @@ On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parall
 - `RECURRENCE_TYPES`: `daily | weekly | monthly`
 - People tags match `PEOPLE_TAG_PATTERN`: `/^\+[A-Za-z0-9][A-Za-z0-9_-]*$/`
 
+Key task fields: `status`, `contexts`, `dueDate`, `followUpDate`, `myDayDate`, `areaOfFocus`, `project`, `waitingFor`, `effortLevel`, `timeRequired`, `recurrence`, `peopleTags`, `notes`.
+
+Key settings fields: `peopleOptions`, `deletedPeopleOptions` (tracks explicitly deleted tags to prevent text-mention resurrection), `contextOptions`, `areaOptions`, `featureFlags`.
+
+---
+
+### Async panel data loading
+
+`setActivePanel()` handles lazy-loading for panels that need server data beyond `/state`:
+- `statistics` / `reports` — calls `taskManager.ensureCompletedLoaded()` then re-renders.
+- `settings` — calls `ui.loadFeedbackList()` to fetch `GET /feedback` and populate the admin list.
+
+When adding a panel that needs a separate fetch, hook into `setActivePanel()` with the same pattern.
+
 ---
 
 ### Google Calendar sync (`app/google_calendar.py`)
@@ -95,6 +113,17 @@ Triggered asynchronously after each `POST /state`. Requires `GOOGLE_CREDENTIALS_
 ### Backups (`app/backup.py`)
 
 `StateBackupManager.write_backup()` is called after every successful state write, producing gzipped snapshots in `STATE_BACKUP_DIR` (default `./data/backups/full`). Retains the most recent `STATE_BACKUP_RETENTION` files (default 30); older ones are pruned automatically.
+
+---
+
+## Slash commands
+
+Custom slash commands live in `.claude/commands/`. Key references for this project:
+
+- `@feedback.md` — current bug/feature backlog with proposed solutions and resolved status. **Check this before starting any bug fix or feature work** to avoid duplicating analysis already done.
+- `@project-context.md` — concise architectural reference (stack, key files, data model, design decisions). Useful as context for `/ask` architectural questions.
+
+Both files are kept in sync with `data/feedback.json` — when items are implemented, mark them resolved in both places.
 
 ---
 

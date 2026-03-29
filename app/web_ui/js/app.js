@@ -25,8 +25,11 @@ function setupQuickAdd() {
   const form = document.getElementById("quickAddForm");
   const details = document.getElementById("quickAddDetails");
   const toggle = document.getElementById("quickAddToggle");
+  const errandsBtn = document.getElementById("errandsShortcut");
 
   if (!form) return;
+
+  let errandsMode = false;
 
   if (toggle && details) {
     toggle.addEventListener("click", () => {
@@ -41,6 +44,14 @@ function setupQuickAdd() {
     });
   }
 
+  if (errandsBtn) {
+    errandsBtn.addEventListener("click", () => {
+      errandsMode = !errandsMode;
+      errandsBtn.classList.toggle("is-active", errandsMode);
+      form.querySelector("input[name=title]")?.focus();
+    });
+  }
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(form);
@@ -49,11 +60,21 @@ function setupQuickAdd() {
       taskManager.notify("warn", "Nothing captured. Try adding a title.");
       return;
     }
-    const created = taskManager.addTask({
+    const taskData = {
       title,
       description: data.get("description"),
       status: STATUS.INBOX,
-    });
+    };
+    if (errandsMode) {
+      taskData.contexts = ["@Errands"];
+      taskData.effortLevel = "low";
+      taskData.timeRequired = "<5min";
+    }
+    const refs = ui.parseInlineTitleRefs(title);
+    if (refs.projectId) taskData.projectId = refs.projectId;
+    if (refs.peopleTag) taskData.peopleTag = refs.peopleTag;
+    const created = taskManager.addTask(taskData);
+    refs.messages.forEach((msg) => taskManager.notify("info", msg));
     if (created) {
       ui.renderAll();
       analytics.updateFromState();
@@ -63,6 +84,10 @@ function setupQuickAdd() {
     if (toggle && details && !details.hidden) {
       details.hidden = true;
       toggle.setAttribute("aria-expanded", "false");
+    }
+    if (errandsMode) {
+      errandsMode = false;
+      errandsBtn?.classList.remove("is-active");
     }
   });
 }

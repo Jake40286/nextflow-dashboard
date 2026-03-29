@@ -170,6 +170,7 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   customThemePalettes: [],
   contextOptions: normalizeContextOptions(),
   peopleOptions: normalizePeopleOptions(),
+  deletedPeopleOptions: [],
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
   staleTaskThresholds: { ...DEFAULT_STALE_TASK_THRESHOLDS },
@@ -230,6 +231,14 @@ function hydrateState(raw = {}) {
       nextState.tasks,
       nextState.reference,
       nextState.completionLog
+    ).filter((tag) => {
+      // Exclude any tags the user has explicitly deleted, preventing text-mention
+      // resurrection on page reload.
+      const deleted = nextState.settings?.deletedPeopleOptions || [];
+      return !deleted.some((d) => typeof d === "string" && d.toLowerCase() === tag.toLowerCase());
+    }),
+    deletedPeopleOptions: normalizePeopleTagCollection(
+      nextState.settings?.deletedPeopleOptions || []
     ),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
@@ -282,7 +291,8 @@ async function writeServerState(state) {
   if (typeof fetch === "undefined") {
     throw new Error("Fetch API is unavailable");
   }
-  const payload = JSON.stringify(state);
+  const { completionLog: _cl, reference: _ref, completedProjects: _cp, ...slim } = state;
+  const payload = JSON.stringify(slim);
   const methods = ["PUT", "POST"];
   let lastError = null;
   for (const method of methods) {
@@ -772,6 +782,7 @@ export class TaskManager extends EventTarget {
       status: payload.status || STATUS.INBOX,
       contexts: normalizeContextsField(payload.contexts ?? payload.context),
       dueDate: payload.dueDate || null,
+      followUpDate: payload.followUpDate || null,
       myDayDate: linkedSchedule.myDayDate,
       areaOfFocus:
         typeof payload.areaOfFocus === "string" && payload.areaOfFocus.trim()
@@ -1633,6 +1644,16 @@ export class TaskManager extends EventTarget {
     return Array.from(contexts).sort((a, b) => a.localeCompare(b));
   }
 
+  getPeopleTagOptions() {
+    // Returns only the explicitly managed list — no text scanning.
+    // Used by the Settings panel so deleted tags don't resurface via text mentions.
+    const raw = this.state.settings?.peopleOptions || [];
+    return raw
+      .map((v) => sanitizePeopleTag(v))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   getPeopleTags({ includeNoteMentions = true } = {}) {
     const tags = new Set();
     const addTag = (value) => {
@@ -1705,6 +1726,11 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     );
+    // Remove from deletion exclusion list so the tag survives future hydration.
+    if (Array.isArray(this.state.settings?.deletedPeopleOptions)) {
+      this.state.settings.deletedPeopleOptions = this.state.settings.deletedPeopleOptions
+        .filter((d) => d.toLowerCase() !== normalized.toLowerCase());
+    }
     this.emitChange();
     if (notify) {
       this.notify("info", `Added people tag "${normalized}".`);
@@ -1721,6 +1747,32 @@ export class TaskManager extends EventTarget {
       if (entry?.snapshot?.areaOfFocus) areas.add(entry.snapshot.areaOfFocus);
     });
     return Array.from(areas).sort((a, b) => a.localeCompare(b));
+  }
+
+  addAreaOption(value, { notify = true } = {}) {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (!trimmed) {
+      if (notify) this.notify("warn", "Area of focus cannot be empty.");
+      return null;
+    }
+    const existing = this.getAreasOfFocus();
+    if (existing.some((area) => area.toLowerCase() === trimmed.toLowerCase())) {
+      return trimmed;
+    }
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const currentOptions = Array.isArray(this.state.settings?.areaOptions)
+      ? this.state.settings.areaOptions
+      : [];
+    this.state.settings.areaOptions = normalizeAreaOptions(
+      [...currentOptions, trimmed],
+      this.state.projects,
+      this.state.completedProjects
+    );
+    this.emitChange();
+    if (notify) this.notify("info", `Added area "${trimmed}".`);
+    return trimmed;
   }
 
   renameContext(fromValue, toValue) {
@@ -1808,24 +1860,33 @@ export class TaskManager extends EventTarget {
       return false;
     }
     if (from === to) return false;
-    this.state.tasks.forEach((task) => {
-      if (task.peopleTag === from) {
-        task.peopleTag = to;
-        task.updatedAt = nowIso();
+    // Escape special regex chars in `from` (the + prefix needs escaping).
+    const escapedFrom = from.replace(/[$()*+.?[\\\]^{|}]/g, "\\$&");
+    const tagPattern = new RegExp(`${escapedFrom}(?=[^A-Za-z0-9_-]|$)`, "g");
+    const replaceInText = (text) =>
+      typeof text === "string" ? text.replace(tagPattern, to) : text;
+
+    const renameEntry = (entry) => {
+      let touched = false;
+      if (entry.peopleTag === from) { entry.peopleTag = to; touched = true; }
+      const nextTitle = replaceInText(entry.title);
+      if (nextTitle !== entry.title) { entry.title = nextTitle; touched = true; }
+      const nextDesc = replaceInText(entry.description);
+      if (nextDesc !== entry.description) { entry.description = nextDesc; touched = true; }
+      if (Array.isArray(entry.notes)) {
+        entry.notes.forEach((note) => {
+          if (typeof note?.text === "string") {
+            const nextText = replaceInText(note.text);
+            if (nextText !== note.text) { note.text = nextText; touched = true; }
+          }
+        });
       }
-    });
-    (this.state.reference || []).forEach((entry) => {
-      if (entry.peopleTag === from) {
-        entry.peopleTag = to;
-        entry.updatedAt = nowIso();
-      }
-    });
-    (this.state.completionLog || []).forEach((entry) => {
-      if (entry.peopleTag === from) {
-        entry.peopleTag = to;
-        entry.updatedAt = nowIso();
-      }
-    });
+      if (touched) entry.updatedAt = nowIso();
+    };
+
+    this.state.tasks.forEach(renameEntry);
+    (this.state.reference || []).forEach(renameEntry);
+    (this.state.completionLog || []).forEach(renameEntry);
     this.state.settings.peopleOptions = normalizePeopleOptions(
       [],
       this.state.tasks,
@@ -1840,42 +1901,42 @@ export class TaskManager extends EventTarget {
   deletePeopleTag(value) {
     const target = sanitizePeopleTag(value);
     if (!target) return false;
-    let changed = false;
     this.state.tasks.forEach((task) => {
       if (task.peopleTag === target) {
         task.peopleTag = null;
         task.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.reference || []).forEach((entry) => {
       if (entry.peopleTag === target) {
         entry.peopleTag = null;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.completionLog || []).forEach((entry) => {
       if (entry.peopleTag === target) {
         entry.peopleTag = null;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
     const peopleOptions = Array.isArray(this.state.settings?.peopleOptions)
       ? this.state.settings.peopleOptions
       : [];
-    const normalizedOptions = normalizePeopleOptions(
+    // Always write the filtered list. normalizePeopleOptions re-scans text mentions
+    // and would re-add the tag if we relied on a length guard, preventing deletion.
+    this.state.settings.peopleOptions = normalizePeopleOptions(
       peopleOptions.filter((tag) => tag.toLowerCase() !== target.toLowerCase()),
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
-    );
-    if (normalizedOptions.length !== peopleOptions.length) {
-      this.state.settings.peopleOptions = normalizedOptions;
-      changed = true;
+    ).filter((tag) => tag.toLowerCase() !== target.toLowerCase());
+    // Record explicit deletion so hydrateState's text-mention rescan can't resurrect the tag.
+    const deletedOptions = Array.isArray(this.state.settings?.deletedPeopleOptions)
+      ? this.state.settings.deletedPeopleOptions
+      : [];
+    if (!deletedOptions.some((d) => d.toLowerCase() === target.toLowerCase())) {
+      this.state.settings.deletedPeopleOptions = normalizePeopleTagCollection([...deletedOptions, target]);
     }
-    if (!changed) return false;
     this.emitChange();
     this.notify("info", `Deleted people tag "${target}".`);
     return true;
@@ -2656,6 +2717,7 @@ function normalizeTask(task) {
     effortLevel: task.effortLevel ?? task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
     myDayDate: linkedSchedule.myDayDate,
+    followUpDate: task.followUpDate || null,
     areaOfFocus:
       typeof task.areaOfFocus === "string" && task.areaOfFocus.trim()
         ? task.areaOfFocus.trim()
@@ -3344,7 +3406,12 @@ function matchesTaskFilters(task, filters = {}) {
 
 export function formatFriendlyDate(isoDate) {
   if (!isoDate) return "No date";
-  const date = new Date(isoDate);
+  // Plain date strings (YYYY-MM-DD) must be parsed as local time to avoid UTC-midnight
+  // shifting the day back by one in negative-offset timezones.
+  const dateStr = String(isoDate);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+    ? new Date(dateStr + "T00:00:00")
+    : new Date(dateStr);
   if (Number.isNaN(date.getTime())) return "Invalid date";
   const day = WEEKDAY_NAMES[date.getDay()];
   return `${day}, ${date.toLocaleDateString(undefined, {

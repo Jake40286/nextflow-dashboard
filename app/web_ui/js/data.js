@@ -1876,42 +1876,35 @@ export class TaskManager extends EventTarget {
   deletePeopleTag(value) {
     const target = sanitizePeopleTag(value);
     if (!target) return false;
-    let changed = false;
     this.state.tasks.forEach((task) => {
       if (task.peopleTag === target) {
         task.peopleTag = null;
         task.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.reference || []).forEach((entry) => {
       if (entry.peopleTag === target) {
         entry.peopleTag = null;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
     (this.state.completionLog || []).forEach((entry) => {
       if (entry.peopleTag === target) {
         entry.peopleTag = null;
         entry.updatedAt = nowIso();
-        changed = true;
       }
     });
     const peopleOptions = Array.isArray(this.state.settings?.peopleOptions)
       ? this.state.settings.peopleOptions
       : [];
-    const normalizedOptions = normalizePeopleOptions(
+    // Always write the filtered list. normalizePeopleOptions re-scans text mentions
+    // and would re-add the tag if we relied on a length guard, preventing deletion.
+    this.state.settings.peopleOptions = normalizePeopleOptions(
       peopleOptions.filter((tag) => tag.toLowerCase() !== target.toLowerCase()),
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
-    );
-    if (normalizedOptions.length !== peopleOptions.length) {
-      this.state.settings.peopleOptions = normalizedOptions;
-      changed = true;
-    }
-    if (!changed) return false;
+    ).filter((tag) => tag.toLowerCase() !== target.toLowerCase());
     this.emitChange();
     this.notify("info", `Deleted people tag "${target}".`);
     return true;

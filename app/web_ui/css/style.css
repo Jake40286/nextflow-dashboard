@@ -441,6 +441,12 @@ body {
   min-height: 88px;
 }
 
+.quick-add-shortcut.is-active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .topbar-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1182,6 +1188,20 @@ button.meta-item:hover {
   text-align: center;
 }
 
+.context-column header.is-filterable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.context-column header.is-filterable:hover {
+  background: var(--accent-soft);
+}
+
+.context-column header.is-filterable.is-active {
+  color: var(--accent-strong);
+}
+
 .kanban-lane {
   display: grid;
   gap: var(--space-3);
@@ -1402,6 +1422,50 @@ button.meta-item:hover {
   color: var(--text-muted);
 }
 
+.project-notes-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  margin-top: var(--space-2);
+}
+
+.project-notes-section > summary {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.77rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.project-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.project-note-item {
+  border-left: 2px solid var(--line);
+  padding-left: var(--space-3);
+  display: grid;
+  gap: 2px;
+}
+
+.project-note-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.project-note-text {
+  margin: 0;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .project-edit {
   display: grid;
   gap: var(--space-3);
@@ -1493,6 +1557,26 @@ button.meta-item:hover {
 .task-row.task-row-stale-90plus {
   box-shadow: inset 4px 0 0 0 #b81838;
   background: color-mix(in srgb, #fef2f2 80%, var(--surface));
+}
+
+/* Stale highlighting overrides for dark themes — light pastels at high % produce
+   near-white backgrounds that clash with light-colored text on dark surfaces.
+   Use the saturated color directly at low % for a subtle readable tint instead. */
+:root[data-theme="dark"] .task-row.task-row-stale-7plus,
+:root[data-theme="graphite"] .task-row.task-row-stale-7plus {
+  background: color-mix(in srgb, #f59e0b 15%, var(--surface));
+}
+:root[data-theme="dark"] .task-row.task-row-stale-14plus,
+:root[data-theme="graphite"] .task-row.task-row-stale-14plus {
+  background: color-mix(in srgb, #f97316 18%, var(--surface));
+}
+:root[data-theme="dark"] .task-row.task-row-stale-30plus,
+:root[data-theme="graphite"] .task-row.task-row-stale-30plus {
+  background: color-mix(in srgb, #ef4444 20%, var(--surface));
+}
+:root[data-theme="dark"] .task-row.task-row-stale-90plus,
+:root[data-theme="graphite"] .task-row.task-row-stale-90plus {
+  background: color-mix(in srgb, #b81838 22%, var(--surface));
 }
 
 .task-row-main {
@@ -1971,6 +2055,21 @@ button.meta-item:hover {
 
 .statistics-row[data-health="ok"] {
   border-color: color-mix(in srgb, var(--ok) 34%, var(--line));
+}
+
+.statistics-row.is-clickable {
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.statistics-row.is-clickable:hover {
+  background: var(--surface-3);
+  border-color: var(--accent);
+}
+
+.statistics-row.is-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .statistics-bar {
@@ -2959,6 +3058,20 @@ button.meta-item:hover {
   color: var(--text);
 }
 
+.clarify-someday-details {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.clarify-someday-effort {
+  width: auto;
+}
+
 .clarify-followup {
   margin-top: var(--space-2);
   border: 1px dashed var(--line-strong);
@@ -3459,6 +3572,11 @@ textarea:focus-visible,
 .feedback-toggle:hover {
   background: var(--accent-strong);
   transform: scale(1.08);
+}
+
+body.flyout-open .feedback-widget {
+  right: calc(min(520px, 100%) + var(--space-5));
+  transition: right var(--transition-base);
 }
 
 .feedback-popover {

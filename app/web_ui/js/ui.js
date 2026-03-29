@@ -138,6 +138,7 @@ export class UIController {
       areas: ["all"],
     };
     this.activeReportKey = null;
+    this._hiddenReportTaskIds = new Set();
     this.currentFlyoutTaskId = null;
     this.isFlyoutOpen = false;
     this.flyoutContext = { readOnly: false, entry: null };
@@ -367,7 +368,7 @@ export class UIController {
     calendarDate.addEventListener("change", () => {
       this.filters.date = calendarDate.value;
       if (calendarDate.value) {
-        this.calendarCursor = new Date(calendarDate.value);
+        this.calendarCursor = new Date(calendarDate.value + "T00:00:00");
       }
       this.renderCalendar();
     });
@@ -508,6 +509,10 @@ export class UIController {
       }
     });
 
+    this.elements.settingsLoadFeedbackBtn?.addEventListener("click", () => {
+      this.loadFeedbackList();
+    });
+
     this.elements.settingsClearFeedbackBtn?.addEventListener("click", async () => {
       const btn = this.elements.settingsClearFeedbackBtn;
       btn.disabled = true;
@@ -518,8 +523,9 @@ export class UIController {
         if (!response.ok) throw new Error(data.error || "Clear failed");
         const msg = data.removed === 0
           ? "No resolved feedback to clear."
-          : `Cleared ${data.removed} resolved item${data.removed === 1 ? "" : "s"}.`;
+          : `Cleared ${data.removed} resolved item${data.removed === 1 ? ""  : "s"}.`;
         this.showToast("info", msg);
+        this.loadFeedbackList();
       } catch (error) {
         this.showToast("error", error.message || "Could not clear feedback.");
       } finally {
@@ -613,6 +619,9 @@ export class UIController {
     storeActivePanel(panelName);
     this.applyPanelVisibility();
     this._renderPanelIfDirty(panelName);
+    if (panelName === "settings") {
+      this.loadFeedbackList();
+    }
     if (panelName === "statistics" || panelName === "reports") {
       this.taskManager.ensureCompletedLoaded().then(() => {
         // Re-render the panel once the completion data arrives, but only if still active.
@@ -1306,6 +1315,8 @@ export class UIController {
           const db = b.dueDate || b.calendarDate || "9999";
           return da.localeCompare(db);
         });
+      case "stale-first":
+        return sorted.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
       default:
         return sorted;
     }
@@ -1542,6 +1553,17 @@ export class UIController {
       count.className = "context-count";
       const items = this.sortTasks(group.tasks);
       count.textContent = items.length;
+
+      if (groupBy === "context" && group.key) {
+        header.classList.add("is-filterable");
+        const isActive = this.filters.context.length === 1 && this.filters.context[0] === group.key;
+        if (isActive) header.classList.add("is-active");
+        header.addEventListener("click", () => {
+          const alreadyActive = this.filters.context.length === 1 && this.filters.context[0] === group.key;
+          this.filters.context = alreadyActive ? ["all"] : [group.key];
+          this.renderAll();
+        });
+      }
 
       header.append(title, count);
       column.append(header);
@@ -1871,13 +1893,11 @@ export class UIController {
           return;
         }
         const projectNext = projectTasks.find((task) => task.status === STATUS.NEXT);
-        const physicalContexts = this.taskManager.getContexts().filter((c) => c.startsWith("@"));
-        const fallbackContext = physicalContexts[0] || PHYSICAL_CONTEXTS[0];
         const created = this.taskManager.addTask({
           title,
           status: STATUS.NEXT,
           projectId: project.id,
-          contexts: projectNext?.contexts?.length ? projectNext.contexts : [fallbackContext],
+          contexts: projectNext?.contexts?.length ? projectNext.contexts : [],
         });
         if (created) {
           addNextInput.value = "";
@@ -2042,7 +2062,37 @@ export class UIController {
       if (tagsRow.children.length) {
         body.append(tagsRow);
       }
-      body.append(outcome, addNextForm, actions, sectionsWrapper);
+
+      const allProjectTasks = this.taskManager.getTasks({ projectId: project.id });
+      const allNotes = allProjectTasks.flatMap((t) =>
+        (Array.isArray(t.notes) ? t.notes : []).map((note) => ({ ...note, taskTitle: t.title }))
+      ).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+      if (allNotes.length) {
+        const notesDetails = document.createElement("details");
+        notesDetails.className = "project-notes-section";
+        const notesSummary = document.createElement("summary");
+        notesSummary.textContent = `Notes (${allNotes.length})`;
+        notesDetails.append(notesSummary);
+        const notesList = document.createElement("ul");
+        notesList.className = "project-notes-list";
+        allNotes.forEach((note) => {
+          const li = document.createElement("li");
+          li.className = "project-note-item";
+          const noteMeta = document.createElement("span");
+          noteMeta.className = "project-note-meta";
+          const noteDate = note.createdAt ? new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+          noteMeta.textContent = [note.taskTitle, noteDate].filter(Boolean).join(" • ");
+          const noteText = document.createElement("p");
+          noteText.className = "project-note-text";
+          noteText.textContent = note.text;
+          li.append(noteMeta, noteText);
+          notesList.append(li);
+        });
+        notesDetails.append(notesList);
+        body.append(outcome, addNextForm, actions, sectionsWrapper, notesDetails);
+      } else {
+        body.append(outcome, addNextForm, actions, sectionsWrapper);
+      }
       details.append(summary, body);
       container.append(details);
     });
@@ -2655,6 +2705,7 @@ export class UIController {
           meta: `${tasks.length} tasks • ${nextCount} next • ${waitingCount} waiting • ${dueSoonCount} due soon • ${healthLabel}`,
           health,
           sortScore: health === "risk" ? 2 : health === "neutral" ? 1 : 0,
+          projectId: project.id,
         };
       })
       .sort((a, b) => b.sortScore - a.sortScore || b.value - a.value || a.label.localeCompare(b.label))
@@ -2666,6 +2717,15 @@ export class UIController {
     this.renderStatisticsRows(statsProjectHealthList, projectRows, {
       emptyMessage: "No active projects yet.",
       includeBars: true,
+      onItemClick: (row) => {
+        if (!row.projectId) return;
+        const project = this.getProjectCache().find((p) => p.id === row.projectId);
+        this.setActivePanel("projects");
+        if (project && !project.isExpanded) {
+          this.taskManager.toggleProjectExpansion(row.projectId, true);
+        }
+        this.focusProjectCard(row.projectId);
+      },
     });
 
     const dueBuckets = {
@@ -2851,7 +2911,7 @@ export class UIController {
     });
   }
 
-  renderStatisticsRows(container, rows, { emptyMessage = "No data yet.", includeBars = true } = {}) {
+  renderStatisticsRows(container, rows, { emptyMessage = "No data yet.", includeBars = true, onItemClick = null } = {}) {
     if (!container) return;
     container.innerHTML = "";
     if (!rows || !rows.length) {
@@ -2875,6 +2935,13 @@ export class UIController {
       item.className = "statistics-row";
       if (row.health === "risk" || row.health === "ok") {
         item.dataset.health = row.health;
+      }
+      if (onItemClick) {
+        item.classList.add("is-clickable");
+        item.setAttribute("role", "button");
+        item.setAttribute("tabindex", "0");
+        item.addEventListener("click", () => onItemClick(row));
+        item.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onItemClick(row); } });
       }
       const main = document.createElement("div");
       main.className = "statistics-row-main";
@@ -3028,6 +3095,84 @@ export class UIController {
     }
     tasks.forEach((task) => {
       container.append(this.createTaskCard(task));
+    });
+  }
+
+  async loadFeedbackList() {
+    const container = this.elements.settingsFeedbackList;
+    if (!container) return;
+    container.innerHTML = "";
+    const loading = document.createElement("li");
+    loading.className = "muted small-text";
+    loading.textContent = "Loading…";
+    container.append(loading);
+    let items;
+    try {
+      const response = await fetch("/feedback");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      items = await response.json();
+    } catch {
+      loading.textContent = "Could not load feedback.";
+      return;
+    }
+    container.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("li");
+      empty.className = "muted small-text";
+      empty.textContent = "No feedback yet.";
+      container.append(empty);
+      return;
+    }
+    const bugs = items.filter((i) => i.type === "bug");
+    const features = items.filter((i) => i.type === "feature");
+    [...bugs, ...features].forEach((item) => {
+      const li = document.createElement("li");
+      li.className = "settings-item" + (item.resolved ? " is-muted" : "");
+      const main = document.createElement("div");
+      main.className = "settings-item-main";
+      const labelWrap = document.createElement("div");
+      labelWrap.className = "settings-item-label";
+      const typePill = document.createElement("span");
+      typePill.className = `task-meta-pill ${item.type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
+      typePill.textContent = item.type;
+      const desc = document.createElement("span");
+      desc.textContent = " " + item.description;
+      const meta = document.createElement("span");
+      meta.className = "settings-item-meta muted small-text";
+      meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
+      labelWrap.append(typePill, desc, document.createElement("br"), meta);
+      const actions = document.createElement("div");
+      actions.className = "settings-item-actions";
+      if (!item.resolved) {
+        const resolveBtn = document.createElement("button");
+        resolveBtn.type = "button";
+        resolveBtn.className = "btn btn-light btn-small";
+        resolveBtn.textContent = "Resolve";
+        resolveBtn.addEventListener("click", async () => {
+          resolveBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: [item.id] }),
+            });
+            if (!res.ok) throw new Error();
+            this.loadFeedbackList();
+          } catch {
+            resolveBtn.disabled = false;
+            this.showToast("error", "Could not resolve item.");
+          }
+        });
+        actions.append(resolveBtn);
+      } else {
+        const badge = document.createElement("span");
+        badge.className = "muted small-text";
+        badge.textContent = "Resolved";
+        actions.append(badge);
+      }
+      main.append(labelWrap, actions);
+      li.append(main);
+      container.append(li);
     });
   }
 
@@ -4081,6 +4226,7 @@ export class UIController {
         const bTime = new Date(b.completedAt || 0).getTime();
         return bTime - aTime;
       })
+      .filter((task) => !this._hiddenReportTaskIds.has(task.id || task.sourceId))
       .forEach((task) => {
         const item = document.createElement("li");
         item.className = "report-detail-item";
@@ -4110,7 +4256,15 @@ export class UIController {
             this.openTaskFlyout(restored.id);
           }
         });
-        actions.append(viewBtn, restoreBtn);
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-light btn-small";
+        removeBtn.textContent = "Remove from report";
+        removeBtn.addEventListener("click", () => {
+          this._hiddenReportTaskIds.add(task.id || task.sourceId);
+          this.renderReportDetails(entry);
+        });
+        actions.append(viewBtn, restoreBtn, removeBtn);
         item.append(title, meta);
         if (task.closureNotes) {
           const notes = document.createElement("p");
@@ -4202,7 +4356,9 @@ export class UIController {
       this.taskManager.notify("warn", contextValue === "all" ? "No next actions available." : `No next actions found for ${contextValue}.`);
       return;
     }
-    const random = tasks[Math.floor(Math.random() * tasks.length)];
+    const easy = tasks.filter((t) => t.effortLevel === "low" && (t.timeRequired === "<5min" || t.timeRequired === "<15min"));
+    const pool = easy.length ? easy : tasks;
+    const random = pool[Math.floor(Math.random() * pool.length)];
     this.setActivePanel("next");
     this.openTaskFlyout(random.id);
     this.taskManager.notify("info", `Try "${random.title}" next.`);
@@ -5329,6 +5485,12 @@ export class UIController {
       );
     });
 
+    // Someday friction: save / cancel buttons
+    this.elements.clarifysomedaySave?.addEventListener("click", () => this.handleClarifySomedaySave());
+    this.elements.clarifysomedayCancel?.addEventListener("click", () => {
+      if (this.elements.clarifysomedayDetails) this.elements.clarifysomedayDetails.hidden = true;
+    });
+
     // Actionable Yes — collapse the question, show the form
     clarifyActionableYes?.addEventListener("click", () => {
       this.handleClarifyActionableChoice(true);
@@ -5541,6 +5703,8 @@ export class UIController {
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
+    const somedayDetails = document.getElementById("clarifysomedayDetails");
+    if (somedayDetails) somedayDetails.hidden = true;
     const actionableQuestion = document.getElementById("clarifyActionableQuestion");
     if (actionableQuestion) actionableQuestion.hidden = false;
     const actionableSummary = document.getElementById("clarifyActionableSummary");
@@ -5742,9 +5906,59 @@ export class UIController {
       this.taskManager.deleteTask(this.clarifyState.taskId);
       this.taskManager.notify("info", "Captured idea deleted.");
     } else if (destination === "someday") {
-      this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
-      this.taskManager.notify("info", "Moved to Someday / Maybe.");
+      this._showClarifySomedayDetails();
+      return;
     }
+    this.closeClarifyModal();
+    this.setActivePanel("inbox");
+  }
+
+  _showClarifySomedayDetails() {
+    const details = this.elements.clarifysomedayDetails;
+    if (!details) return;
+    details.hidden = false;
+    const container = this.elements.clarifysomedayContextList;
+    if (container) {
+      container.innerHTML = "";
+      const contexts = this.taskManager.getContexts();
+      contexts.forEach((context) => {
+        const label = document.createElement("label");
+        label.className = "clarify-context-checkbox";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = context;
+        checkbox.addEventListener("change", () => this._updateClarifySomedaySaveBtn());
+        label.append(checkbox, document.createTextNode(context.replace(/^[@+]/, "")));
+        container.append(label);
+      });
+    }
+    if (this.elements.clarifysomedayEffort) {
+      this.elements.clarifysomedayEffort.value = "";
+      this.elements.clarifysomedayEffort.addEventListener("change", () => this._updateClarifySomedaySaveBtn());
+    }
+    this._updateClarifySomedaySaveBtn();
+  }
+
+  _updateClarifySomedaySaveBtn() {
+    const btn = this.elements.clarifysomedaySave;
+    if (!btn) return;
+    const hasContext = !!this.elements.clarifysomedayContextList?.querySelector("input:checked");
+    const hasEffort = !!this.elements.clarifysomedayEffort?.value;
+    btn.disabled = !hasContext && !hasEffort;
+  }
+
+  handleClarifySomedaySave() {
+    if (!this.clarifyState.taskId) return;
+    const contexts = Array.from(
+      this.elements.clarifysomedayContextList?.querySelectorAll("input:checked") || []
+    ).map((cb) => cb.value);
+    const effort = this.elements.clarifysomedayEffort?.value || null;
+    const updates = {};
+    if (contexts.length) updates.contexts = contexts;
+    if (effort) updates.effortLevel = effort;
+    this.taskManager.updateTask(this.clarifyState.taskId, updates);
+    this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
+    this.taskManager.notify("info", "Moved to Someday / Maybe.");
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -6113,6 +6327,7 @@ export class UIController {
     this.renderTaskFlyout(task, { readOnly, entry });
     flyout.classList.add("is-open");
     flyout.setAttribute("aria-hidden", "false");
+    document.body.classList.add("flyout-open");
     this.isFlyoutOpen = true;
     if (!wasOpen && this.handleFlyoutKeydown) {
       document.addEventListener("keydown", this.handleFlyoutKeydown);
@@ -6129,6 +6344,7 @@ export class UIController {
     this.closeTaskListItemContextMenu();
     flyout.classList.remove("is-open");
     flyout.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("flyout-open");
     this.isFlyoutOpen = false;
     this.currentFlyoutTaskId = null;
     this.flyoutContext = { readOnly: false, entry: null };
@@ -7006,6 +7222,19 @@ export class UIController {
         }
         return false;
       }
+      // Parse inline #Project / +Person refs from the title when fields are unset.
+      if (!isArchivedEntry && updates.title !== task.title) {
+        const refs = this.parseInlineTitleRefs(updates.title, {
+          currentProjectId: updates.projectId,
+          currentPeopleTag: task.peopleTag,
+        });
+        if (refs.projectId) {
+          updates.projectId = refs.projectId;
+          if (projectSelect) projectSelect.value = refs.projectId;
+        }
+        if (refs.peopleTag) updates.peopleTag = refs.peopleTag;
+        refs.messages.forEach((msg) => this.taskManager.notify("info", msg));
+      }
       const updated = isArchivedEntry
         ? this.taskManager.updateCompletedTask(archiveEntryId, updates)
         : this.taskManager.updateTask(task.id, updates);
@@ -7566,6 +7795,40 @@ export class UIController {
     return this.getProjectCache().find((project) => this.normalizeProjectTagKey(project.name) === key) || null;
   }
 
+  // Parse #Project and +Person inline tokens from a title string.
+  // Returns { projectId, peopleTag, messages } for any found and unset fields.
+  parseInlineTitleRefs(title, { currentProjectId = null, currentPeopleTag = null } = {}) {
+    const result = { projectId: null, peopleTag: null, messages: [] };
+    if (typeof title !== "string" || !title) return result;
+
+    if (!currentProjectId) {
+      for (const match of title.matchAll(/#([A-Za-z0-9][A-Za-z0-9_-]*)/g)) {
+        const project = this.findProjectByTagKey(this.normalizeProjectTagKey(match[1]));
+        if (project) {
+          result.projectId = project.id;
+          result.messages.push(`Linked to project "${project.name}".`);
+          break;
+        }
+      }
+    }
+
+    if (!currentPeopleTag) {
+      for (const match of title.matchAll(/\+([A-Za-z0-9][A-Za-z0-9_-]*)/g)) {
+        const token = `+${match[1]}`;
+        const existing = this.taskManager
+          .getPeopleTags()
+          .find((t) => typeof t === "string" && t.toLowerCase() === token.toLowerCase());
+        if (existing) {
+          result.peopleTag = existing;
+          result.messages.push(`Linked to ${existing}.`);
+          break;
+        }
+      }
+    }
+
+    return result;
+  }
+
   activateEntityLinkTarget(target, event) {
     event?.preventDefault();
     event?.stopPropagation();
@@ -7690,14 +7953,14 @@ export class UIController {
 
   isTaskOverdue(task) {
     if (!task?.dueDate || task.completedAt) return false;
-    const due = new Date(task.dueDate);
+    const due = new Date(task.dueDate + "T00:00:00");
     if (Number.isNaN(due.getTime())) return false;
     return due < this.getTodayStart();
   }
 
   getDueUrgencyClass(dueDate) {
     if (!dueDate) return "";
-    const due = new Date(dueDate);
+    const due = new Date(dueDate + "T00:00:00");
     if (Number.isNaN(due.getTime())) return "";
     const now = new Date();
     const diffMs = due.getTime() - now.getTime();
@@ -8503,6 +8766,8 @@ function mapElements() {
     settingsAreasList: byId("settingsAreasList"),
     settingsCleanupBtn: byId("settingsCleanupBtn"),
     settingsClearFeedbackBtn: byId("settingsClearFeedbackBtn"),
+    settingsLoadFeedbackBtn: byId("settingsLoadFeedbackBtn"),
+    settingsFeedbackList: byId("settingsFeedbackList"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     topbarSettings: byId("topbarSettings"),
@@ -8570,6 +8835,11 @@ function mapElements() {
     clarifyAddContext: byId("clarifyAddContext"),
     clarifyEffortSelect: byId("clarifyEffortSelect"),
     clarifyTimeSelect: byId("clarifyTimeSelect"),
+    clarifysomedayDetails: byId("clarifysomedayDetails"),
+    clarifysomedayContextList: byId("clarifysomedayContextList"),
+    clarifysomedayEffort: byId("clarifysomedayEffort"),
+    clarifysomedaySave: byId("clarifysomedaySave"),
+    clarifysomedayCancel: byId("clarifysomedayCancel"),
     clarifyMetadataSave: byId("clarifyMetadataSave"),
     clarifyMetadataSkip: byId("clarifyMetadataSkip"),
     clarifyFinalMessage: byId("clarifyFinalMessage"),

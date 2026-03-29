@@ -170,6 +170,7 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   customThemePalettes: [],
   contextOptions: normalizeContextOptions(),
   peopleOptions: normalizePeopleOptions(),
+  deletedPeopleOptions: [],
   areaOptions: normalizeAreaOptions(undefined, projects, completedProjects),
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
   staleTaskThresholds: { ...DEFAULT_STALE_TASK_THRESHOLDS },
@@ -230,6 +231,14 @@ function hydrateState(raw = {}) {
       nextState.tasks,
       nextState.reference,
       nextState.completionLog
+    ).filter((tag) => {
+      // Exclude any tags the user has explicitly deleted, preventing text-mention
+      // resurrection on page reload.
+      const deleted = nextState.settings?.deletedPeopleOptions || [];
+      return !deleted.some((d) => typeof d === "string" && d.toLowerCase() === tag.toLowerCase());
+    }),
+    deletedPeopleOptions: normalizePeopleTagCollection(
+      nextState.settings?.deletedPeopleOptions || []
     ),
     areaOptions: normalizeAreaOptions(
       nextState.settings?.areaOptions,
@@ -282,7 +291,8 @@ async function writeServerState(state) {
   if (typeof fetch === "undefined") {
     throw new Error("Fetch API is unavailable");
   }
-  const payload = JSON.stringify(state);
+  const { completionLog: _cl, reference: _ref, completedProjects: _cp, ...slim } = state;
+  const payload = JSON.stringify(slim);
   const methods = ["PUT", "POST"];
   let lastError = null;
   for (const method of methods) {
@@ -1716,6 +1726,11 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     );
+    // Remove from deletion exclusion list so the tag survives future hydration.
+    if (Array.isArray(this.state.settings?.deletedPeopleOptions)) {
+      this.state.settings.deletedPeopleOptions = this.state.settings.deletedPeopleOptions
+        .filter((d) => d.toLowerCase() !== normalized.toLowerCase());
+    }
     this.emitChange();
     if (notify) {
       this.notify("info", `Added people tag "${normalized}".`);
@@ -1915,6 +1930,13 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     ).filter((tag) => tag.toLowerCase() !== target.toLowerCase());
+    // Record explicit deletion so hydrateState's text-mention rescan can't resurrect the tag.
+    const deletedOptions = Array.isArray(this.state.settings?.deletedPeopleOptions)
+      ? this.state.settings.deletedPeopleOptions
+      : [];
+    if (!deletedOptions.some((d) => d.toLowerCase() === target.toLowerCase())) {
+      this.state.settings.deletedPeopleOptions = normalizePeopleTagCollection([...deletedOptions, target]);
+    }
     this.emitChange();
     this.notify("info", `Deleted people tag "${target}".`);
     return true;

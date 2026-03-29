@@ -15,6 +15,7 @@ const NEXT_FANOUT_KEY = "nextflow-next-fanout";
 const NEXT_HIDE_SCHEDULED_KEY = "nextflow-next-hide-scheduled";
 const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
 const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
+const KANBAN_GROUP_BY_KEY = "nextflow-kanban-group-by";
 
 // One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
 (function migrateUiStorageKeys() {
@@ -127,6 +128,7 @@ export class UIController {
     this.hideScheduledNextActions = loadNextHideScheduledPreference();
     this.nextGroupBy = loadNextGroupByPreference();
     this.nextGroupLimit = loadNextGroupLimitPreference();
+    this.kanbanGroupBy = loadKanbanGroupByPreference();
     this.summaryCache = null;
     this.reportFilters = {
       grouping: "week",
@@ -234,6 +236,7 @@ export class UIController {
       nextGroupBySelect,
       nextGroupLimitInput,
       taskSortSelect,
+      kanbanGroupBySelect,
     } = this.elements;
 
     searchTasks.addEventListener("input", (event) => {
@@ -305,6 +308,14 @@ export class UIController {
         this.nextGroupBy = nextGroupBySelect.value;
         storeNextGroupByPreference(this.nextGroupBy);
         this.renderNextActions();
+      });
+    }
+    if (kanbanGroupBySelect) {
+      kanbanGroupBySelect.value = this.kanbanGroupBy;
+      kanbanGroupBySelect.addEventListener("change", () => {
+        this.kanbanGroupBy = kanbanGroupBySelect.value;
+        storeKanbanGroupByPreference(this.kanbanGroupBy);
+        this.renderKanban();
       });
     }
     if (nextGroupLimitInput) {
@@ -652,12 +663,15 @@ export class UIController {
       clearFilters,
       expandProjects,
       projectCompletedTasksControl,
+      kanbanGroupBySelect,
+      kanbanGroupByLabel,
     } = this.elements;
     const panel = this.activePanel;
     const taskPanels = new Set(["inbox", "my-day", "next", "kanban", "waiting", "someday", "projects", "calendar", "all-active"]);
     const supportsSearch = taskPanels.has(panel);
     const supportsTaskPicker = panel === "next";
     const supportsNextFanout = panel === "next";
+    const supportsKanbanGroupBy = panel === "kanban";
     const supportsExpandProjects = panel === "projects";
     const supportsClearFilters = taskPanels.has(panel);
 
@@ -673,6 +687,12 @@ export class UIController {
     if (nextHideScheduledControl) {
       nextHideScheduledControl.hidden = !supportsNextFanout;
     }
+    if (kanbanGroupBySelect) {
+      kanbanGroupBySelect.hidden = !supportsKanbanGroupBy;
+    }
+    if (kanbanGroupByLabel) {
+      kanbanGroupByLabel.hidden = !supportsKanbanGroupBy;
+    }
     if (expandProjects) {
       expandProjects.hidden = !supportsExpandProjects;
     }
@@ -686,6 +706,7 @@ export class UIController {
     const hasActions =
       Boolean(nextProjectFanoutControl && !nextProjectFanoutControl.hidden) ||
       Boolean(nextHideScheduledControl && !nextHideScheduledControl.hidden) ||
+      Boolean(kanbanGroupBySelect && !kanbanGroupBySelect.hidden) ||
       Boolean(clearFilters && !clearFilters.hidden) ||
       Boolean(expandProjects && !expandProjects.hidden) ||
       Boolean(projectCompletedTasksControl && !projectCompletedTasksControl.hidden);
@@ -698,6 +719,9 @@ export class UIController {
       if (supportsNextFanout) {
         toolbarActionsTitle.textContent = "Next Actions Controls";
         toolbarActionsNote.textContent = "Tune how next actions are grouped and filtered.";
+      } else if (supportsKanbanGroupBy) {
+        toolbarActionsTitle.textContent = "Kanban Controls";
+        toolbarActionsNote.textContent = "Choose how tasks are grouped into swimlanes.";
       } else if (supportsExpandProjects) {
         toolbarActionsTitle.textContent = "Project Controls";
         toolbarActionsNote.textContent = "Expand projects and reset project filters quickly.";
@@ -1611,32 +1635,41 @@ export class UIController {
       return;
     }
 
-    const laneTaskMap = new Map();
-    activeTasks.forEach((task) => {
-      const lane = this.getTaskAreaOfFocus(task);
-      if (!laneTaskMap.has(lane)) laneTaskMap.set(lane, []);
-      laneTaskMap.get(lane).push(task);
-    });
-    const laneOrder = Array.from(laneTaskMap.keys()).sort((a, b) => a.localeCompare(b));
+    const groupBy = this.kanbanGroupBy || "area";
+    // Context grouping: assign each task to its first context only — no multi-lane duplication.
+    const groupTasks = groupBy === "context"
+      ? activeTasks.map((t) => ({ ...t, contexts: t.contexts?.length ? [t.contexts[0]] : [] }))
+      : activeTasks;
+    const lanes = this.buildNextActionsGroups(groupTasks, groupBy);
 
-    laneOrder.forEach((lane) => {
+    const groupByLabels = { area: "area of focus", context: "context", project: "project", effort: "effort level", none: "" };
+    const subheading = this.elements.kanbanSubheading;
+    if (subheading) {
+      subheading.textContent = groupBy === "none" ? "All active tasks" : `Swimlanes by ${groupByLabels[groupBy] || groupBy}`;
+    }
+
+    lanes.forEach((lane) => {
       const laneSection = document.createElement("section");
       laneSection.className = "kanban-lane";
 
-      const laneTitle = document.createElement("h3");
-      laneTitle.className = "kanban-lane-title";
-      laneTitle.textContent = lane;
-      laneSection.append(laneTitle);
+      if (groupBy !== "none") {
+        const laneTitle = document.createElement("h3");
+        laneTitle.className = "kanban-lane-title";
+        laneTitle.textContent = lane.label;
+        laneSection.append(laneTitle);
+      }
 
       const laneGrid = document.createElement("div");
       laneGrid.className = "kanban-lane-grid";
-      const laneTasks = laneTaskMap.get(lane);
+      const laneTasks = lane.tasks;
+      // Drop targets reassign area only when swimlanes represent areas of focus.
+      const laneArea = groupBy === "area" ? lane.key : null;
 
       statuses.forEach((status) => {
         const column = document.createElement("section");
         column.className = "kanban-column";
         column.dataset.dropzone = status;
-        column.dataset.area = lane;
+        column.dataset.area = lane.key;
 
         const items = laneTasks.filter((task) => task.status === status);
 
@@ -1663,7 +1696,7 @@ export class UIController {
           });
         }
         column.append(list);
-        this.attachKanbanDropzone(column, status, lane);
+        this.attachKanbanDropzone(column, status, laneArea);
         laneGrid.append(column);
       });
 
@@ -7906,14 +7939,16 @@ export class UIController {
       return;
     }
     const updates = { status };
-    if (task.projectId) {
-      if (area === "No Area") {
-        this.taskManager.notify("warn", "Project tasks must stay in a valid area of focus.");
+    if (area !== null) {
+      if (task.projectId) {
+        if (area === "No Area") {
+          this.taskManager.notify("warn", "Project tasks must stay in a valid area of focus.");
+        } else {
+          this.taskManager.updateProject(task.projectId, { areaOfFocus: area });
+        }
       } else {
-        this.taskManager.updateProject(task.projectId, { areaOfFocus: area });
+        updates.areaOfFocus = area === "No Area" ? null : area;
       }
-    } else {
-      updates.areaOfFocus = area === "No Area" ? null : area;
     }
     this.taskManager.updateTask(taskId, updates);
   }
@@ -8467,6 +8502,9 @@ function mapElements() {
     clarifyTwoMinuteExpectNo: byId("clarifyTwoMinuteExpectNo"),
     nextGroupBySelect: byId("nextGroupBySelect"),
     nextGroupLimitInput: byId("nextGroupLimitInput"),
+    kanbanGroupBySelect: byId("kanbanGroupBySelect"),
+    kanbanGroupByLabel: byId("kanbanGroupByLabel"),
+    kanbanSubheading: byId("kanbanSubheading"),
     nextPanelSubheading: byId("nextPanelSubheading"),
     clarifyTwoMinuteResponseInput: byId("clarifyTwoMinuteResponseInput"),
     clarifyTwoMinuteClosureNotes: byId("clarifyTwoMinuteClosureNotes"),
@@ -8644,6 +8682,23 @@ function loadNextGroupByPreference() {
 function storeNextGroupByPreference(value) {
   try {
     localStorage.setItem(NEXT_GROUP_BY_KEY, value);
+  } catch (error) {
+    /* noop */
+  }
+}
+
+function loadKanbanGroupByPreference() {
+  try {
+    const stored = localStorage.getItem(KANBAN_GROUP_BY_KEY);
+    return ["area", "context", "project", "effort", "none"].includes(stored) ? stored : "area";
+  } catch (error) {
+    return "area";
+  }
+}
+
+function storeKanbanGroupByPreference(value) {
+  try {
+    localStorage.setItem(KANBAN_GROUP_BY_KEY, value);
   } catch (error) {
     /* noop */
   }

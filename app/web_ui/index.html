@@ -251,6 +251,14 @@
                 <option value="effort">Effort level</option>
                 <option value="none">None (flat list)</option>
               </select>
+              <label id="kanbanGroupByLabel" class="filter-control" for="kanbanGroupBySelect">Swimlane by</label>
+              <select id="kanbanGroupBySelect">
+                <option value="area">Area of focus</option>
+                <option value="context">Context</option>
+                <option value="project">Project</option>
+                <option value="effort">Effort level</option>
+                <option value="none">No swimlanes</option>
+              </select>
               <label class="filter-control" for="nextGroupLimitInput">Max per group</label>
               <input id="nextGroupLimitInput" type="number" min="1" step="1" placeholder="No limit" style="width:6rem" />
               <label class="filter-control" for="taskSortSelect">Sort by</label>
@@ -295,7 +303,7 @@
 
       <section class="workspace-view" data-panel="kanban" role="tabpanel" aria-labelledby="summary-tab-kanban" id="panel-kanban" hidden>
         <div class="panel-content">
-          <div class="panel-subheading muted">Swimlanes by area of focus</div>
+          <div id="kanbanSubheading" class="panel-subheading muted">Swimlanes by area of focus</div>
           <div class="panel-body" data-kanban-board></div>
         </div>
       </section>

@@ -3039,7 +3039,7 @@ export class UIController {
     const areasList = this.elements.settingsAreasList;
     if (!themesList || !featureFlagsList || !contextsList || !peopleList || !areasList) return;
     const contexts = this.taskManager.getContexts();
-    const peopleTags = this.taskManager.getPeopleTags();
+    const peopleTags = this.taskManager.getPeopleTagOptions();
     const areas = this.taskManager.getAreasOfFocus();
     const usage = this.buildSettingsUsageCounts();
 

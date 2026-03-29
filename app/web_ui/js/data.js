@@ -1634,6 +1634,16 @@ export class TaskManager extends EventTarget {
     return Array.from(contexts).sort((a, b) => a.localeCompare(b));
   }
 
+  getPeopleTagOptions() {
+    // Returns only the explicitly managed list — no text scanning.
+    // Used by the Settings panel so deleted tags don't resurface via text mentions.
+    const raw = this.state.settings?.peopleOptions || [];
+    return raw
+      .map((v) => sanitizePeopleTag(v))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   getPeopleTags({ includeNoteMentions = true } = {}) {
     const tags = new Set();
     const addTag = (value) => {

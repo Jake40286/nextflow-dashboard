@@ -184,16 +184,20 @@
           </ul>
         </section>
 
-        <section class="card markdown-card" aria-labelledby="markdownHeading">
+        <section class="card markdown-card" aria-labelledby="exportHeading">
           <header class="card-header">
-            <h2 id="markdownHeading">Markdown Sync</h2>
+            <h2 id="exportHeading">Export &amp; Import</h2>
           </header>
-          <p class="muted small-text">Export or import tasks in an Obsidian-friendly Markdown format.</p>
+          <p class="muted small-text">Export a full backup or import a previous export. JSON preserves all data including history and settings.</p>
+          <div class="markdown-actions">
+            <button id="exportJSON" class="btn btn-light" type="button">Export JSON</button>
+            <button id="importJSON" class="btn btn-light" type="button">Import JSON</button>
+          </div>
+          <p class="muted small-text" style="margin-top: 0.75rem;">Export active tasks as a readable Markdown list (Obsidian-friendly).</p>
           <div class="markdown-actions">
             <button id="exportMarkdown" class="btn btn-light" type="button">Export .md</button>
-            <button id="importMarkdown" class="btn btn-light" type="button">Import .md</button>
           </div>
-          <input id="markdownFileInput" type="file" accept=".md,.markdown,.txt" hidden />
+          <input id="jsonFileInput" type="file" accept=".json" hidden />
         </section>
       </aside>
 
@@ -871,7 +875,7 @@
           <li><strong>Review</strong> projects regularly: ensure every active project has a clear outcome and at least one next action.</li>
           <li><strong>Engage</strong> with the active tab that matters now—filter by context, run the Pomodoro timer, and check off progress.</li>
         </ol>
-        <p class="muted small-text">Need more detail? Export to Markdown to review in Obsidian or keep a recurring weekly review note in your own system.</p>
+        <p class="muted small-text">Need more detail? Use Export JSON for a full backup, or Export .md to review active tasks in Obsidian.</p>
       </div>
     </div>
   </div>

@@ -2218,6 +2218,26 @@ export class TaskManager extends EventTarget {
     }
   }
 
+  importFromJSON(json) {
+    try {
+      const parsed = typeof json === "string" ? JSON.parse(json) : json;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        this.notify("warn", "Invalid export file — expected a JSON object.");
+        return false;
+      }
+      const merged = mergeStates(parsed, this.state);
+      this.state = hydrateState(merged);
+      this.emitChange();
+      const count = this.state.tasks.length;
+      this.notify("info", `Import complete. ${count} active task${count !== 1 ? "s" : ""}.`);
+      return true;
+    } catch (error) {
+      console.error("Failed to import JSON", error);
+      this.notify("error", "Unable to import file. Please check it is a valid NextFlow export.");
+      return false;
+    }
+  }
+
   getAnalyticsHistory() {
     return this.state.analytics.history;
   }

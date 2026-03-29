@@ -8409,8 +8409,6 @@ function mapElements() {
     waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
     somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),
     exportMarkdown: byId("exportMarkdown"),
-    importMarkdown: byId("importMarkdown"),
-    markdownFileInput: byId("markdownFileInput"),
     inboxCount: byId("inboxCount"),
     dueTodayCount: byId("dueTodayCount"),
     overdueCount: byId("overdueCount"),

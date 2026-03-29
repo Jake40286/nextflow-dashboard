@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupRefresh();
   setupPomodoro();
   setupProjects();
-  setupMarkdownSync();
+  setupExport();
   setupHelpModal();
 });
 
@@ -155,46 +155,77 @@ function setupProjects() {
   });
 }
 
-function setupMarkdownSync() {
-  const exportButton = document.getElementById("exportMarkdown");
-  const importButton = document.getElementById("importMarkdown");
-  const fileInput = document.getElementById("markdownFileInput");
+function setupExport() {
+  const exportJSONButton = document.getElementById("exportJSON");
+  const importJSONButton = document.getElementById("importJSON");
+  const jsonFileInput = document.getElementById("jsonFileInput");
+  const exportMarkdownButton = document.getElementById("exportMarkdown");
 
-  if (!exportButton || !importButton || !fileInput) return;
-
-  exportButton.addEventListener("click", () => {
-    const markdown = taskManager.exportToMarkdown();
-    const blob = new Blob([markdown], { type: "text/markdown" });
+  function triggerDownload(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    link.download = `nextflow-${dateStamp}.md`;
+    link.download = filename;
     document.body.append(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    taskManager.notify("info", "Exported tasks to Markdown file.");
-  });
+  }
 
-  importButton.addEventListener("click", () => fileInput.click());
-
-  fileInput.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const success = taskManager.importFromMarkdown(text);
-      if (success) {
-        analytics.updateFromState();
+  if (exportJSONButton) {
+    exportJSONButton.addEventListener("click", async () => {
+      try {
+        const response = await fetch("/export/full");
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
+        const blob = await response.blob();
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const filename = `nextflow-export-${dateStamp}.json`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        taskManager.notify("info", "Full export saved.");
+      } catch (error) {
+        console.error("JSON export failed", error);
+        taskManager.notify("error", "Export failed. Check the server logs.");
       }
-    } catch (error) {
-      console.error("Failed to import markdown", error);
-      taskManager.notify("error", "Could not read the selected Markdown file.");
-    } finally {
-      fileInput.value = "";
-    }
-  });
+    });
+  }
+
+  if (importJSONButton && jsonFileInput) {
+    importJSONButton.addEventListener("click", () => jsonFileInput.click());
+
+    jsonFileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const success = taskManager.importFromJSON(text);
+        if (success) {
+          analytics.updateFromState();
+        }
+      } catch (error) {
+        console.error("JSON import failed", error);
+        taskManager.notify("error", "Could not read the selected file.");
+      } finally {
+        jsonFileInput.value = "";
+      }
+    });
+  }
+
+  if (exportMarkdownButton) {
+    exportMarkdownButton.addEventListener("click", () => {
+      const markdown = taskManager.exportToMarkdown();
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      triggerDownload(markdown, `nextflow-${dateStamp}.md`, "text/markdown");
+      taskManager.notify("info", "Exported active tasks to Markdown.");
+    });
+  }
 }
 
 function setupHelpModal() {

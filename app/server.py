@@ -192,6 +192,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def _is_completed_endpoint(self):
         return self._parsed_path.rstrip("/") == "/completed"
 
+    def _is_export_endpoint(self):
+        return self._parsed_path.rstrip("/") == "/export/full"
+
     def _send_json(self, payload, status=200):
         encoded = json.dumps(payload).encode("utf-8")
         accept_encoding = self.headers.get("Accept-Encoding", "")
@@ -229,6 +232,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         if self._is_completed_endpoint():
             self._handle_completed_get()
+            return
+        if self._is_export_endpoint():
+            self._handle_export_get()
             return
         super().do_GET()
 
@@ -473,6 +479,30 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             except json.JSONDecodeError:
                 payload = {}
         self._send_json(payload)
+
+    def _handle_export_get(self):
+        """Return a full state snapshot (state + completed) as a downloadable JSON file."""
+        self._ensure_state_dir()
+        with STATE_LOCK:
+            try:
+                state = json.loads(STATE_FILE.read_text(encoding="utf-8")) if STATE_FILE.exists() else {}
+            except json.JSONDecodeError:
+                state = {}
+            try:
+                completed = json.loads(COMPLETED_FILE.read_text(encoding="utf-8")) if COMPLETED_FILE.exists() else {}
+            except json.JSONDecodeError:
+                completed = {}
+        payload = {**state, **completed}
+        encoded = json.dumps(payload).encode("utf-8")
+        date_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"nextflow-export-{date_str}.json"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
 
     def _handle_state_write(self):
         content_length = int(self.headers.get("Content-Length") or 0)

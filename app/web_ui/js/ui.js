@@ -335,13 +335,13 @@ export class UIController {
 
     this.elements.projectAreaNewBtn?.addEventListener("click", () => {
       if (this.elements.projectAreaSelect) {
-        addNewAreaOption(this.elements.projectAreaSelect);
+        addNewAreaOption(this.elements.projectAreaSelect, this.taskManager);
       }
     });
 
     this.elements.clarifyAreaNewBtn?.addEventListener("click", () => {
       if (this.elements.clarifyAreaInput) {
-        addNewAreaOption(this.elements.clarifyAreaInput);
+        addNewAreaOption(this.elements.clarifyAreaInput, this.taskManager);
       }
     });
 
@@ -1871,7 +1871,8 @@ export class UIController {
           return;
         }
         const projectNext = projectTasks.find((task) => task.status === STATUS.NEXT);
-        const fallbackContext = this.taskManager.getContexts()?.[0] || PHYSICAL_CONTEXTS[0];
+        const physicalContexts = this.taskManager.getContexts().filter((c) => c.startsWith("@"));
+        const fallbackContext = physicalContexts[0] || PHYSICAL_CONTEXTS[0];
         const created = this.taskManager.addTask({
           title,
           status: STATUS.NEXT,
@@ -4292,6 +4293,9 @@ export class UIController {
     } else if (task.calendarDate) {
       metaItems.push(this.createMetaSpan(`📅 ${formatFriendlyDate(task.calendarDate)}`));
     }
+    if (task.followUpDate) {
+      metaItems.push(this.createMetaSpan(`Follow up ${formatFriendlyDate(task.followUpDate)}`));
+    }
     if (this.taskManager.getFeatureFlag("showDaysSinceTouched") && task.updatedAt) {
       const msPerDay = 86400000;
       const days = Math.floor((Date.now() - new Date(task.updatedAt).getTime()) / msPerDay);
@@ -5522,6 +5526,7 @@ export class UIController {
       dueType: "none",
       calendarDate: "",
       dueDate: "",
+      followUpDate: "",
       calendarTime: "",
       context: "",
       effort: "",
@@ -5960,8 +5965,9 @@ export class UIController {
       this.clarifyState.statusTarget = STATUS.WAITING;
       this.clarifyState.waitingFor =
         this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response";
-      this.clarifyState.dueType = "due";
-      this.clarifyState.dueDate = followUpDueDate;
+      this.clarifyState.dueType = "followUp";
+      this.clarifyState.followUpDate = followUpDueDate;
+      this.clarifyState.dueDate = "";
       this.clarifyState.calendarDate = "";
       this.finalizeClarifyRouting();
       return;
@@ -6035,6 +6041,7 @@ export class UIController {
       projectId: this.clarifyState.projectId || null,
       calendarDate: null,
       dueDate: null,
+      followUpDate: null,
       waitingFor: statusTarget === STATUS.WAITING ? this.clarifyState.waitingFor || task.waitingFor || null : null,
       status: statusTarget,
     };
@@ -6044,6 +6051,8 @@ export class UIController {
         : this.clarifyState.calendarDate;
     } else if (this.clarifyState.dueType === "due" && this.clarifyState.dueDate) {
       updates.dueDate = this.clarifyState.dueDate;
+    } else if (this.clarifyState.dueType === "followUp" && this.clarifyState.followUpDate) {
+      updates.followUpDate = this.clarifyState.followUpDate;
     }
     this.taskManager.updateTask(task.id, updates);
     const destinations = [];
@@ -6199,6 +6208,9 @@ export class UIController {
       )
     );
     meta.append(this.buildMetaRow("Due date", task.dueDate ? formatFriendlyDate(task.dueDate) : "—"));
+    if (task.followUpDate) {
+      meta.append(this.buildMetaRow("Follow up by", formatFriendlyDate(task.followUpDate)));
+    }
     meta.append(this.buildMetaRow("Calendar", this.formatCalendarMeta(task)));
     if (isCompleted && task.waitingFor) {
       const referencedTask = this.taskManager.getReferencedTask(task.waitingFor);
@@ -6833,7 +6845,7 @@ export class UIController {
     areaNewBtn.type = "button";
     areaNewBtn.className = "btn btn-light btn-small";
     areaNewBtn.textContent = "+ New";
-    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaInput));
+    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaInput, this.taskManager));
     const areaWrapper = document.createElement("div");
     areaWrapper.className = "area-select-group";
     areaWrapper.append(areaInput, areaNewBtn);
@@ -6846,6 +6858,14 @@ export class UIController {
     dueInput.type = "date";
     dueInput.value = task.dueDate || "";
     dueGroup.append(dueInput);
+
+    const followUpGroup = document.createElement("label");
+    followUpGroup.className = "task-edit-field";
+    followUpGroup.textContent = "Follow up by";
+    const followUpInput = document.createElement("input");
+    followUpInput.type = "date";
+    followUpInput.value = task.followUpDate || "";
+    followUpGroup.append(followUpInput);
 
     const calendarGroup = document.createElement("label");
     calendarGroup.className = "task-edit-field";
@@ -6954,6 +6974,7 @@ export class UIController {
         timeRequired: timeInput.value || null,
         projectId: projectSelect.value || null,
         dueDate: dueInput.value || null,
+        followUpDate: followUpInput.value || null,
         calendarDate: calendarInput.value || null,
         calendarTime: calendarTimeInput.value || null,
         calendarEndTime: calendarEndTimeInput.value || null,
@@ -7008,6 +7029,7 @@ export class UIController {
       timeInput,
       projectSelect,
       dueInput,
+      followUpInput,
       calendarInput,
       calendarTimeInput,
       calendarEndTimeInput,
@@ -7062,6 +7084,7 @@ export class UIController {
       statusGroup,
       projectGroup,
       dueGroup,
+      followUpGroup,
       calendarGroup,
       ...(task.completedAt ? [closureGroup] : []),
       recurrenceGroup,
@@ -7752,7 +7775,7 @@ export class UIController {
     areaNewBtn.type = "button";
     areaNewBtn.className = "btn btn-light btn-small";
     areaNewBtn.textContent = "+ New";
-    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaSelect));
+    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaSelect, this.taskManager));
     const areaWrapper = document.createElement("div");
     areaWrapper.className = "area-select-group";
     areaWrapper.append(areaSelect, areaNewBtn);
@@ -8592,10 +8615,14 @@ function populateAreaSelect(select, areas, currentValue) {
   select.value = currentValue || "";
 }
 
-function addNewAreaOption(select) {
+function addNewAreaOption(select, taskManager) {
   const name = window.prompt("New area of focus:");
   if (!name || !name.trim()) return;
   const trimmed = name.trim();
+  // Persist to state so all other dropdowns pick it up immediately.
+  if (taskManager) {
+    taskManager.addAreaOption(trimmed, { notify: false });
+  }
   if (!Array.from(select.options).some((opt) => opt.value === trimmed)) {
     const opt = document.createElement("option");
     opt.value = trimmed;

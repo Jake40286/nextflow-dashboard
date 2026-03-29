@@ -1656,7 +1656,7 @@ button.meta-item:hover {
 
 .task-context-menu {
   position: fixed;
-  z-index: 2200;
+  z-index: 2800;
   min-width: 180px;
   display: grid;
   gap: 4px;
@@ -2416,7 +2416,7 @@ button.meta-item:hover {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 120;
+  z-index: 2600;
 }
 
 .task-flyout.is-open {

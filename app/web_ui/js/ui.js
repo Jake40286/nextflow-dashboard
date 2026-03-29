@@ -1598,8 +1598,7 @@ export class UIController {
     const board = this.elements.kanbanBoard;
     if (!board) return;
     board.innerHTML = "";
-    const baseStatuses = [STATUS.NEXT, STATUS.DOING, STATUS.WAITING];
-    const statuses = [STATUS.INBOX, ...baseStatuses];
+    const statuses = [STATUS.NEXT, STATUS.DOING, STATUS.WAITING];
     const activeTasks = this.taskManager
       .getTasks(this.buildTaskFilters())
       .filter((task) => statuses.includes(task.status));

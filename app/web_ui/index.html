@@ -243,7 +243,7 @@
                 <input id="toggleHideScheduledNext" type="checkbox" />
                 <span>Hide scheduled items</span>
               </label>
-              <label class="filter-control" for="nextGroupBySelect">Group by</label>
+              <label id="nextGroupByLabel" class="filter-control" for="nextGroupBySelect">Group by</label>
               <select id="nextGroupBySelect">
                 <option value="context">Context</option>
                 <option value="project">Project</option>
@@ -259,7 +259,7 @@
                 <option value="effort">Effort level</option>
                 <option value="none">No swimlanes</option>
               </select>
-              <label class="filter-control" for="nextGroupLimitInput">Max per group</label>
+              <label id="nextGroupLimitLabel" class="filter-control" for="nextGroupLimitInput">Max per group</label>
               <input id="nextGroupLimitInput" type="number" min="1" step="1" placeholder="No limit" style="width:6rem" />
               <label class="filter-control" for="taskSortSelect">Sort by</label>
               <select id="taskSortSelect">

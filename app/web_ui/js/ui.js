@@ -660,6 +660,10 @@ export class UIController {
       toolbarActionsNote,
       nextProjectFanoutControl,
       nextHideScheduledControl,
+      nextGroupBySelect,
+      nextGroupByLabel,
+      nextGroupLimitInput,
+      nextGroupLimitLabel,
       clearFilters,
       expandProjects,
       projectCompletedTasksControl,
@@ -686,6 +690,18 @@ export class UIController {
     }
     if (nextHideScheduledControl) {
       nextHideScheduledControl.hidden = !supportsNextFanout;
+    }
+    if (nextGroupBySelect) {
+      nextGroupBySelect.hidden = !supportsNextFanout;
+    }
+    if (nextGroupByLabel) {
+      nextGroupByLabel.hidden = !supportsNextFanout;
+    }
+    if (nextGroupLimitInput) {
+      nextGroupLimitInput.hidden = !supportsNextFanout;
+    }
+    if (nextGroupLimitLabel) {
+      nextGroupLimitLabel.hidden = !supportsNextFanout;
     }
     if (kanbanGroupBySelect) {
       kanbanGroupBySelect.hidden = !supportsKanbanGroupBy;
@@ -8501,7 +8517,9 @@ function mapElements() {
     clarifyTwoMinuteExpectYes: byId("clarifyTwoMinuteExpectYes"),
     clarifyTwoMinuteExpectNo: byId("clarifyTwoMinuteExpectNo"),
     nextGroupBySelect: byId("nextGroupBySelect"),
+    nextGroupByLabel: byId("nextGroupByLabel"),
     nextGroupLimitInput: byId("nextGroupLimitInput"),
+    nextGroupLimitLabel: byId("nextGroupLimitLabel"),
     kanbanGroupBySelect: byId("kanbanGroupBySelect"),
     kanbanGroupByLabel: byId("kanbanGroupByLabel"),
     kanbanSubheading: byId("kanbanSubheading"),

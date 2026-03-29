@@ -1631,11 +1631,9 @@ export class UIController {
 
       const laneGrid = document.createElement("div");
       laneGrid.className = "kanban-lane-grid";
-      const laneStatuses = lane === "No Area" ? statuses : baseStatuses;
-      laneGrid.style.gridTemplateColumns = `repeat(${laneStatuses.length}, minmax(200px, 1fr))`;
       const laneTasks = laneTaskMap.get(lane);
 
-      laneStatuses.forEach((status) => {
+      statuses.forEach((status) => {
         const column = document.createElement("section");
         column.className = "kanban-column";
         column.dataset.dropzone = status;

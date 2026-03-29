@@ -3,6 +3,7 @@
 
 ## Context
 - Technical question or architecture challenge: $ARGUMENTS
+- Project architectural reference: @project-context.md
 - Relevant system documentation and design artifacts will be referenced using @ file syntax.
 - Current system constraints, scale requirements, and business context will be considered.
 

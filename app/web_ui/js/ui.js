@@ -3225,13 +3225,20 @@ export class UIController {
     const body = document.createElement("tbody");
     entries.slice(0, 100).forEach((entry) => {
       const tr = document.createElement("tr");
-      const time = entry.ts ? new Date(entry.ts).toLocaleString() : "—";
-      const device = entry.deviceLabel || entry.deviceId || "—";
-      const title = entry.taskTitle ? entry.taskTitle.slice(0, 30) : entry.taskId || "—";
-      const field = entry.field || "—";
-      const prev = entry.prev !== undefined ? String(entry.prev) || "(empty)" : "—";
-      const next = entry.next !== undefined ? String(entry.next) || "(empty)" : "—";
-      tr.innerHTML = `<td>${time}</td><td>${device}</td><td title="${entry.taskTitle || ""}">${title}</td><td>${field}</td><td>${prev}</td><td>${next}</td>`;
+      const cells = [
+        entry.ts ? new Date(entry.ts).toLocaleString() : "—",
+        entry.deviceLabel || entry.deviceId || "—",
+        entry.taskTitle ? entry.taskTitle.slice(0, 30) : entry.taskId || "—",
+        entry.field || "—",
+        entry.prev !== undefined ? String(entry.prev) || "(empty)" : "—",
+        entry.next !== undefined ? String(entry.next) || "(empty)" : "—",
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (i === 2 && entry.taskTitle) td.title = entry.taskTitle;
+        tr.append(td);
+      });
       body.append(tr);
     });
     table.append(body);

@@ -506,8 +506,8 @@ export class TaskManager extends EventTarget {
       this.state = nextState;
       // Merge the remote device's op log entries into our local log.
       if (Array.isArray(remoteState.deviceLog) && remoteState.deviceLog.length) {
-        const local = readOpLogEntries(this.storage, OP_LOG_MAX);
-        appendOpLogEntries(this.storage, mergeOpLogs(local, remoteState.deviceLog));
+        const merged = mergeOpLogs(readOpLogEntries(this.storage, OP_LOG_MAX), remoteState.deviceLog);
+        try { this.storage?.setItem(OP_LOG_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
       }
       // Signature uses only the slim payload so it stays comparable with
       // future flushRemoteQueue reads (which also receive a slim /state).

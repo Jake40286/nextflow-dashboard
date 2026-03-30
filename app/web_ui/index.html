@@ -23,10 +23,9 @@
       <form id="quickAddForm" class="quick-add" aria-label="Quick capture">
         <div class="quick-add-main">
           <label for="quickAddInput" class="visually-hidden">Quick capture task</label>
-          <input id="quickAddInput" name="title" type="text" placeholder="Quick capture: type and press Enter" autocomplete="off" required />
+          <input id="quickAddInput" name="title" type="text" placeholder="Quick capture: type and press Enter" autocomplete="off" spellcheck="true" required />
           <button id="quickAddToggle" type="button" class="btn btn-light" aria-expanded="false" aria-controls="quickAddDetails">Details</button>
-          <button id="errandsShortcut" type="button" class="btn btn-light quick-add-shortcut" title="Add errand: pre-fills @Errands context, low effort, &lt;5min">@Errands</button>
-          <button type="submit" class="btn btn-primary">Add to Inbox</button>
+<button type="submit" class="btn btn-primary">Add to Inbox</button>
         </div>
         <div id="quickAddDetails" class="quick-add-details" hidden>
           <label for="quickAddDescription" class="visually-hidden">Task description</label>

@@ -563,6 +563,7 @@ export class UIController {
       this.updateConnectionIndicator(event.detail.status);
       if (event.detail.status === "online") {
         this.updateSyncButtonTitle();
+        this._flushFeedbackQueue();
       }
     });
 
@@ -5298,27 +5299,68 @@ export class UIController {
       if (!type || !description) return;
       const submitBtn = form.querySelector(".feedback-submit");
       submitBtn.disabled = true;
+      const item = {
+        type,
+        description,
+        panel: this.activePanel || "",
+        createdAt: new Date().toISOString(),
+      };
       try {
         const response = await fetch("/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type,
-            description,
-            panel: this.activePanel || "",
-            createdAt: new Date().toISOString(),
-          }),
+          body: JSON.stringify(item),
         });
         if (!response.ok) throw new Error("Submit failed");
         form.reset();
         setOpen(false);
         this.showToast("info", "Feedback received. Thanks!");
-      } catch (error) {
-        this.showToast("error", "Could not submit feedback. Check connection.");
+      } catch {
+        this._enqueueFeedback(item);
+        form.reset();
+        setOpen(false);
+        this.showToast("warn", "Offline — feedback saved and will send when reconnected.");
       } finally {
         submitBtn.disabled = false;
       }
     });
+  }
+
+  _enqueueFeedback(item) {
+    const QUEUE_KEY = "nextflow-feedback-queue";
+    let queue = [];
+    try { queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch { /* ignore */ }
+    queue.push(item);
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  }
+
+  async _flushFeedbackQueue() {
+    const QUEUE_KEY = "nextflow-feedback-queue";
+    let queue = [];
+    try { queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch { return; }
+    if (!queue.length) return;
+    const remaining = [];
+    for (const item of queue) {
+      try {
+        const response = await fetch("/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item),
+        });
+        if (!response.ok) remaining.push(item);
+      } catch {
+        remaining.push(item);
+      }
+    }
+    if (remaining.length < queue.length) {
+      const sent = queue.length - remaining.length;
+      this.showToast("info", `Sent ${sent} queued feedback item${sent === 1 ? "" : "s"}.`);
+    }
+    if (remaining.length) {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
+    } else {
+      localStorage.removeItem(QUEUE_KEY);
+    }
   }
 
   setupLightbox() {

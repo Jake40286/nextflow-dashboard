@@ -441,12 +441,6 @@ body {
   min-height: 88px;
 }
 
-.quick-add-shortcut.is-active {
-  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 .topbar-meta {
   display: flex;
   flex-wrap: wrap;

@@ -25,11 +25,7 @@ function setupQuickAdd() {
   const form = document.getElementById("quickAddForm");
   const details = document.getElementById("quickAddDetails");
   const toggle = document.getElementById("quickAddToggle");
-  const errandsBtn = document.getElementById("errandsShortcut");
-
   if (!form) return;
-
-  let errandsMode = false;
 
   if (toggle && details) {
     toggle.addEventListener("click", () => {
@@ -41,14 +37,6 @@ function setupQuickAdd() {
         details.hidden = false;
         details.querySelector("textarea")?.focus();
       }
-    });
-  }
-
-  if (errandsBtn) {
-    errandsBtn.addEventListener("click", () => {
-      errandsMode = !errandsMode;
-      errandsBtn.classList.toggle("is-active", errandsMode);
-      form.querySelector("input[name=title]")?.focus();
     });
   }
 
@@ -65,11 +53,6 @@ function setupQuickAdd() {
       description: data.get("description"),
       status: STATUS.INBOX,
     };
-    if (errandsMode) {
-      taskData.contexts = ["@Errands"];
-      taskData.effortLevel = "low";
-      taskData.timeRequired = "<5min";
-    }
     const refs = ui.parseInlineTitleRefs(title);
     if (refs.projectId) taskData.projectId = refs.projectId;
     if (refs.peopleTag) taskData.peopleTag = refs.peopleTag;
@@ -84,10 +67,6 @@ function setupQuickAdd() {
     if (toggle && details && !details.hidden) {
       details.hidden = true;
       toggle.setAttribute("aria-expanded", "false");
-    }
-    if (errandsMode) {
-      errandsMode = false;
-      errandsBtn?.classList.remove("is-active");
     }
   });
 }

@@ -513,6 +513,23 @@ export class UIController {
       this.loadFeedbackList();
     });
 
+    this.elements.syncDiagRefreshBtn?.addEventListener("click", () => {
+      this.renderSyncDiagnostics();
+    });
+
+    this.elements.syncDiagCopyBtn?.addEventListener("click", () => {
+      const entries = this._readOpLog();
+      navigator.clipboard?.writeText(JSON.stringify(entries, null, 2))
+        .then(() => this.showToast("info", "Sync log copied to clipboard."))
+        .catch(() => this.showToast("error", "Could not copy to clipboard."));
+    });
+
+    this.elements.syncDiagClearBtn?.addEventListener("click", () => {
+      try { localStorage.removeItem("nextflow-op-log"); } catch { /* ignore */ }
+      this.renderSyncDiagnostics();
+      this.showToast("info", "Sync log cleared.");
+    });
+
     this.elements.settingsClearFeedbackBtn?.addEventListener("click", async () => {
       const btn = this.elements.settingsClearFeedbackBtn;
       btn.disabled = true;
@@ -622,6 +639,7 @@ export class UIController {
     this._renderPanelIfDirty(panelName);
     if (panelName === "settings") {
       this.loadFeedbackList();
+      this.renderSyncDiagnostics();
     }
     if (panelName === "statistics" || panelName === "reports") {
       this.taskManager.ensureCompletedLoaded().then(() => {
@@ -3175,6 +3193,49 @@ export class UIController {
       li.append(main);
       container.append(li);
     });
+  }
+
+  _readOpLog() {
+    try {
+      const raw = localStorage.getItem("nextflow-op-log");
+      const entries = raw ? JSON.parse(raw) : [];
+      return Array.isArray(entries) ? entries : [];
+    } catch {
+      return [];
+    }
+  }
+
+  renderSyncDiagnostics() {
+    const container = this.elements.syncDiagContainer;
+    if (!container) return;
+    const entries = this._readOpLog();
+    container.innerHTML = "";
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "sync-diag-empty";
+      empty.textContent = "No field changes recorded yet. Changes to status, My Day, due date, and follow-up date will appear here.";
+      container.append(empty);
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "sync-diag-table";
+    const head = document.createElement("thead");
+    head.innerHTML = "<tr><th>Time</th><th>Device</th><th>Task</th><th>Field</th><th>Was</th><th>Now</th></tr>";
+    table.append(head);
+    const body = document.createElement("tbody");
+    entries.slice(0, 100).forEach((entry) => {
+      const tr = document.createElement("tr");
+      const time = entry.ts ? new Date(entry.ts).toLocaleString() : "—";
+      const device = entry.deviceLabel || entry.deviceId || "—";
+      const title = entry.taskTitle ? entry.taskTitle.slice(0, 30) : entry.taskId || "—";
+      const field = entry.field || "—";
+      const prev = entry.prev !== undefined ? String(entry.prev) || "(empty)" : "—";
+      const next = entry.next !== undefined ? String(entry.next) || "(empty)" : "—";
+      tr.innerHTML = `<td>${time}</td><td>${device}</td><td title="${entry.taskTitle || ""}">${title}</td><td>${field}</td><td>${prev}</td><td>${next}</td>`;
+      body.append(tr);
+    });
+    table.append(body);
+    container.append(table);
   }
 
   renderSettings() {
@@ -8810,6 +8871,10 @@ function mapElements() {
     settingsClearFeedbackBtn: byId("settingsClearFeedbackBtn"),
     settingsLoadFeedbackBtn: byId("settingsLoadFeedbackBtn"),
     settingsFeedbackList: byId("settingsFeedbackList"),
+    syncDiagContainer: byId("syncDiagContainer"),
+    syncDiagRefreshBtn: byId("syncDiagRefreshBtn"),
+    syncDiagCopyBtn: byId("syncDiagCopyBtn"),
+    syncDiagClearBtn: byId("syncDiagClearBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
     topbarSettings: byId("topbarSettings"),

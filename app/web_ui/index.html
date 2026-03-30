@@ -589,6 +589,18 @@
             </div>
             <ul id="settingsFeedbackList" class="settings-list" role="list"></ul>
           </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
+              <h3>Sync Diagnostics</h3>
+              <p class="muted small-text">Field-level change log shared across devices on sync. Useful for diagnosing merge conflicts.</p>
+            </header>
+            <div class="settings-card-body">
+              <button id="syncDiagRefreshBtn" class="btn btn-light" type="button">Refresh</button>
+              <button id="syncDiagCopyBtn" class="btn btn-light" type="button">Copy log</button>
+              <button id="syncDiagClearBtn" class="btn btn-light" type="button">Clear log</button>
+            </div>
+            <div id="syncDiagContainer" class="sync-diag-container"></div>
+          </section>
         </div>
       </section>
     </section>

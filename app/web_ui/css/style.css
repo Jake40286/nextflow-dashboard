@@ -3535,6 +3535,42 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
+.sync-diag-container {
+  overflow-x: auto;
+  font-size: var(--font-size-sm);
+}
+
+.sync-diag-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sync-diag-table th,
+.sync-diag-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.sync-diag-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.sync-diag-table td:nth-child(5),
+.sync-diag-table td:nth-child(6) {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-diag-empty {
+  padding: var(--space-3) 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
 .feedback-widget {
   position: fixed;
   bottom: var(--space-5);

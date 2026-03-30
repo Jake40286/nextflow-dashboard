@@ -20,6 +20,18 @@ export const PROJECT_STATUSES = ["Active", "OnHold", "Completed"];
 const SLUG_MIN_LENGTH = 5;
 const DEVICE_INFO_KEY = "nextflow-device-info";
 const DEVICE_INFO_KEY_LEGACY = "gtd-dashboard-device-info";
+const OP_LOG_KEY = "nextflow-op-log";
+const OP_LOG_MAX = 300;
+const OP_LOG_SHARED_MAX = 100;
+// Fields tracked in the op log and eligible for per-field-group merge
+const OP_LOG_FIELDS = ["status", "myDayDate", "calendarDate", "calendarTime", "dueDate", "followUpDate"];
+// Field groups for per-field-group merge logic in mergeTasks()
+const MERGE_FIELD_GROUPS = {
+  scheduling: ["myDayDate", "calendarDate", "calendarTime"],
+  status: ["status"],
+  dueDate: ["dueDate"],
+  followUpDate: ["followUpDate"],
+};
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
@@ -356,6 +368,38 @@ function normalizeSlug(value, seed) {
   return createSlug(seed);
 }
 
+function readOpLogEntries(storage, limit = OP_LOG_MAX) {
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(OP_LOG_KEY);
+    const entries = raw ? JSON.parse(raw) : [];
+    return Array.isArray(entries) ? entries.slice(0, limit) : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendOpLogEntries(storage, newEntries) {
+  if (!storage || !newEntries?.length) return;
+  try {
+    const existing = readOpLogEntries(storage, OP_LOG_MAX);
+    const merged = mergeOpLogs(existing, newEntries);
+    storage.setItem(OP_LOG_KEY, JSON.stringify(merged));
+  } catch {
+    // localStorage full or unavailable — op log is best-effort
+  }
+}
+
+function mergeOpLogs(localEntries = [], remoteEntries = []) {
+  const map = new Map();
+  [...localEntries, ...remoteEntries].forEach((entry) => {
+    if (entry?.id) map.set(entry.id, entry);
+  });
+  return Array.from(map.values())
+    .sort((a, b) => (b.ts > a.ts ? 1 : b.ts < a.ts ? -1 : 0))
+    .slice(0, OP_LOG_MAX);
+}
+
 function getDeviceIdentity(storage) {
   const fallback = { id: "device-unknown", label: "Unknown device" };
   if (!storage) {
@@ -460,6 +504,11 @@ export class TaskManager extends EventTarget {
         ? hydrateState(remoteStateFull)
         : hydrateState(mergeStates(remoteStateFull, this.state || {}));
       this.state = nextState;
+      // Merge the remote device's op log entries into our local log.
+      if (Array.isArray(remoteState.deviceLog) && remoteState.deviceLog.length) {
+        const local = readOpLogEntries(this.storage, OP_LOG_MAX);
+        appendOpLogEntries(this.storage, mergeOpLogs(local, remoteState.deviceLog));
+      }
       // Signature uses only the slim payload so it stays comparable with
       // future flushRemoteQueue reads (which also receive a slim /state).
       this.remoteSignature = hashState(slimStateForHash(remoteState) || {});
@@ -563,7 +612,7 @@ export class TaskManager extends EventTarget {
         const remoteDevice = serverState?.syncMeta?.deviceLabel || "another device";
         this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice } }));
       }
-      // Stamp which device last wrote and when.
+      // Stamp which device last wrote and when; attach op log for the other device to read.
       this.pendingRemoteState = {
         ...this.pendingRemoteState,
         syncMeta: {
@@ -571,6 +620,7 @@ export class TaskManager extends EventTarget {
           deviceLabel: this.deviceInfo.label,
           syncedAt: nowIso(),
         },
+        deviceLog: readOpLogEntries(this.storage, OP_LOG_SHARED_MAX),
       };
       await writeServerState(this.pendingRemoteState);
       // Keep signature in sync with what the server will return on the next
@@ -802,6 +852,7 @@ export class TaskManager extends EventTarget {
       slug: normalizeSlug(payload.slug, id),
       originDevice: this.deviceInfo?.label || "Unknown device",
       originDeviceId: this.deviceInfo?.id || null,
+      _fieldTimestamps: { scheduling: nowIso(), status: nowIso(), dueDate: nowIso(), followUpDate: nowIso() },
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -847,8 +898,38 @@ export class TaskManager extends EventTarget {
       this.notify("error", tagError);
       return null;
     }
+    const originalFields = {};
+    OP_LOG_FIELDS.forEach((f) => { originalFields[f] = task[f]; });
     Object.assign(task, draft);
-    task.updatedAt = nowIso();
+    const now = nowIso();
+    task.updatedAt = now;
+    // Stamp per-field-group timestamps and emit diagnostic op log entries
+    const ft = { ...(task._fieldTimestamps || {}) };
+    const ops = [];
+    const hasSchedulingUpdate = hasCalendarDateUpdate || hasMyDayDateUpdate;
+    if (hasSchedulingUpdate) ft.scheduling = now;
+    if ("status" in nextUpdates) ft.status = now;
+    if ("dueDate" in nextUpdates) ft.dueDate = now;
+    if ("followUpDate" in nextUpdates) ft.followUpDate = now;
+    task._fieldTimestamps = ft;
+    OP_LOG_FIELDS.forEach((f) => {
+      const prev = String(originalFields[f] ?? "");
+      const next = String(task[f] ?? "");
+      if (prev !== next) {
+        ops.push({
+          id: generateId("op"),
+          taskId: task.id,
+          taskTitle: task.title,
+          field: f,
+          prev,
+          next,
+          ts: now,
+          deviceId: this.deviceInfo?.id || "unknown",
+          deviceLabel: this.deviceInfo?.label || "Unknown device",
+        });
+      }
+    });
+    if (ops.length) appendOpLogEntries(this.storage, ops);
     this.emitChange();
     return task;
   }
@@ -2710,6 +2791,7 @@ function normalizeTask(task) {
     slug: normalizeSlug(task.slug, task.id || task.sourceId || task.title || nowIso()),
     originDevice: task.originDevice || null,
     originDeviceId: task.originDeviceId || null,
+    _fieldTimestamps: task._fieldTimestamps || null,
     calendarDate: linkedSchedule.calendarDate,
     calendarTime: linkedSchedule.calendarTime,
     contexts: normalizeContextsField(task.contexts ?? task.context ?? task.physicalContext),
@@ -3122,6 +3204,7 @@ function slimStateForHash(state) {
   delete slim.completionLog;
   delete slim.reference;
   delete slim.completedProjects;
+  delete slim.deviceLog;
   return slim;
 }
 
@@ -3220,9 +3303,24 @@ function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map(
     }
     const existingTime = toTimestamp(existing.updatedAt || existing.createdAt);
     const remoteTime = toTimestamp(task.updatedAt || task.createdAt);
-    if (remoteTime > existingTime) {
-      map.set(task.id, task);
+    // Whole-task LWW base: take the task with the newer updatedAt.
+    const base = remoteTime > existingTime ? task : existing;
+    const result = { ...base };
+    // Per-field-group override: for each tracked group, pick the source
+    // whose _fieldTimestamps entry is newer. Falls back to updatedAt for
+    // legacy tasks that predate _fieldTimestamps.
+    const mergedFt = { ...(result._fieldTimestamps || {}) };
+    for (const [group, fields] of Object.entries(MERGE_FIELD_GROUPS)) {
+      const localTs = toTimestamp(existing._fieldTimestamps?.[group] || existing.updatedAt || existing.createdAt);
+      const remoteTs = toTimestamp(task._fieldTimestamps?.[group] || task.updatedAt || task.createdAt);
+      const src = remoteTs >= localTs ? task : existing;
+      for (const f of fields) result[f] = src[f];
+      mergedFt[group] = remoteTs >= localTs
+        ? (task._fieldTimestamps?.[group] || task.updatedAt)
+        : (existing._fieldTimestamps?.[group] || existing.updatedAt);
     }
+    result._fieldTimestamps = mergedFt;
+    map.set(task.id, result);
   });
   return Array.from(map.values());
 }
@@ -3262,6 +3360,10 @@ export const __testing = {
   advanceRecurrence,
   normalizeRecurrenceRule,
   slimStateForHash,
+  mergeOpLogs,
+  appendOpLogEntries,
+  readOpLogEntries,
+  MERGE_FIELD_GROUPS,
 };
 
 function getCompletionFormatter(grouping) {

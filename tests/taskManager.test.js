@@ -853,6 +853,131 @@ test("ensureCompletedLoaded does not overwrite existing state when server return
   globalThis.fetch = undefined;
 });
 
+// ── Op log + field-level merge tests ────────────────────────────────────────
+
+const { mergeOpLogs, appendOpLogEntries, readOpLogEntries, MERGE_FIELD_GROUPS } = __testing;
+
+test("updateTask emits op log entry when myDayDate changes", () => {
+  const storage = new Map();
+  storage.getItem = (k) => storage.get(k) ?? null;
+  storage.setItem = (k, v) => storage.set(k, v);
+  storage.removeItem = (k) => storage.delete(k);
+
+  const manager = new TaskManager();
+  manager.remoteSyncEnabled = false;
+  manager.storage = storage;
+  manager.state = {
+    tasks: [], reference: [], completionLog: [], projects: [],
+    completedProjects: [], checklist: [], analytics: { history: [] },
+    settings: { theme: "light", customTheme: { canvas: "#f5efe2", accent: "#0f766e", signal: "#b45309" }, customThemePalettes: [], areaOptions: [], featureFlags: {} },
+  };
+
+  const task = manager.addTask({ title: "My Day test" });
+  manager.updateTask(task.id, { myDayDate: "2026-03-30" });
+
+  const entries = readOpLogEntries(storage);
+  const myDayEntry = entries.find((e) => e.field === "myDayDate");
+  assert.ok(myDayEntry, "op log entry created for myDayDate change");
+  assert.equal(myDayEntry.next, "2026-03-30");
+  assert.equal(myDayEntry.taskId, task.id);
+});
+
+test("updateTask emits op log entry when status changes", () => {
+  const storage = new Map();
+  storage.getItem = (k) => storage.get(k) ?? null;
+  storage.setItem = (k, v) => storage.set(k, v);
+  storage.removeItem = (k) => storage.delete(k);
+
+  const manager = new TaskManager();
+  manager.remoteSyncEnabled = false;
+  manager.storage = storage;
+  manager.state = {
+    tasks: [], reference: [], completionLog: [], projects: [],
+    completedProjects: [], checklist: [], analytics: { history: [] },
+    settings: { theme: "light", customTheme: { canvas: "#f5efe2", accent: "#0f766e", signal: "#b45309" }, customThemePalettes: [], areaOptions: [], featureFlags: {} },
+  };
+
+  const task = manager.addTask({ title: "Status test" });
+  manager.updateTask(task.id, { status: "next" });
+
+  const entries = readOpLogEntries(storage);
+  const statusEntry = entries.find((e) => e.field === "status");
+  assert.ok(statusEntry, "op log entry created for status change");
+  assert.equal(statusEntry.prev, "inbox");
+  assert.equal(statusEntry.next, "next");
+});
+
+test("mergeOpLogs deduplicates by id and sorts newest-first", () => {
+  const a = [
+    { id: "op1", ts: "2026-03-30T10:00:00Z", field: "status" },
+    { id: "op2", ts: "2026-03-30T09:00:00Z", field: "myDayDate" },
+  ];
+  const b = [
+    { id: "op2", ts: "2026-03-30T09:00:00Z", field: "myDayDate" }, // duplicate
+    { id: "op3", ts: "2026-03-30T11:00:00Z", field: "dueDate" },
+  ];
+  const merged = mergeOpLogs(a, b);
+  assert.equal(merged.length, 3, "duplicates removed");
+  assert.equal(merged[0].id, "op3", "sorted newest-first");
+  assert.equal(merged[1].id, "op1");
+  assert.equal(merged[2].id, "op2");
+});
+
+test("mergeTasks field-group merge: myDayDate from Device A survives status update from Device B", () => {
+  // Simulate the reported bug: A adds task to My Day, B later changes status.
+  // Before this fix, B's whole-task win would clobber A's myDayDate.
+  const t1 = "2026-03-30T09:00:00Z";
+  const t2 = "2026-03-30T10:00:00Z"; // B is later overall
+
+  const deviceATask = {
+    id: "task-1", title: "Test", status: "inbox",
+    myDayDate: "2026-03-30", calendarDate: "2026-03-30", calendarTime: null,
+    dueDate: null, followUpDate: null,
+    updatedAt: t1,
+    _fieldTimestamps: { scheduling: t2, status: t1, dueDate: t1, followUpDate: t1 },
+    createdAt: t1,
+  };
+
+  const deviceBTask = {
+    id: "task-1", title: "Test", status: "next",
+    myDayDate: null, calendarDate: null, calendarTime: null,
+    dueDate: null, followUpDate: null,
+    updatedAt: t2,
+    _fieldTimestamps: { scheduling: t1, status: t2, dueDate: t1, followUpDate: t1 },
+    createdAt: t1,
+  };
+
+  const { mergeStates } = __testing;
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+
+  const result = merged.tasks.find((t) => t.id === "task-1");
+  assert.ok(result, "task present after merge");
+  assert.equal(result.status, "next", "Device B's status update wins (newer _fieldTimestamps.status)");
+  assert.equal(result.myDayDate, "2026-03-30", "Device A's My Day wins (newer _fieldTimestamps.scheduling)");
+});
+
+test("mergeTasks falls back to updatedAt LWW for legacy tasks without _fieldTimestamps", () => {
+  const t1 = "2026-03-29T09:00:00Z";
+  const t2 = "2026-03-30T10:00:00Z";
+
+  const older = { id: "task-2", title: "Old", status: "inbox", myDayDate: "2026-03-29", updatedAt: t1, createdAt: t1 };
+  const newer = { id: "task-2", title: "Old", status: "next", myDayDate: null, updatedAt: t2, createdAt: t1 };
+
+  const { mergeStates } = __testing;
+  const merged = mergeStates(
+    { tasks: [newer], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [older], reference: [], completionLog: [], completedProjects: [] }
+  );
+
+  const result = merged.tasks.find((t) => t.id === "task-2");
+  assert.ok(result, "task present");
+  assert.equal(result.status, "next", "newer whole-task wins for all fields when no _fieldTimestamps");
+  assert.equal(result.myDayDate, null, "newer whole-task wins — no field override");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

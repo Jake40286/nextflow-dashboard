@@ -484,6 +484,8 @@ export class TaskManager extends EventTarget {
     this.serverVersion = null;
     this._localPersistTimer = null;
     this._completedDataLoaded = false;
+    this._flushInProgress = false;
+    this._flushPending = false;
     migrateStorageKeys(this.storage);
     this.loadFromLocal();
     if (typeof window !== "undefined") {
@@ -601,6 +603,15 @@ export class TaskManager extends EventTarget {
   }
 
   async flushRemoteQueue(options = {}) {
+    // Concurrency guard: if a flush is already in-flight, record that another
+    // is needed and return. The in-flight flush will re-invoke on completion.
+    if (this._flushInProgress) {
+      this._flushPending = true;
+      return;
+    }
+    this._flushInProgress = true;
+    // Capture state at the start of this flush. Using a local variable keeps
+    // this flush's payload stable; later flushes capture later state.
     const payload = hydrateState(this.state);
     this.pendingRemoteState = payload;
     try {
@@ -654,6 +665,13 @@ export class TaskManager extends EventTarget {
       }
       if (options?.rethrow) {
         throw error;
+      }
+    } finally {
+      this._flushInProgress = false;
+      // If another flush was requested while this one was in-flight, run it now.
+      if (this._flushPending) {
+        this._flushPending = false;
+        this.flushRemoteQueue();
       }
     }
   }
@@ -3251,6 +3269,9 @@ function slimStateForHash(state) {
   delete slim.reference;
   delete slim.completedProjects;
   delete slim.deviceLog;
+  // Strip syncMeta — syncedAt changes on every write and would cause spurious
+  // conflict detection when the only change between two reads is a new timestamp.
+  delete slim.syncMeta;
   // Strip merge metadata from settings — _fieldTimestamps is not user data and should
   // not cause spurious conflict detection when transitioning from pre-timestamped state.
   if (slim.settings?._fieldTimestamps) {
@@ -3347,7 +3368,11 @@ function mergeSettings(localSettings = {}, remoteSettings = {}) {
     const remoteTime = toTimestamp(remoteTs[group]);
     if (remoteTime > localTime) {
       // Remote has a newer explicit timestamp for this group — override the local-wins base.
-      for (const f of fields) merged[f] = remoteSettings[f];
+      // Skip undefined values: a field absent in an older remote state should not wipe
+      // a locally-defined value introduced after that state was last written.
+      for (const f of fields) {
+        if (remoteSettings[f] !== undefined) merged[f] = remoteSettings[f];
+      }
       mergedTs[group] = remoteTs[group];
     }
     // If local wins (localTime >= remoteTime), the base spread is already correct.

@@ -614,7 +614,7 @@ test("archived task notes can be edited and deleted", () => {
 
 // ─── slimStateForHash ────────────────────────────────────────────────────────
 
-test("slimStateForHash strips completion collections and preserves other fields", () => {
+test("slimStateForHash strips completion collections and syncMeta, preserves other fields", () => {
   const full = {
     tasks: [{ id: "t-1" }],
     projects: [{ id: "p-1" }],
@@ -630,10 +630,10 @@ test("slimStateForHash strips completion collections and preserves other fields"
   assert.ok(!("completionLog" in slim), "completionLog stripped");
   assert.ok(!("reference" in slim), "reference stripped");
   assert.ok(!("completedProjects" in slim), "completedProjects stripped");
+  assert.ok(!("syncMeta" in slim), "syncMeta stripped to avoid spurious conflict detection");
   assert.deepEqual(slim.tasks, full.tasks, "tasks preserved");
   assert.deepEqual(slim.projects, full.projects, "projects preserved");
   assert.deepEqual(slim.settings, full.settings, "settings preserved");
-  assert.deepEqual(slim.syncMeta, full.syncMeta, "syncMeta preserved");
 });
 
 test("slimStateForHash does not mutate the original object", () => {

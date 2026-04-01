@@ -526,6 +526,18 @@ export class TaskManager extends EventTarget {
       this._completedDataLoaded = true;
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
+      // Write-back: if the merge produced more tasks than the server reported, local had
+      // offline-created tasks the server doesn't know about. Upload the merged result now
+      // so other devices see them without waiting for the user to make another change.
+      // Skipped when the caller is manualSync() (it calls flushRemoteQueue() explicitly)
+      // and when replaceLocal is set (intentional server-wins override).
+      if (!options.replaceLocal && !options.skipWriteBack) {
+        const remoteTasks = (remoteStateFull.tasks || []).filter(Boolean).length;
+        const mergedTasks = (nextState.tasks || []).filter(Boolean).length;
+        if (mergedTasks > remoteTasks) {
+          this.persistRemotely();
+        }
+      }
     } catch (error) {
       console.error("Failed to load remote state", error);
       this.setConnectionStatus("offline");
@@ -610,9 +622,13 @@ export class TaskManager extends EventTarget {
       return;
     }
     this._flushInProgress = true;
-    // Capture state at the start of this flush. Using a local variable keeps
-    // this flush's payload stable; later flushes capture later state.
+    // Capture state and the baseline signature together so that if loadRemoteState()
+    // completes and updates this.remoteSignature while this flush is in-flight (i.e.
+    // between the payload snapshot and the server read below), the conflict check still
+    // compares against the signature that corresponds to the captured payload — not to
+    // whatever the server returned to loadRemoteState().
     const payload = hydrateState(this.state);
+    const baseSignature = this.remoteSignature;
     this.pendingRemoteState = payload;
     try {
       const serverState = await readServerState();
@@ -620,7 +636,7 @@ export class TaskManager extends EventTarget {
       // Compare using slim signatures — /state no longer includes completion
       // collections, so hash only the fields the server actually returns.
       const serverSig = hashState(slimStateForHash(serverState) || {});
-      if (serverSig && serverSig !== this.remoteSignature) {
+      if (serverSig && serverSig !== baseSignature) {
         // Conflict detected. Fetch completion history so mergeStates() has
         // full tombstone data and won't resurrect tasks deleted on another device.
         const completedData = await readCompletedState().catch(() => ({}));
@@ -721,7 +737,7 @@ export class TaskManager extends EventTarget {
     // Load (and merge) the latest server state into local first, so that
     // flushRemoteQueue writes the fully-merged result rather than overwriting
     // remote changes that arrived since the last auto-save.
-    await this.loadRemoteState({ rethrow: true });
+    await this.loadRemoteState({ rethrow: true, skipWriteBack: true });
     await this.flushRemoteQueue({ rethrow: true });
     this._persistLocallyNow();
   }

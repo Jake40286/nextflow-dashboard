@@ -32,6 +32,13 @@ const MERGE_FIELD_GROUPS = {
   dueDate: ["dueDate"],
   followUpDate: ["followUpDate"],
 };
+// Field groups for per-field-group merge logic in mergeSettings()
+const SETTINGS_MERGE_GROUPS = {
+  appearance: ["theme", "customTheme", "customThemePalettes"],
+  calendar: ["googleCalendarConfig"],
+  flags: ["featureFlags", "staleTaskThresholds"],
+  lists: ["contextOptions", "peopleOptions", "areaOptions", "deletedPeopleOptions"],
+};
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
@@ -258,7 +265,9 @@ function hydrateState(raw = {}) {
       nextState.completedProjects
     ),
     featureFlags: normalizeFeatureFlags(nextState.settings?.featureFlags),
+    staleTaskThresholds: normalizeStaleTaskThresholds(nextState.settings?.staleTaskThresholds),
     googleCalendarConfig: normalizeGoogleCalendarConfig(nextState.settings?.googleCalendarConfig),
+    _fieldTimestamps: nextState.settings?._fieldTimestamps || {},
   };
   return nextState;
 }
@@ -605,12 +614,13 @@ export class TaskManager extends EventTarget {
         // full tombstone data and won't resurrect tasks deleted on another device.
         const completedData = await readCompletedState().catch(() => ({}));
         const serverStateFull = { ...serverState, ...completedData };
+        const summary = diffConflict(payload, serverStateFull);
         const merged = mergeStates(serverStateFull, payload);
         this.state = hydrateState(merged);
         this.pendingRemoteState = merged;
         this.emitChange({ persist: false });
         const remoteDevice = serverState?.syncMeta?.deviceLabel || "another device";
-        this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice } }));
+        this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice, summary } }));
       }
       // Stamp which device last wrote and when; attach op log for the other device to read.
       this.pendingRemoteState = {
@@ -651,12 +661,17 @@ export class TaskManager extends EventTarget {
   _checkServerVersion(remoteState) {
     const v = remoteState?._serverVersion;
     if (!v) return;
-    if (this.serverVersion === null) {
-      this.serverVersion = v;
-    } else if (v !== this.serverVersion) {
-      this.serverVersion = v;
+    const STORAGE_KEY = "nextflow-server-version";
+    const lastKnown = this.storage?.getItem(STORAGE_KEY) ?? null;
+    if (lastKnown === null) {
+      // First ever launch — record the version without showing the banner.
+      this.storage?.setItem(STORAGE_KEY, v);
+    } else if (v !== lastKnown) {
+      // Server was redeployed since last session (or mid-session). Show banner.
+      this.storage?.setItem(STORAGE_KEY, v);
       this.dispatchEvent(new CustomEvent("versionchange"));
     }
+    this.serverVersion = v;
   }
 
   async checkConnectivity() {
@@ -869,7 +884,14 @@ export class TaskManager extends EventTarget {
 
     this.state.tasks.unshift(task);
     this.emitChange();
-    this.notify("info", `Added "${task.title}" to Inbox.`);
+    const destLabel = {
+      [STATUS.INBOX]: "Inbox",
+      [STATUS.NEXT]: "Next Actions",
+      [STATUS.DOING]: "Doing",
+      [STATUS.WAITING]: "Waiting For",
+      [STATUS.SOMEDAY]: "Someday",
+    }[task.status] ?? "Inbox";
+    this.notify("info", `Added "${task.title}" to ${destLabel}.`);
     return task;
   }
 
@@ -994,7 +1016,7 @@ export class TaskManager extends EventTarget {
     task.notes = normalizeTaskNotes([...(task.notes || []), note], { fallbackCreatedAt: noteTimestamp });
     task.updatedAt = nowIso();
     this.emitChange();
-    return note;
+    return task.notes.find((n) => n.id === note.id) || note;
   }
 
   updateTaskNote(id, noteId, text) {
@@ -1022,6 +1044,7 @@ export class TaskManager extends EventTarget {
     const updatedNote = {
       ...notes[noteIndex],
       text: trimmed,
+      updatedAt: nowIso(),
     };
     notes[noteIndex] = updatedNote;
     task.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: updatedNote.createdAt || nowIso() });
@@ -1067,7 +1090,8 @@ export class TaskManager extends EventTarget {
       this.notify("warn", "List item cannot be empty.");
       return null;
     }
-    const newItems = lines.map((text) => ({ id: generateId("li"), text, done: false }));
+    const timestamp = nowIso();
+    const newItems = lines.map((text) => ({ id: generateId("li"), text, done: false, updatedAt: timestamp }));
     task.listItems = normalizeListItems([...(task.listItems || []), ...newItems]);
     task.updatedAt = nowIso();
     this.emitChange();
@@ -1081,6 +1105,7 @@ export class TaskManager extends EventTarget {
     const item = items.find((i) => i?.id === itemId);
     if (!item) return false;
     item.done = !item.done;
+    item.updatedAt = nowIso();
     task.updatedAt = nowIso();
     this.emitChange();
     return true;
@@ -1103,7 +1128,7 @@ export class TaskManager extends EventTarget {
       this.notify("warn", "List item not found.");
       return null;
     }
-    items[index] = { ...items[index], text: trimmed };
+    items[index] = { ...items[index], text: trimmed, updatedAt: nowIso() };
     task.listItems = normalizeListItems(items);
     task.updatedAt = nowIso();
     this.emitChange();
@@ -1188,6 +1213,7 @@ export class TaskManager extends EventTarget {
     const updatedNote = {
       ...notes[noteIndex],
       text: trimmed,
+      updatedAt: nowIso(),
     };
     notes[noteIndex] = updatedNote;
     entry.notes = normalizeTaskNotes(notes, { fallbackCreatedAt: updatedNote.createdAt || nowIso() });
@@ -1776,6 +1802,7 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     );
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     if (notify) {
       this.notify("info", `Added context "${normalized}".`);
@@ -1812,6 +1839,7 @@ export class TaskManager extends EventTarget {
       this.state.settings.deletedPeopleOptions = this.state.settings.deletedPeopleOptions
         .filter((d) => d.toLowerCase() !== normalized.toLowerCase());
     }
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     if (notify) {
       this.notify("info", `Added people tag "${normalized}".`);
@@ -1851,6 +1879,7 @@ export class TaskManager extends EventTarget {
       this.state.projects,
       this.state.completedProjects
     );
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     if (notify) this.notify("info", `Added area "${trimmed}".`);
     return trimmed;
@@ -1885,6 +1914,7 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     );
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Renamed context "${from}" to "${to}".`);
     return true;
@@ -1928,6 +1958,7 @@ export class TaskManager extends EventTarget {
       changed = true;
     }
     if (!changed) return false;
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Deleted context "${target}".`);
     return true;
@@ -1974,6 +2005,7 @@ export class TaskManager extends EventTarget {
       this.state.reference,
       this.state.completionLog
     );
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Renamed people tag "${from}" to "${to}".`);
     return true;
@@ -2018,6 +2050,7 @@ export class TaskManager extends EventTarget {
     if (!deletedOptions.some((d) => d.toLowerCase() === target.toLowerCase())) {
       this.state.settings.deletedPeopleOptions = normalizePeopleTagCollection([...deletedOptions, target]);
     }
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Deleted people tag "${target}".`);
     return true;
@@ -2081,6 +2114,7 @@ export class TaskManager extends EventTarget {
       }
     });
     if (!changed) return false;
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Renamed area "${from}" to "${to}".`);
     return true;
@@ -2124,6 +2158,7 @@ export class TaskManager extends EventTarget {
       }
     });
     if (!changed) return false;
+    stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
     this.notify("info", `Deleted area "${target}". Reassigned to "${fallback}".`);
     return true;
@@ -2393,6 +2428,7 @@ export class TaskManager extends EventTarget {
       return;
     }
     this.state.settings.theme = normalized;
+    stampSettingsTimestamp(this.state.settings, "appearance");
     this.emitChange();
   }
 
@@ -2416,6 +2452,7 @@ export class TaskManager extends EventTarget {
       return current;
     }
     this.state.settings.customTheme = next;
+    stampSettingsTimestamp(this.state.settings, "appearance");
     this.emitChange();
     return next;
   }
@@ -2449,6 +2486,7 @@ export class TaskManager extends EventTarget {
         updatedAt: timestamp,
       };
       this.state.settings.customThemePalettes = currentPalettes;
+      stampSettingsTimestamp(this.state.settings, "appearance");
       this.emitChange();
       this.notify("info", `Updated palette "${resolvedName}".`);
       return currentPalettes[existingIndex];
@@ -2461,6 +2499,7 @@ export class TaskManager extends EventTarget {
       updatedAt: timestamp,
     };
     this.state.settings.customThemePalettes = [palette, ...currentPalettes];
+    stampSettingsTimestamp(this.state.settings, "appearance");
     this.emitChange();
     this.notify("info", `Saved palette "${resolvedName}".`);
     return palette;
@@ -2490,6 +2529,7 @@ export class TaskManager extends EventTarget {
     }
     this.state.settings.customTheme = nextTheme;
     this.state.settings.theme = "custom";
+    stampSettingsTimestamp(this.state.settings, "appearance");
     this.emitChange();
     this.notify("info", `Applied palette "${palette.name}".`);
     return palette;
@@ -2508,6 +2548,7 @@ export class TaskManager extends EventTarget {
     }
     const [removed] = currentPalettes.splice(index, 1);
     this.state.settings.customThemePalettes = currentPalettes;
+    stampSettingsTimestamp(this.state.settings, "appearance");
     this.emitChange();
     this.notify("info", `Deleted palette "${removed.name}".`);
     return true;
@@ -2530,6 +2571,7 @@ export class TaskManager extends EventTarget {
       ...current,
       [flag]: nextValue,
     };
+    stampSettingsTimestamp(this.state.settings, "flags");
     this.emitChange();
     return true;
   }
@@ -2575,6 +2617,7 @@ export class TaskManager extends EventTarget {
       this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
     }
     this.state.settings.staleTaskThresholds = normalized;
+    stampSettingsTimestamp(this.state.settings, "flags");
     this.emitChange();
     return true;
   }
@@ -2591,6 +2634,7 @@ export class TaskManager extends EventTarget {
       ...this.state.settings.googleCalendarConfig,
       ...config,
     });
+    stampSettingsTimestamp(this.state.settings, "calendar");
     this.emitChange();
   }
 }
@@ -2732,6 +2776,7 @@ function normalizeListItems(items) {
       id: typeof item.id === "string" && item.id ? item.id : generateId("li"),
       text: item.text.trim(),
       done: Boolean(item.done),
+      updatedAt: sanitizeIsoTimestamp(item.updatedAt) || null,
     }));
 }
 
@@ -3013,6 +3058,7 @@ function normalizeTaskNotes(notes, { fallbackCreatedAt } = {}) {
         id,
         text,
         createdAt,
+        updatedAt: sanitizeIsoTimestamp(entry.updatedAt) || createdAt,
       };
     })
     .filter(Boolean);
@@ -3205,6 +3251,12 @@ function slimStateForHash(state) {
   delete slim.reference;
   delete slim.completedProjects;
   delete slim.deviceLog;
+  // Strip merge metadata from settings — _fieldTimestamps is not user data and should
+  // not cause spurious conflict detection when transitioning from pre-timestamped state.
+  if (slim.settings?._fieldTimestamps) {
+    slim.settings = { ...slim.settings };
+    delete slim.settings._fieldTimestamps;
+  }
   return slim;
 }
 
@@ -3236,8 +3288,77 @@ function mergeStates(remoteState = {}, localState = {}) {
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
   merged.completedProjects = mergeCollections(localState.completedProjects, remoteState.completedProjects);
-  merged.analytics = localState.analytics || remoteState.analytics || {};
-  merged.settings = localState.settings || remoteState.settings || {};
+  merged.analytics = mergeAnalytics(localState.analytics || {}, remoteState.analytics || {});
+  merged.settings = mergeSettings(localState.settings || {}, remoteState.settings || {});
+  return merged;
+}
+
+// Merges two analytics objects by unioning their history arrays keyed on the week label.
+// For weeks present on both sides: max(complete) is more accurate, min(remaining) is more current.
+// Ordering follows the first-seen chronological order from the union of both sides.
+function mergeAnalytics(localAnalytics = {}, remoteAnalytics = {}) {
+  const localHistory  = Array.isArray(localAnalytics.history)  ? localAnalytics.history  : [];
+  const remoteHistory = Array.isArray(remoteAnalytics.history) ? remoteAnalytics.history : [];
+  if (!localHistory.length && !remoteHistory.length) {
+    return { ...(localAnalytics || remoteAnalytics || {}) };
+  }
+  const map = new Map();
+  [...remoteHistory, ...localHistory].forEach((entry) => {
+    const key = entry?.week;
+    if (!key) return;
+    const existing = map.get(key);
+    if (!existing) { map.set(key, entry); return; }
+    map.set(key, {
+      ...existing,
+      complete:  Math.max(existing.complete  || 0, entry.complete  || 0),
+      remaining: Math.min(existing.remaining || 0, entry.remaining || 0),
+    });
+  });
+  // Preserve chronological week order using first-seen order from the union of both sides.
+  const seen = new Set();
+  const ordered = [...remoteHistory, ...localHistory]
+    .map((e) => e?.week)
+    .filter((w) => w && !seen.has(w) && seen.add(w));
+  return {
+    ...localAnalytics,
+    history: ordered.map((w) => map.get(w)).filter(Boolean),
+  };
+}
+
+// Stamps a per-group timestamp on a settings object so mergeSettings() can use LWW per group.
+function stampSettingsTimestamp(settings, group) {
+  if (!settings._fieldTimestamps || typeof settings._fieldTimestamps !== "object") {
+    settings._fieldTimestamps = {};
+  }
+  settings._fieldTimestamps[group] = nowIso();
+}
+
+// Merges two settings objects using per-field-group last-write-wins via _fieldTimestamps.
+// Falls back to local-wins for any group that lacks timestamps on both sides (legacy state).
+function mergeSettings(localSettings = {}, remoteSettings = {}) {
+  // Start with local-wins as the base (preserves current behaviour for un-stamped settings).
+  const merged = { ...remoteSettings, ...localSettings };
+  const localTs = localSettings._fieldTimestamps || {};
+  const remoteTs = remoteSettings._fieldTimestamps || {};
+  // Seed merged timestamps with local; remote overrides below where remote wins.
+  const mergedTs = { ...localTs };
+  for (const [group, fields] of Object.entries(SETTINGS_MERGE_GROUPS)) {
+    const localTime = toTimestamp(localTs[group]);
+    const remoteTime = toTimestamp(remoteTs[group]);
+    if (remoteTime > localTime) {
+      // Remote has a newer explicit timestamp for this group — override the local-wins base.
+      for (const f of fields) merged[f] = remoteSettings[f];
+      mergedTs[group] = remoteTs[group];
+    }
+    // If local wins (localTime >= remoteTime), the base spread is already correct.
+  }
+  // Only carry _fieldTimestamps forward if at least one side already had them; avoids
+  // persisting an empty object into legacy state that has never had a timestamp.
+  if (Object.keys(localTs).length || Object.keys(remoteTs).length) {
+    merged._fieldTimestamps = mergedTs;
+  } else {
+    delete merged._fieldTimestamps;
+  }
   return merged;
 }
 
@@ -3269,6 +3390,30 @@ function collectRemovalMarkers(...states) {
     ingest(state.completionLog);
   });
   return markers;
+}
+
+// Merges two sub-arrays of id'd items (notes, listItems) from a single task using id-based LWW.
+// Unlike whole-task LWW, this always unions both sides so items added on either device
+// survive a concurrent edit on the other. Output is sorted chronologically so that
+// items added on either device appear in the right position.
+function mergeSubcollection(localArr, remoteArr) {
+  const local = Array.isArray(localArr) ? localArr : [];
+  const remote = Array.isArray(remoteArr) ? remoteArr : [];
+  if (!local.length && !remote.length) return [];
+  const map = new Map();
+  // Remote seeds the map; local overrides where the same id exists and is newer.
+  [...remote, ...local].forEach((item) => {
+    if (!item?.id) return;
+    const existing = map.get(item.id);
+    if (!existing) { map.set(item.id, item); return; }
+    const existingTs = toTimestamp(existing.updatedAt || existing.createdAt);
+    const nextTs = toTimestamp(item.updatedAt || item.createdAt);
+    if (nextTs >= existingTs) map.set(item.id, item);
+  });
+  // Sort chronologically so items added on either device land in the right place.
+  return Array.from(map.values()).sort((a, b) =>
+    toTimestamp(a.createdAt || a.updatedAt) - toTimestamp(b.createdAt || b.updatedAt)
+  );
 }
 
 function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map()) {
@@ -3320,6 +3465,10 @@ function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map(
         : (existing._fieldTimestamps?.[group] || existing.updatedAt);
     }
     result._fieldTimestamps = mergedFt;
+    // Merge notes and listItems as collections so items added on either device
+    // survive concurrent whole-task or field-group LWW on the other device.
+    result.notes = mergeSubcollection(existing.notes, task.notes);
+    result.listItems = mergeSubcollection(existing.listItems, task.listItems);
     map.set(task.id, result);
   });
   return Array.from(map.values());
@@ -3353,8 +3502,60 @@ function formatIsoDate(date) {
   return clone.toISOString().slice(0, 10);
 }
 
+// Computes a summary of what the remote state changed relative to local state.
+// Called before mergeStates() so the pre-merge local snapshot is still available.
+// Returns changedTasks, addedTasks, removedTasks (by task id+title), and
+// changedSettingsGroups (by group name) where the remote timestamp is newer.
+function diffConflict(localState = {}, remoteState = {}) {
+  const localTasks  = Array.isArray(localState.tasks)  ? localState.tasks  : [];
+  const remoteTasks = Array.isArray(remoteState.tasks) ? remoteState.tasks : [];
+
+  const localTaskMap = new Map(localTasks.map((t) => [t.id, t]));
+
+  const changedTasks  = [];
+  const addedTasks    = [];
+  const removedTasks  = [];
+
+  for (const remoteTask of remoteTasks) {
+    if (!remoteTask?.id) continue;
+    const localTask = localTaskMap.get(remoteTask.id);
+    if (!localTask) {
+      addedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
+    } else {
+      const remoteTs = toTimestamp(remoteTask.updatedAt);
+      const localTs  = toTimestamp(localTask.updatedAt);
+      if (remoteTs > localTs) {
+        changedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
+      }
+    }
+  }
+
+  const remoteTaskIds = new Set(remoteTasks.map((t) => t?.id).filter(Boolean));
+  for (const localTask of localTasks) {
+    if (!localTask?.id) continue;
+    if (!remoteTaskIds.has(localTask.id)) {
+      removedTasks.push({ id: localTask.id, title: localTask.title || localTask.id });
+    }
+  }
+
+  const localTs  = localState.settings?._fieldTimestamps  || {};
+  const remoteTs = remoteState.settings?._fieldTimestamps || {};
+  const changedSettingsGroups = [];
+  for (const group of Object.keys(SETTINGS_MERGE_GROUPS)) {
+    const localTime  = toTimestamp(localTs[group]);
+    const remoteTime = toTimestamp(remoteTs[group]);
+    if (remoteTime > localTime) changedSettingsGroups.push(group);
+  }
+
+  return { changedTasks, addedTasks, removedTasks, changedSettingsGroups };
+}
+
 export const __testing = {
   mergeStates,
+  mergeAnalytics,
+  mergeSettings,
+  mergeSubcollection,
+  diffConflict,
   collectRemovalMarkers,
   toTimestamp,
   advanceRecurrence,
@@ -3364,6 +3565,7 @@ export const __testing = {
   appendOpLogEntries,
   readOpLogEntries,
   MERGE_FIELD_GROUPS,
+  SETTINGS_MERGE_GROUPS,
 };
 
 function getCompletionFormatter(grouping) {

@@ -523,13 +523,50 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._ensure_state_dir()
         with STATE_LOCK:
             core_payload = dict(payload or {})
-            completed_payload = {
-                "reference": core_payload.pop("reference", []),
-                "completionLog": core_payload.pop("completionLog", []),
-                "completedProjects": core_payload.pop("completedProjects", []),
-            }
+            _COMPLETION_KEYS = ("completionLog", "reference", "completedProjects")
+            if any(k in core_payload for k in _COMPLETION_KEYS):
+                # Old-protocol client sent completion fields. Merge with existing
+                # completed.json rather than replacing it, so a stale device cannot
+                # downgrade the server's completion history.
+                try:
+                    existing = json.loads(COMPLETED_FILE.read_text(encoding="utf-8")) if COMPLETED_FILE.exists() else {}
+                except json.JSONDecodeError:
+                    existing = {}
+
+                def _merge_collection(existing_list, incoming_list, ts_field):
+                    merged = {e["id"]: e for e in existing_list if e.get("id")}
+                    for entry in incoming_list:
+                        eid = entry.get("id")
+                        if not eid:
+                            continue
+                        if eid not in merged or entry.get(ts_field, "") > merged[eid].get(ts_field, ""):
+                            merged[eid] = entry
+                    return list(merged.values())
+
+                completed_payload = {
+                    "completionLog": _merge_collection(
+                        existing.get("completionLog", []),
+                        core_payload.pop("completionLog", []),
+                        "completedAt",
+                    ),
+                    "reference": _merge_collection(
+                        existing.get("reference", []),
+                        core_payload.pop("reference", []),
+                        "updatedAt",
+                    ),
+                    "completedProjects": _merge_collection(
+                        existing.get("completedProjects", []),
+                        core_payload.pop("completedProjects", []),
+                        "updatedAt",
+                    ),
+                }
+                COMPLETED_FILE.write_text(json.dumps(completed_payload), encoding="utf-8")
+            else:
+                # New-protocol client strips completion fields before sending.
+                # Leave completed.json untouched.
+                for k in _COMPLETION_KEYS:
+                    core_payload.pop(k, None)
             STATE_FILE.write_text(json.dumps(core_payload), encoding="utf-8")
-            COMPLETED_FILE.write_text(json.dumps(completed_payload), encoding="utf-8")
         self._send_json({"status": "ok"})
         settings = core_payload.get("settings", {})
         flags = settings.get("featureFlags", {})

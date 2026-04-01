@@ -33,10 +33,10 @@
         </div>
       </form>
       <div class="topbar-meta" role="status" aria-live="polite">
-        <div class="meta-item">
+        <button type="button" id="topbarInboxBtn" class="meta-item" title="Go to Inbox">
           <span class="meta-label">Inbox</span>
           <span id="inboxCount" class="meta-value">0</span>
-        </div>
+        </button>
         <div class="meta-item">
           <span class="meta-label">Due Today</span>
           <span id="dueTodayCount" class="meta-value">0</span>
@@ -591,6 +591,28 @@
           </section>
           <section class="settings-card">
             <header class="settings-card-header">
+              <h3>This Device</h3>
+              <p class="muted small-text">
+                Name this browser so it's identifiable in Sync Diagnostics across devices.
+              </p>
+            </header>
+            <div class="settings-card-body">
+              <div class="settings-device-row">
+                <input
+                  id="settingsDeviceNameInput"
+                  type="text"
+                  class="settings-device-name-input"
+                  maxlength="40"
+                  placeholder="e.g. Home Desktop, Work Laptop, Phone"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <span id="settingsDeviceIdSuffix" class="settings-device-id-suffix muted small-text"></span>
+              </div>
+            </div>
+          </section>
+          <section class="settings-card">
+            <header class="settings-card-header">
               <h3>Sync Diagnostics</h3>
               <p class="muted small-text">Field-level change log shared across devices on sync. Useful for diagnosing merge conflicts.</p>
             </header>
@@ -931,6 +953,21 @@
       <footer class="modal-footer">
         <button id="promptModalCancel" class="btn btn-light" type="button">Cancel</button>
         <button id="promptModalOk" class="btn btn-primary" type="button">OK</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Conflict visibility modal -->
+  <div id="conflictModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="conflictModalTitle" hidden>
+    <div class="modal-backdrop" id="conflictModalBackdrop"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="conflictModalTitle">Sync conflict resolved</h2>
+      </header>
+      <div class="modal-body" id="conflictModalBody"></div>
+      <footer class="modal-footer">
+        <button id="conflictModalDismiss" class="btn btn-primary" type="button">Dismiss</button>
       </footer>
     </div>
   </div>

@@ -67,9 +67,13 @@ Env vars for overriding paths (set in `.env`): `STATE_FILE`, `COMPLETED_FILE`, `
 
 **`data.js`** — `TaskManager extends EventTarget`. All business logic, state reads/writes, localStorage cache (`nextflow-state-v1`), server sync, and offline/merge-conflict resolution. Emits `statechange`, `toast`, `syncconflict`, `versionchange`, `connection` events. The single source of truth — `ui.js` and `analytics.js` read state only through `TaskManager` methods.
 
-Key sync flow: every mutation calls `emitChange()` → `save()` → `persistLocally()` (debounced 500ms, flushes immediately on `beforeunload`/`visibilitychange`) + `persistRemotely()` → `flushRemoteQueue()`. On conflict, `mergeStates()` resolves with last-write-wins per entity using `updatedAt` timestamps; `collectRemovalMarkers()` prevents zombie-resurrection of deleted tasks.
+Key sync flow: every mutation calls `emitChange()` → `save()` → `persistLocally()` (debounced 500ms, flushes immediately on `beforeunload`/`visibilitychange`) + `persistRemotely()` → `flushRemoteQueue()`. On conflict, `mergeStates()` resolves with last-write-wins per entity; `collectRemovalMarkers()` prevents zombie-resurrection of deleted tasks.
+
+Merge granularity: `mergeTasks()` uses `MERGE_FIELD_GROUPS` (groups: `scheduling`, `status`, `dueDate`, `followUpDate`) for per-group LWW using op log timestamps — finer than whole-task `updatedAt`. `mergeSettings()` uses `SETTINGS_MERGE_GROUPS` (groups: `appearance`, `calendar`, `flags`, `lists`) for per-group LWW.
 
 On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a conflict is actually detected (not on every flush). Conflict detection uses `slimStateForHash()` to compare only the fields `/state` returns, keeping local and server signatures compatible.
+
+**Op log** (`nextflow-op-log` in localStorage, max 300 entries): every change to `OP_LOG_FIELDS` (`status`, `myDayDate`, `calendarDate`, `calendarTime`, `dueDate`, `followUpDate`) is recorded with a per-entry UUID, timestamp, device identity, task id/title, field name, previous value, and next value. The top 100 entries (`OP_LOG_SHARED_MAX`) are included as `deviceLog` in every server PUT payload and merged back from the remote state on load. Powers the Sync Diagnostics table in the Settings panel (`renderSyncDiagnostics()` in `ui.js`). Device identity is stored in `nextflow-device-info` localStorage key (auto-generated per browser, never sent to a remote service).
 
 **Client PUT payload never includes completion fields** — `writeServerState()` strips `completionLog`, `reference`, and `completedProjects` before sending. The server manages these exclusively in `completed.json`.
 
@@ -78,6 +82,8 @@ On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parall
 All DOM element references are looked up once in `cacheElements()` and accessed via `this.elements.*` throughout — never query the DOM directly inside render methods.
 
 **`analytics.js`** — `AnalyticsController`. Chart rendering only, wrapping `chart.min.js`. Reads from `TaskManager`; no state mutations.
+
+**`sw.js`** — Service worker. Caches core assets under `nextflow-shell-v1`. Strategy: network-first for `.js`/`.css` (so deploys are picked up immediately), cache-first for navigation and other static assets. `/state` API calls are always bypassed — never cached.
 
 ---
 
@@ -88,11 +94,14 @@ All DOM element references are looked up once in `cacheElements()` and accessed 
 - `EFFORT_LEVELS`: `low | medium | high`
 - `TIME_REQUIREMENTS`: `<5min | <15min | <30min | 30min+`
 - `RECURRENCE_TYPES`: `daily | weekly | monthly`
+- `PROJECT_AREAS`: `Work | Personal | Home | Finance | Health`
+- `PROJECT_THEMES`: `Networking | DevOps | Automations | Family | Admin | Research`
+- `PROJECT_STATUSES`: `Active | OnHold | Completed`
 - People tags match `PEOPLE_TAG_PATTERN`: `/^\+[A-Za-z0-9][A-Za-z0-9_-]*$/`
 
 Key task fields: `status`, `contexts`, `dueDate`, `followUpDate`, `myDayDate`, `areaOfFocus`, `project`, `waitingFor`, `effortLevel`, `timeRequired`, `recurrence`, `peopleTags`, `notes`.
 
-Key settings fields: `peopleOptions`, `deletedPeopleOptions` (tracks explicitly deleted tags to prevent text-mention resurrection), `contextOptions`, `areaOptions`, `featureFlags`.
+Key settings fields: `peopleOptions`, `deletedPeopleOptions` (tracks explicitly deleted tags to prevent text-mention resurrection), `contextOptions`, `areaOptions`, `featureFlags`, `staleTaskThresholds`, `theme`, `customTheme`, `customThemePalettes`.
 
 ---
 

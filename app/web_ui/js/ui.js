@@ -418,6 +418,9 @@ export class UIController {
     manualSyncButton?.addEventListener("click", () => {
       this.triggerManualSync();
     });
+    this.elements.topbarInboxBtn?.addEventListener("click", () => {
+      this.setActivePanel("inbox");
+    });
     this.elements.topbarSettings?.addEventListener("click", () => {
       this.setActivePanel("settings");
     });
@@ -513,6 +516,20 @@ export class UIController {
       this.loadFeedbackList();
     });
 
+    this.elements.settingsDeviceNameInput?.addEventListener("change", () => {
+      const input = this.elements.settingsDeviceNameInput;
+      let newLabel = input.value.trim();
+      try {
+        const stored = JSON.parse(localStorage.getItem("nextflow-device-info") || "{}");
+        if (!newLabel) newLabel = stored.label || stored.id || "";
+        stored.label = newLabel;
+        localStorage.setItem("nextflow-device-info", JSON.stringify(stored));
+        if (this.taskManager.deviceInfo) this.taskManager.deviceInfo.label = newLabel;
+        input.value = newLabel.replace(/\s*\([a-f0-9]{4}\)$/i, "");
+      } catch { /* ignore */ }
+      this.showToast("info", "Device name saved.");
+    });
+
     this.elements.syncDiagRefreshBtn?.addEventListener("click", () => {
       this.renderSyncDiagnostics();
     });
@@ -585,8 +602,11 @@ export class UIController {
     });
 
     this.taskManager.addEventListener("syncconflict", (event) => {
-      const { remoteDevice } = event.detail;
-      this.showToast("warn", `Merged changes from ${remoteDevice}. Review your tasks — last-write-wins was applied.`);
+      const { remoteDevice, summary } = event.detail;
+      this._lastConflictSummary = summary || null;
+      this.showToast("warn", `Merged with ${remoteDevice}.`, {
+        action: { label: "Review", onClick: () => this.showConflictModal() },
+      });
     });
 
     this.taskManager.addEventListener("versionchange", () => {
@@ -1796,7 +1816,7 @@ export class UIController {
     }
     populateAreaSelect(this.elements.projectAreaSelect, areas, this.elements.projectAreaSelect?.value || "");
 
-    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters());
+    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters({ context: "all" }));
 
     visibleProjects.forEach((project) => {
       const details = document.createElement("details");
@@ -3237,6 +3257,12 @@ export class UIController {
         const td = document.createElement("td");
         td.textContent = text;
         if (i === 2 && entry.taskTitle) td.title = entry.taskTitle;
+        if (i === 1 && entry.deviceId && this.taskManager.deviceInfo?.id === entry.deviceId) {
+          const badge = document.createElement("span");
+          badge.className = "sync-diag-self-badge";
+          badge.textContent = "you";
+          td.append(badge);
+        }
         tr.append(td);
       });
       body.append(tr);
@@ -3246,6 +3272,15 @@ export class UIController {
   }
 
   renderSettings() {
+    try {
+      const deviceInfo = JSON.parse(localStorage.getItem("nextflow-device-info") || "{}");
+      if (this.elements.settingsDeviceNameInput) {
+        this.elements.settingsDeviceNameInput.value = (deviceInfo.label || "").replace(/\s*\([a-f0-9]{4}\)$/i, "");
+      }
+      if (this.elements.settingsDeviceIdSuffix && deviceInfo.id) {
+        this.elements.settingsDeviceIdSuffix.textContent = `(${deviceInfo.id.slice(-4)})`;
+      }
+    } catch { /* ignore */ }
     const themesList = this.elements.settingsThemesList;
     const featureFlagsList = this.elements.settingsFeatureFlagsList;
     const contextsList = this.elements.settingsContextsList;
@@ -8437,6 +8472,101 @@ export class UIController {
     });
   }
 
+  showConflictModal() {
+    const modal    = this.elements.conflictModal;
+    const body     = this.elements.conflictModalBody;
+    const dismiss  = this.elements.conflictModalDismiss;
+    const backdrop = this.elements.conflictModalBackdrop;
+    if (!modal || !body) return;
+
+    const SETTINGS_LABELS = {
+      appearance: "Theme & colors",
+      calendar:   "Google Calendar",
+      flags:      "Feature flags & stale thresholds",
+      lists:      "Contexts, people tags & areas",
+    };
+
+    const summary = this._lastConflictSummary;
+    body.innerHTML = "";
+
+    if (!summary) {
+      const p = document.createElement("p");
+      p.textContent = "No change details available for this conflict.";
+      body.appendChild(p);
+    } else {
+      const { changedTasks = [], addedTasks = [], removedTasks = [], changedSettingsGroups = [] } = summary;
+      const hasTaskChanges    = changedTasks.length || addedTasks.length || removedTasks.length;
+      const hasSettingChanges = changedSettingsGroups.length;
+
+      if (!hasTaskChanges && !hasSettingChanges) {
+        const p = document.createElement("p");
+        p.textContent = "No specific changes detected.";
+        body.appendChild(p);
+      } else {
+        if (hasTaskChanges) {
+          const section = document.createElement("section");
+          const h3 = document.createElement("h3");
+          h3.className = "conflict-modal-section-title";
+          h3.textContent = "Tasks affected";
+          section.appendChild(h3);
+          const ul = document.createElement("ul");
+          ul.className = "conflict-modal-list";
+          for (const t of changedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Updated: ${t.title}`;
+            ul.appendChild(li);
+          }
+          for (const t of addedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Added: ${t.title}`;
+            ul.appendChild(li);
+          }
+          for (const t of removedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Removed: ${t.title}`;
+            ul.appendChild(li);
+          }
+          section.appendChild(ul);
+          body.appendChild(section);
+        }
+
+        if (hasSettingChanges) {
+          const section = document.createElement("section");
+          const h3 = document.createElement("h3");
+          h3.className = "conflict-modal-section-title";
+          h3.textContent = "Settings changed";
+          section.appendChild(h3);
+          const ul = document.createElement("ul");
+          ul.className = "conflict-modal-list";
+          for (const group of changedSettingsGroups) {
+            const li = document.createElement("li");
+            li.textContent = SETTINGS_LABELS[group] || group;
+            ul.appendChild(li);
+          }
+          section.appendChild(ul);
+          body.appendChild(section);
+        }
+      }
+    }
+
+    const closeModal = () => {
+      modal.classList.remove("is-open");
+      modal.setAttribute("hidden", "");
+      dismiss?.removeEventListener("click", closeModal);
+      backdrop?.removeEventListener("click", closeModal);
+      document.removeEventListener("keydown", onKeydown);
+    };
+    const onKeydown = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); closeModal(); }
+    };
+    dismiss?.addEventListener("click", closeModal);
+    backdrop?.addEventListener("click", closeModal);
+    document.addEventListener("keydown", onKeydown);
+    modal.classList.add("is-open");
+    modal.removeAttribute("hidden");
+    setTimeout(() => dismiss?.focus(), 50);
+  }
+
   showUpdateBanner() {
     // Defer if user is mid-clarify flow; re-check when state settles
     if (this.clarifyState?.taskId) {
@@ -8457,12 +8587,22 @@ export class UIController {
     document.body.prepend(banner);
   }
 
-  showToast(level, message) {
+  showToast(level, message, { action } = {}) {
     const region = this.elements.alerts;
     if (!message) return;
     const toast = document.createElement("div");
     toast.className = `toast ${level}`;
     toast.textContent = message;
+    if (action) {
+      const btn = document.createElement("button");
+      btn.className = "toast-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => {
+        if (region.contains(toast)) region.removeChild(toast);
+        action.onClick();
+      });
+      toast.appendChild(btn);
+    }
     region.innerHTML = "";
     region.append(toast);
     setTimeout(() => {
@@ -8815,6 +8955,11 @@ function mapElements() {
     promptModalInput: byId("promptModalInput"),
     promptModalOk: byId("promptModalOk"),
     promptModalCancel: byId("promptModalCancel"),
+    conflictModal: byId("conflictModal"),
+    conflictModalTitle: byId("conflictModalTitle"),
+    conflictModalBody: byId("conflictModalBody"),
+    conflictModalBackdrop: byId("conflictModalBackdrop"),
+    conflictModalDismiss: byId("conflictModalDismiss"),
     confirmModal: byId("confirmModal"),
     confirmModalHeading: byId("confirmModalHeading"),
     confirmModalMessage: byId("confirmModalMessage"),
@@ -8878,12 +9023,15 @@ function mapElements() {
     settingsClearFeedbackBtn: byId("settingsClearFeedbackBtn"),
     settingsLoadFeedbackBtn: byId("settingsLoadFeedbackBtn"),
     settingsFeedbackList: byId("settingsFeedbackList"),
+    settingsDeviceNameInput: byId("settingsDeviceNameInput"),
+    settingsDeviceIdSuffix:  byId("settingsDeviceIdSuffix"),
     syncDiagContainer: byId("syncDiagContainer"),
     syncDiagRefreshBtn: byId("syncDiagRefreshBtn"),
     syncDiagCopyBtn: byId("syncDiagCopyBtn"),
     syncDiagClearBtn: byId("syncDiagClearBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
+    topbarInboxBtn: byId("topbarInboxBtn"),
     topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
     contextSuggestions: document.getElementById("contextSuggestions"),

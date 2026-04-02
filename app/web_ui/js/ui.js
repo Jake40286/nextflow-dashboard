@@ -424,6 +424,13 @@ export class UIController {
     this.elements.topbarSettings?.addEventListener("click", () => {
       this.setActivePanel("settings");
     });
+    // Accordion: close siblings when one opens
+    document.getElementById("panel-settings")?.addEventListener("toggle", (event) => {
+      if (!event.target.matches("details.settings-accordion") || !event.target.open) return;
+      document.querySelectorAll("#panel-settings details.settings-accordion").forEach((el) => {
+        if (el !== event.target) el.removeAttribute("open");
+      });
+    }, { capture: true });
     const settingsLists = [
       this.elements.settingsContextsList,
       this.elements.settingsPeopleList,
@@ -3171,44 +3178,151 @@ export class UIController {
       main.className = "settings-item-main";
       const labelWrap = document.createElement("div");
       labelWrap.className = "settings-item-label";
-      const typePill = document.createElement("span");
-      typePill.className = `task-meta-pill ${item.type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
-      typePill.textContent = item.type;
-      const desc = document.createElement("span");
-      desc.textContent = " " + item.description;
-      const meta = document.createElement("span");
-      meta.className = "settings-item-meta muted small-text";
-      meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
-      labelWrap.append(typePill, desc, document.createElement("br"), meta);
+
+      const buildLabel = (type, description) => {
+        const shortId = document.createElement("span");
+        shortId.className = "feedback-short-id";
+        shortId.textContent = "#" + item.id.slice(0, 6);
+        const typePill = document.createElement("span");
+        typePill.className = `task-meta-pill ${type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
+        typePill.textContent = type;
+        const desc = document.createElement("span");
+        desc.textContent = " " + description;
+        const meta = document.createElement("span");
+        meta.className = "settings-item-meta muted small-text";
+        meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
+        labelWrap.innerHTML = "";
+        labelWrap.append(shortId, " ", typePill, desc, document.createElement("br"), meta);
+      };
+      buildLabel(item.type, item.description);
+
       const actions = document.createElement("div");
       actions.className = "settings-item-actions";
-      if (!item.resolved) {
+
+      const buildActions = () => {
+        actions.innerHTML = "";
+
+        // Edit — swaps label and actions to inline form
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn btn-light btn-small";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", () => {
+          const shortId = document.createElement("span");
+          shortId.className = "feedback-short-id";
+          shortId.textContent = "#" + item.id.slice(0, 6);
+          const typeSelect = document.createElement("select");
+          typeSelect.className = "settings-inline-select";
+          ["bug", "feature"].forEach((t) => {
+            const opt = document.createElement("option");
+            opt.value = t;
+            opt.textContent = t;
+            if (t === item.type) opt.selected = true;
+            typeSelect.append(opt);
+          });
+          const descInput = document.createElement("textarea");
+          descInput.className = "settings-inline-edit";
+          descInput.value = item.description;
+          descInput.rows = 2;
+          labelWrap.innerHTML = "";
+          labelWrap.append(shortId, " ", typeSelect, document.createElement("br"), descInput);
+
+          actions.innerHTML = "";
+          const saveBtn = document.createElement("button");
+          saveBtn.type = "button";
+          saveBtn.className = "btn btn-light btn-small";
+          saveBtn.textContent = "Save";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn btn-light btn-small";
+          cancelBtn.textContent = "Cancel";
+          actions.append(saveBtn, " ", cancelBtn);
+
+          cancelBtn.addEventListener("click", () => this.loadFeedbackList());
+          saveBtn.addEventListener("click", async () => {
+            const newDesc = descInput.value.trim();
+            const newType = typeSelect.value;
+            if (!newDesc) return;
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+              const res = await fetch("/feedback/" + item.id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: newDesc, type: newType }),
+              });
+              if (!res.ok) throw new Error();
+              item.description = newDesc;
+              item.type = newType;
+              buildLabel(newType, newDesc);
+              buildActions();
+            } catch {
+              saveBtn.disabled = false;
+              cancelBtn.disabled = false;
+              this.showToast("error", "Could not update item.");
+            }
+          });
+        });
+
+        // Resolve / Unresolve toggle
         const resolveBtn = document.createElement("button");
         resolveBtn.type = "button";
         resolveBtn.className = "btn btn-light btn-small";
-        resolveBtn.textContent = "Resolve";
+        resolveBtn.textContent = item.resolved ? "Unresolve" : "Resolve";
         resolveBtn.addEventListener("click", async () => {
           resolveBtn.disabled = true;
           try {
-            const res = await fetch("/feedback", {
+            const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ids: [item.id] }),
+              body: JSON.stringify({ resolved: !item.resolved }),
             });
             if (!res.ok) throw new Error();
-            this.loadFeedbackList();
+            item.resolved = !item.resolved;
+            li.classList.toggle("is-muted", item.resolved);
+            resolveBtn.textContent = item.resolved ? "Unresolve" : "Resolve";
+            resolveBtn.disabled = false;
           } catch {
             resolveBtn.disabled = false;
-            this.showToast("error", "Could not resolve item.");
+            this.showToast("error", "Could not update item.");
           }
         });
-        actions.append(resolveBtn);
-      } else {
-        const badge = document.createElement("span");
-        badge.className = "muted small-text";
-        badge.textContent = "Resolved";
-        actions.append(badge);
-      }
+
+        // Delete with re-click confirm
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-light btn-small";
+        deleteBtn.textContent = "Delete";
+        let awaitingConfirm = false;
+        let confirmTimer = null;
+        deleteBtn.addEventListener("click", async () => {
+          if (!awaitingConfirm) {
+            awaitingConfirm = true;
+            deleteBtn.textContent = "Sure?";
+            confirmTimer = setTimeout(() => {
+              awaitingConfirm = false;
+              deleteBtn.textContent = "Delete";
+            }, 3000);
+            return;
+          }
+          clearTimeout(confirmTimer);
+          deleteBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, { method: "DELETE" });
+            if (!res.ok) throw new Error();
+            li.remove();
+          } catch {
+            deleteBtn.disabled = false;
+            awaitingConfirm = false;
+            deleteBtn.textContent = "Delete";
+            this.showToast("error", "Could not delete item.");
+          }
+        });
+
+        actions.append(editBtn, " ", resolveBtn, " ", deleteBtn);
+      };
+      buildActions();
+
       main.append(labelWrap, actions);
       li.append(main);
       container.append(li);
@@ -5601,6 +5715,8 @@ export class UIController {
       clarifyTimeSelect,
       clarifyAddContext,
       clarifyPreviewText,
+      clarifyRecurrenceType,
+      clarifyRecurrenceInterval,
     } = this.elements;
     if (!clarifyModal) return;
     this.handleClarifyKeydown = (event) => {
@@ -5696,6 +5812,7 @@ export class UIController {
       const row = document.getElementById("clarifyDelegateRow");
       if (row) {
         row.hidden = false;
+        this._populateDelegateSuggestions();
         clarifyDelegateNameInput?.focus();
       }
     });
@@ -5709,6 +5826,13 @@ export class UIController {
     };
     [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone].forEach((radio) => {
       radio?.addEventListener("change", updateDateInputs);
+    });
+
+    // Recurrence — enable/disable interval input based on type selection
+    clarifyRecurrenceType?.addEventListener("change", () => {
+      if (clarifyRecurrenceInterval) {
+        clarifyRecurrenceInterval.disabled = !clarifyRecurrenceType.value;
+      }
     });
 
     // Metadata live updates
@@ -5845,6 +5969,7 @@ export class UIController {
       previewText: "",
       actionPlanInitialized: false,
       expectResponse: false,
+      recurrenceRule: null,
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
@@ -5985,6 +6110,13 @@ export class UIController {
     if (this.elements.clarifyTimeSelect) {
       this.elements.clarifyTimeSelect.value = this.clarifyState.time || "";
     }
+    if (this.elements.clarifyRecurrenceType) {
+      this.elements.clarifyRecurrenceType.value = "";
+    }
+    if (this.elements.clarifyRecurrenceInterval) {
+      this.elements.clarifyRecurrenceInterval.value = "1";
+      this.elements.clarifyRecurrenceInterval.disabled = true;
+    }
   }
 
   populateClarifyContexts() {
@@ -6012,6 +6144,17 @@ export class UIController {
     const container = this.elements.clarifyContextList;
     if (!container) return [];
     return Array.from(container.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+  }
+
+  _populateDelegateSuggestions() {
+    const datalist = document.getElementById("clarifyDelegateNameSuggestions");
+    if (!datalist) return;
+    datalist.innerHTML = "";
+    for (const name of this.taskManager.getKnownDelegateNames()) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      datalist.append(opt);
+    }
   }
 
   populateProjectSelect() {
@@ -6390,6 +6533,11 @@ export class UIController {
     }
     const statusTarget = this.clarifyState.statusTarget || STATUS.NEXT;
     const nextActionTitle = this.clarifyState.previewText?.trim() || task.title;
+    const recurrenceType = this.elements.clarifyRecurrenceType?.value || "";
+    const recurrenceInterval = parseInt(this.elements.clarifyRecurrenceInterval?.value, 10) || 1;
+    const recurrenceRule = recurrenceType
+      ? { type: recurrenceType, interval: Math.max(1, recurrenceInterval) }
+      : null;
     const updates = {
       title: nextActionTitle,
       description: task.description,
@@ -6403,6 +6551,7 @@ export class UIController {
       followUpDate: null,
       waitingFor: statusTarget === STATUS.WAITING ? this.clarifyState.waitingFor || task.waitingFor || null : null,
       status: statusTarget,
+      recurrenceRule,
     };
     if (this.clarifyState.dueType === "calendar" && this.clarifyState.calendarDate) {
       updates.calendarDate = this.clarifyState.calendarTime
@@ -6781,10 +6930,8 @@ export class UIController {
       if (e.target.type !== "radio") return;
       selectedType = e.target.value;
       waitingInput.placeholder = placeholders[selectedType] || "";
-      if (selectedType !== "task") {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-      }
+      suggestionList.style.display = "none";
+      suggestionList.innerHTML = "";
     });
 
     waitingField.append(waitingLabel, typeSelector, waitingInput);
@@ -6802,41 +6949,53 @@ export class UIController {
     suggestionList.style.zIndex = "10";
 
     waitingInput.addEventListener("input", () => {
-      if (selectedType !== "task") return;
       const value = waitingInput.value.trim();
-      if (value.length < 2) {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-        return;
-      }
-      const suggestions = this.taskManager.searchTasksForReference(value, { excludeTaskId: task.id });
-      if (suggestions.length === 0) {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-        return;
-      }
       suggestionList.innerHTML = "";
-      suggestionList.style.display = "block";
-      suggestions.forEach((suggestionTask) => {
-        const item = document.createElement("div");
-        item.style.padding = "8px";
-        item.style.borderBottom = "1px solid var(--line)";
-        item.style.cursor = "pointer";
-        item.style.fontSize = "0.9em";
-        item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
-        item.addEventListener("click", () => {
-          waitingInput.value = suggestionTask.slug || suggestionTask.id;
-          suggestionList.style.display = "none";
-          suggestionList.innerHTML = "";
+      suggestionList.style.display = "none";
+      if (selectedType === "task") {
+        if (value.length < 2) return;
+        const suggestions = this.taskManager.searchTasksForReference(value, { excludeTaskId: task.id });
+        if (suggestions.length === 0) return;
+        suggestionList.style.display = "block";
+        suggestions.forEach((suggestionTask) => {
+          const item = document.createElement("div");
+          item.style.padding = "8px";
+          item.style.borderBottom = "1px solid var(--line)";
+          item.style.cursor = "pointer";
+          item.style.fontSize = "0.9em";
+          item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
+          item.addEventListener("click", () => {
+            waitingInput.value = suggestionTask.slug || suggestionTask.id;
+            suggestionList.style.display = "none";
+            suggestionList.innerHTML = "";
+          });
+          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          suggestionList.append(item);
         });
-        item.addEventListener("mouseover", () => {
-          item.style.background = "var(--surface-2)";
+      } else if (selectedType === "person") {
+        if (value.length < 1) return;
+        const lower = value.toLowerCase();
+        const matches = this.taskManager.getKnownDelegateNames().filter((n) => n.toLowerCase().startsWith(lower));
+        if (matches.length === 0) return;
+        suggestionList.style.display = "block";
+        matches.forEach((name) => {
+          const item = document.createElement("div");
+          item.style.padding = "8px";
+          item.style.borderBottom = "1px solid var(--line)";
+          item.style.cursor = "pointer";
+          item.style.fontSize = "0.9em";
+          item.textContent = name;
+          item.addEventListener("click", () => {
+            waitingInput.value = name;
+            suggestionList.style.display = "none";
+            suggestionList.innerHTML = "";
+          });
+          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          suggestionList.append(item);
         });
-        item.addEventListener("mouseout", () => {
-          item.style.background = "transparent";
-        });
-        suggestionList.append(item);
-      });
+      }
     });
 
     waitingField.append(suggestionList);
@@ -7296,6 +7455,7 @@ export class UIController {
       { value: "daily", label: "Daily" },
       { value: "weekly", label: "Weekly" },
       { value: "monthly", label: "Monthly" },
+      { value: "yearly", label: "Yearly" },
     ].forEach((option) => {
       const opt = document.createElement("option");
       opt.value = option.value;
@@ -8039,6 +8199,7 @@ export class UIController {
       daily: "day",
       weekly: "week",
       monthly: "month",
+      yearly: "year",
     };
     const unit = labelMap[rule.type];
     if (!unit) return null;
@@ -9097,6 +9258,8 @@ function mapElements() {
     clarifyAddContext: byId("clarifyAddContext"),
     clarifyEffortSelect: byId("clarifyEffortSelect"),
     clarifyTimeSelect: byId("clarifyTimeSelect"),
+    clarifyRecurrenceType: byId("clarifyRecurrenceType"),
+    clarifyRecurrenceInterval: byId("clarifyRecurrenceInterval"),
     clarifysomedayDetails: byId("clarifysomedayDetails"),
     clarifysomedayContextList: byId("clarifysomedayContextList"),
     clarifysomedayEffort: byId("clarifysomedayEffort"),

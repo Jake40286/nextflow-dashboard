@@ -23,6 +23,8 @@ const DEVICE_INFO_KEY_LEGACY = "gtd-dashboard-device-info";
 const OP_LOG_KEY = "nextflow-op-log";
 const OP_LOG_MAX = 300;
 const OP_LOG_SHARED_MAX = 100;
+// Stores the last server-assigned _rev this client successfully wrote/read.
+const REV_KEY = "nextflow-last-rev";
 // Fields tracked in the op log and eligible for per-field-group merge
 const OP_LOG_FIELDS = ["status", "myDayDate", "calendarDate", "calendarTime", "dueDate", "followUpDate"];
 // Field groups for per-field-group merge logic in mergeTasks()
@@ -43,8 +45,9 @@ export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
   WEEKLY: "weekly",
   MONTHLY: "monthly",
+  YEARLY: "yearly",
 });
-export const RECURRING_OPTIONS = ["daily", "weekly", "monthly"];
+export const RECURRING_OPTIONS = ["daily", "weekly", "monthly", "yearly"];
 export const THEME_OPTIONS = Object.freeze([
   Object.freeze({
     id: "light",
@@ -308,30 +311,38 @@ async function readCompletedState() {
   }
 }
 
-async function writeServerState(state) {
+// Writes state to the server using optimistic locking.
+// ifMatch: the client's last known server _rev (sent as If-Match header).
+// Returns the new _rev on success.
+// Throws an error with .isConflict=true and .serverState set on 409.
+async function writeServerState(state, { ifMatch } = {}) {
   if (typeof fetch === "undefined") {
     throw new Error("Fetch API is unavailable");
   }
   const { completionLog: _cl, reference: _ref, completedProjects: _cp, ...slim } = state;
-  const payload = JSON.stringify(slim);
-  const methods = ["PUT", "POST"];
-  let lastError = null;
-  for (const method of methods) {
-    try {
-      const response = await fetch(STATE_ENDPOINT, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-      });
-      if (!response.ok) {
-        throw new Error(`Failed with status ${response.status}`);
-      }
-      return;
-    } catch (error) {
-      lastError = error;
-    }
+  const headers = { "Content-Type": "application/json" };
+  if (ifMatch !== undefined && ifMatch !== null) {
+    headers["If-Match"] = String(ifMatch);
   }
-  throw lastError || new Error("Failed to persist state");
+  const response = await fetch(STATE_ENDPOINT, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(slim),
+  });
+  if (response.status === 409) {
+    const text = await response.text().catch(() => "{}");
+    let serverState = {};
+    try { serverState = JSON.parse(text); } catch { /* ignore */ }
+    const err = new Error("Conflict");
+    err.isConflict = true;
+    err.serverState = serverState;
+    throw err;
+  }
+  if (!response.ok) {
+    throw new Error(`Failed with status ${response.status}`);
+  }
+  const body = await response.json().catch(() => ({}));
+  return body._rev ?? null;
 }
 
 function safeLocalStorage() {
@@ -475,10 +486,8 @@ export class TaskManager extends EventTarget {
     this.state = hydrateState(EMPTY_STATE);
     this.deviceInfo = getDeviceIdentity(this.storage);
     this.remoteSyncEnabled = typeof fetch !== "undefined";
-    this.remoteSignature = null;
-    this.pendingRemoteState = null;
+    this.lastKnownRev = this._loadLastKnownRev();
     this.remoteRetryTimer = null;
-    this.lastLocalSignature = hashState(this.state);
     this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
     this.serverVersion = null;
@@ -508,7 +517,7 @@ export class TaskManager extends EventTarget {
         readCompletedState().catch(() => ({})),
       ]);
       this._checkServerVersion(remoteState);
-      // Reconstitute a full remote state for merging so that removal markers
+      // Reconstitute a full remote state for merging so that tombstones
       // (tasks completed on another device) are preserved correctly.
       const remoteStateFull = { ...remoteState, ...completedData };
       const nextState = options.replaceLocal
@@ -520,21 +529,21 @@ export class TaskManager extends EventTarget {
         const merged = mergeOpLogs(readOpLogEntries(this.storage, OP_LOG_MAX), remoteState.deviceLog);
         try { this.storage?.setItem(OP_LOG_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
       }
-      // Signature uses only the slim payload so it stays comparable with
-      // future flushRemoteQueue reads (which also receive a slim /state).
-      this.remoteSignature = hashState(slimStateForHash(remoteState) || {});
+      // Track the server's revision so flushRemoteQueue can use optimistic locking.
+      if (remoteState._rev != null) {
+        this.lastKnownRev = remoteState._rev;
+        this._saveLastKnownRev(remoteState._rev);
+      }
       this._completedDataLoaded = true;
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
-      // Write-back: if the merge produced more tasks than the server reported, local had
-      // offline-created tasks the server doesn't know about. Upload the merged result now
-      // so other devices see them without waiting for the user to make another change.
-      // Skipped when the caller is manualSync() (it calls flushRemoteQueue() explicitly)
-      // and when replaceLocal is set (intentional server-wins override).
+      // Write-back: if the merge produced more active tasks than the server reported,
+      // local had offline-created tasks the server doesn't know about. Upload now.
+      // Skipped when the caller is manualSync() and when replaceLocal is set.
       if (!options.replaceLocal && !options.skipWriteBack) {
-        const remoteTasks = (remoteStateFull.tasks || []).filter(Boolean).length;
-        const mergedTasks = (nextState.tasks || []).filter(Boolean).length;
-        if (mergedTasks > remoteTasks) {
+        const remoteActiveTasks = (remoteStateFull.tasks || []).filter((t) => t && !t._deleted).length;
+        const mergedActiveTasks = (nextState.tasks || []).filter((t) => t && !t._deleted).length;
+        if (mergedActiveTasks > remoteActiveTasks) {
           this.persistRemotely();
         }
       }
@@ -546,6 +555,23 @@ export class TaskManager extends EventTarget {
         throw error;
       }
     }
+  }
+
+  _loadLastKnownRev() {
+    try {
+      const v = this.storage?.getItem(REV_KEY);
+      if (v !== null && v !== undefined) {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) ? n : 0;
+      }
+    } catch { /* ignore */ }
+    return 0;
+  }
+
+  _saveLastKnownRev(rev) {
+    try {
+      this.storage?.setItem(REV_KEY, String(rev));
+    } catch { /* ignore */ }
   }
 
   loadFromLocal() {
@@ -622,53 +648,61 @@ export class TaskManager extends EventTarget {
       return;
     }
     this._flushInProgress = true;
-    // Capture state and the baseline signature together so that if loadRemoteState()
-    // completes and updates this.remoteSignature while this flush is in-flight (i.e.
-    // between the payload snapshot and the server read below), the conflict check still
-    // compares against the signature that corresponds to the captured payload — not to
-    // whatever the server returned to loadRemoteState().
-    const payload = hydrateState(this.state);
-    const baseSignature = this.remoteSignature;
-    this.pendingRemoteState = payload;
     try {
-      const serverState = await readServerState();
-      this._checkServerVersion(serverState);
-      // Compare using slim signatures — /state no longer includes completion
-      // collections, so hash only the fields the server actually returns.
-      const serverSig = hashState(slimStateForHash(serverState) || {});
-      if (serverSig && serverSig !== baseSignature) {
-        // Conflict detected. Fetch completion history so mergeStates() has
-        // full tombstone data and won't resurrect tasks deleted on another device.
-        const completedData = await readCompletedState().catch(() => ({}));
-        const serverStateFull = { ...serverState, ...completedData };
-        const summary = diffConflict(payload, serverStateFull);
-        const merged = mergeStates(serverStateFull, payload);
-        this.state = hydrateState(merged);
-        this.pendingRemoteState = merged;
-        this.emitChange({ persist: false });
-        const remoteDevice = serverState?.syncMeta?.deviceLabel || "another device";
-        this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice, summary } }));
-      }
-      // Stamp which device last wrote and when; attach op log for the other device to read.
-      this.pendingRemoteState = {
-        ...this.pendingRemoteState,
-        syncMeta: {
-          deviceId: this.deviceInfo.id,
-          deviceLabel: this.deviceInfo.label,
-          syncedAt: nowIso(),
-        },
+      // Stamp device identity and op log into the payload.
+      const syncMeta = {
+        deviceId: this.deviceInfo.id,
+        deviceLabel: this.deviceInfo.label,
+        syncedAt: nowIso(),
+      };
+      let sendPayload = {
+        ...hydrateState(this.state),
+        syncMeta,
         deviceLog: readOpLogEntries(this.storage, OP_LOG_SHARED_MAX),
       };
-      await writeServerState(this.pendingRemoteState);
-      // Keep signature in sync with what the server will return on the next
-      // read — a slim payload without completion collections.
-      this.remoteSignature = hashState(slimStateForHash(this.pendingRemoteState) || {});
-      this.lastSyncInfo = this.pendingRemoteState.syncMeta;
-      this.pendingRemoteState = null;
-      this.setConnectionStatus("online");
-      if (this.remoteRetryTimer) {
-        clearTimeout(this.remoteRetryTimer);
-        this.remoteRetryTimer = null;
+      let rev = this.lastKnownRev;
+      const MAX_RETRIES = 3;
+      let succeeded = false;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          const newRev = await writeServerState(sendPayload, { ifMatch: rev });
+          if (newRev !== null) {
+            this.lastKnownRev = newRev;
+            this._saveLastKnownRev(newRev);
+          }
+          this.lastSyncInfo = syncMeta;
+          this.setConnectionStatus("online");
+          if (this.remoteRetryTimer) {
+            clearTimeout(this.remoteRetryTimer);
+            this.remoteRetryTimer = null;
+          }
+          succeeded = true;
+          break;
+        } catch (error) {
+          if (error.isConflict && attempt < MAX_RETRIES - 1) {
+            // 409: server has a newer revision. Merge server state into local and retry.
+            const serverState = error.serverState;
+            this._checkServerVersion(serverState);
+            const completedData = await readCompletedState().catch(() => ({}));
+            const serverStateFull = { ...serverState, ...completedData };
+            // Compute delta summary before merging, while pre-merge local is still available.
+            const remoteDevice = serverState?.syncMeta?.deviceLabel || "another device";
+            const summary = _buildConflictSummary(sendPayload, serverStateFull);
+            const merged = mergeStates(serverStateFull, this.state);
+            this.state = hydrateState(merged);
+            rev = serverState._rev ?? rev;
+            this.lastKnownRev = rev;
+            this._saveLastKnownRev(rev);
+            sendPayload = { ...hydrateState(this.state), syncMeta, deviceLog: sendPayload.deviceLog };
+            this.emitChange({ persist: false });
+            this.dispatchEvent(new CustomEvent("syncconflict", { detail: { remoteDevice, summary } }));
+            continue;
+          }
+          throw error;
+        }
+      }
+      if (!succeeded) {
+        throw new Error("Max retries exceeded during conflict resolution");
       }
     } catch (error) {
       console.error("Failed to sync remote state", error);
@@ -755,7 +789,6 @@ export class TaskManager extends EventTarget {
     const { persist = true } = options;
     this.dispatchEvent(new CustomEvent("statechange", { detail: this.state }));
     if (persist) {
-      this.lastLocalSignature = hashState(this.state);
       this.save();
     }
   }
@@ -1365,7 +1398,12 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Cannot complete missing task.");
       return null;
     }
+    const completedAt = new Date().toISOString();
+    const archiveType = archive === "reference" ? "reference" : "deleted";
     const [task] = this.state.tasks.splice(taskIndex, 1);
+    // Record a tombstone so other devices don't resurrect this task during merge.
+    this.state._tombstones = this.state._tombstones || {};
+    this.state._tombstones[task.id] = completedAt;
     normalizeTaskTags(task);
     if (typeof closureNotes === "string") {
       const trimmed = closureNotes.trim();
@@ -1373,8 +1411,6 @@ export class TaskManager extends EventTarget {
         task.closureNotes = trimmed;
       }
     }
-    const completedAt = new Date().toISOString();
-    const archiveType = archive === "reference" ? "reference" : "deleted";
     const snapshot = createCompletionSnapshot(task, completedAt, archiveType);
     if (archive === "reference") {
       this.state.reference.unshift(snapshot);
@@ -1409,6 +1445,7 @@ export class TaskManager extends EventTarget {
       myDayDate: null,
       notes: [],
       slug: null,
+      status: STATUS.NEXT,
     };
     clone.calendarTime = sanitizeTime(template.calendarTime) || null;
     const dueDateBase = clone.dueDate ? new Date(clone.dueDate) : null;
@@ -1481,6 +1518,10 @@ export class TaskManager extends EventTarget {
       originDeviceId: entry.originDeviceId || null,
     };
     normalizeTaskTags(restored, { enforceContext: restored.status !== STATUS.INBOX });
+    // Clear any tombstone so the merge algorithm doesn't suppress this restored task.
+    if (this.state._tombstones) {
+      delete this.state._tombstones[restored.id];
+    }
     this.state.tasks.unshift(restored);
     if (restored.projectId) {
       const project = this.state.projects.find((p) => p.id === restored.projectId);
@@ -1583,10 +1624,14 @@ export class TaskManager extends EventTarget {
       return;
     }
     const [task] = this.state.tasks.splice(taskIndex, 1);
+    const deletedAt = nowIso();
+    // Record a tombstone so other devices don't resurrect this task during merge.
+    this.state._tombstones = this.state._tombstones || {};
+    this.state._tombstones[id] = deletedAt;
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
-    const snapshot = createCompletionSnapshot(task, nowIso(), "deleted");
+    const snapshot = createCompletionSnapshot(task, deletedAt, "deleted");
     this.state.completionLog = this.state.completionLog || [];
     this.state.completionLog.unshift(snapshot);
     this.emitChange();
@@ -1793,6 +1838,21 @@ export class TaskManager extends EventTarget {
       .map((v) => sanitizePeopleTag(v))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
+  }
+
+  getKnownDelegateNames() {
+    const names = new Set();
+    for (const tag of (this.state.settings?.peopleOptions || [])) {
+      const name = tag.startsWith("+") ? tag.slice(1) : tag;
+      if (name) names.add(name);
+    }
+    for (const task of this.state.tasks) {
+      const wf = task.waitingFor;
+      if (!wf || wf.startsWith("@") || /^task:/i.test(wf) || wf.startsWith("Pending")) continue;
+      const name = wf.startsWith("+") ? wf.slice(1) : wf;
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
   }
 
   getPeopleTags({ includeNoteMentions = true } = {}) {
@@ -3260,41 +3320,37 @@ function normalizeRecurrenceRule(rule) {
   };
 }
 
-function hashState(state) {
-  try {
-    const json = JSON.stringify(state || {});
-    let hash = 0;
-    for (let i = 0; i < json.length; i += 1) {
-      hash = (hash << 5) - hash + json.charCodeAt(i);
-      hash |= 0;
+// Builds a human-readable summary of what the remote state changed relative to
+// local state. Called before mergeStates() so pre-merge local is still available.
+function _buildConflictSummary(localState = {}, remoteState = {}) {
+  const localTasks  = Array.isArray(localState.tasks)  ? localState.tasks  : [];
+  const remoteTasks = Array.isArray(remoteState.tasks) ? remoteState.tasks : [];
+  const localTaskMap = new Map(localTasks.map((t) => [t.id, t]));
+  const changedTasks = [];
+  const addedTasks   = [];
+  const removedTasks = [];
+  for (const remoteTask of remoteTasks) {
+    if (!remoteTask?.id) continue;
+    const localTask = localTaskMap.get(remoteTask.id);
+    if (!localTask) {
+      if (!remoteTask._deleted) addedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
+    } else if (toTimestamp(remoteTask.updatedAt) > toTimestamp(localTask.updatedAt)) {
+      changedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
     }
-    return `h${Math.abs(hash)}`;
-  } catch (error) {
-    console.error("Failed to hash state", error);
-    return null;
   }
-}
-
-// Strip completion-log collections before hashing so that local state (which
-// always holds completion history) produces a signature compatible with the
-// slim /state payload the server returns (which omits those collections).
-function slimStateForHash(state) {
-  if (!state || typeof state !== "object") return state;
-  const slim = { ...state };
-  delete slim.completionLog;
-  delete slim.reference;
-  delete slim.completedProjects;
-  delete slim.deviceLog;
-  // Strip syncMeta — syncedAt changes on every write and would cause spurious
-  // conflict detection when the only change between two reads is a new timestamp.
-  delete slim.syncMeta;
-  // Strip merge metadata from settings — _fieldTimestamps is not user data and should
-  // not cause spurious conflict detection when transitioning from pre-timestamped state.
-  if (slim.settings?._fieldTimestamps) {
-    slim.settings = { ...slim.settings };
-    delete slim.settings._fieldTimestamps;
+  const remoteTaskIds = new Set(remoteTasks.map((t) => t?.id).filter(Boolean));
+  for (const localTask of localTasks) {
+    if (!localTask?.id || localTask._deleted) continue;
+    if (!remoteTaskIds.has(localTask.id)) {
+      removedTasks.push({ id: localTask.id, title: localTask.title || localTask.id });
+    }
   }
-  return slim;
+  const localTs  = localState.settings?._fieldTimestamps  || {};
+  const remoteTs = remoteState.settings?._fieldTimestamps || {};
+  const changedSettingsGroups = Object.keys(SETTINGS_MERGE_GROUPS).filter(
+    (g) => toTimestamp(remoteTs[g]) > toTimestamp(localTs[g])
+  );
+  return { changedTasks, addedTasks, removedTasks, changedSettingsGroups };
 }
 
 function mergeStates(remoteState = {}, localState = {}) {
@@ -3302,7 +3358,6 @@ function mergeStates(remoteState = {}, localState = {}) {
     ...remoteState,
     ...localState,
   };
-  const removalMarkers = collectRemovalMarkers(remoteState, localState);
   const mergeCollections = (localArr = [], remoteArr = []) => {
     const map = new Map();
     [...remoteArr, ...localArr].forEach((item) => {
@@ -3320,7 +3375,20 @@ function mergeStates(remoteState = {}, localState = {}) {
     });
     return Array.from(map.values());
   };
-  merged.tasks = mergeTasks(localState.tasks, remoteState.tasks, removalMarkers);
+  merged.tasks = mergeTasks(
+    localState.tasks,
+    remoteState.tasks,
+    localState._tombstones || {},
+    remoteState._tombstones || {}
+  );
+  // Merge tombstone maps: union with max timestamp per id, then prune suppressed tasks.
+  merged._tombstones = {};
+  for (const [id, ts] of [
+    ...Object.entries(localState._tombstones || {}),
+    ...Object.entries(remoteState._tombstones || {}),
+  ]) {
+    if (!merged._tombstones[id] || ts > merged._tombstones[id]) merged._tombstones[id] = ts;
+  }
   merged.projects = mergeCollections(localState.projects, remoteState.projects);
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
@@ -3410,29 +3478,6 @@ function toTimestamp(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
-function collectRemovalMarkers(...states) {
-  const markers = new Map();
-  const ingest = (entries) => {
-    (entries || []).forEach((entry) => {
-      if (!entry) return;
-      const id = entry.sourceId || entry.id;
-      if (!id) return;
-      const removedAt = toTimestamp(entry.archivedAt || entry.completedAt || entry.updatedAt || entry.createdAt);
-      if (!removedAt) return;
-      const current = markers.get(id) || 0;
-      if (removedAt > current) {
-        markers.set(id, removedAt);
-      }
-    });
-  };
-  states.forEach((state) => {
-    if (!state) return;
-    ingest(state.reference);
-    ingest(state.completionLog);
-  });
-  return markers;
-}
-
 // Merges two sub-arrays of id'd items (notes, listItems) from a single task using id-based LWW.
 // Unlike whole-task LWW, this always unions both sides so items added on either device
 // survive a concurrent edit on the other. Output is sorted chronologically so that
@@ -3457,62 +3502,67 @@ function mergeSubcollection(localArr, remoteArr) {
   );
 }
 
-function mergeTasks(localTasks = [], remoteTasks = [], removalMarkers = new Map()) {
-  const localList = Array.isArray(localTasks) ? localTasks.filter(Boolean) : [];
+function mergeTasks(localTasks = [], remoteTasks = [], localTombstones = {}, remoteTombstones = {}) {
+  // Merge tombstone maps: union with max (latest) timestamp per task id.
+  const tombstones = { ...localTombstones };
+  for (const [id, ts] of Object.entries(remoteTombstones || {})) {
+    if (!tombstones[id] || ts > tombstones[id]) tombstones[id] = ts;
+  }
+
+  const localList  = Array.isArray(localTasks)  ? localTasks.filter(Boolean)  : [];
   const remoteList = Array.isArray(remoteTasks) ? remoteTasks.filter(Boolean) : [];
-  // Build a map seeded with local tasks, then apply last-write-wins for remote tasks.
-  const map = new Map();
-  localList.forEach((task) => {
-    if (task?.id) map.set(task.id, task);
-  });
-  remoteList.forEach((task) => {
-    if (!task?.id) return;
-    const removedAt = removalMarkers.get(task.id);
-    if (removedAt) {
-      const updatedAt = toTimestamp(task.updatedAt || task.completedAt || task.archivedAt || task.createdAt);
-      if (updatedAt <= removedAt) {
-        // Remote task is stale relative to the removal marker.
-        // Only suppress it if the local copy (if any) is also not newer than the marker —
-        // a newer local copy means the task was deliberately restored after deletion.
-        const localTask = map.get(task.id);
-        const localTime = localTask ? toTimestamp(localTask.updatedAt || localTask.createdAt) : 0;
-        if (localTime <= removedAt) {
-          map.delete(task.id);
-        }
-        return;
+  const localMap  = new Map(localList.filter((t)  => t?.id).map((t) => [t.id, t]));
+  const remoteMap = new Map(remoteList.filter((t) => t?.id).map((t) => [t.id, t]));
+  const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
+  const result = new Map();
+
+  for (const id of allIds) {
+    const local  = localMap.get(id);
+    const remote = remoteMap.get(id);
+
+    // Tombstone check: if the task was explicitly deleted and neither side
+    // has restored it more recently, suppress it entirely.
+    const tombstoneTs = toTimestamp(tombstones[id]);
+    if (tombstoneTs > 0) {
+      const localTime  = local  ? toTimestamp(local.updatedAt  || local.createdAt)  : 0;
+      const remoteTime = remote ? toTimestamp(remote.updatedAt || remote.createdAt) : 0;
+      if (localTime <= tombstoneTs && remoteTime <= tombstoneTs) {
+        continue; // deletion wins — suppress the task
       }
+      // One side has a newer edit — the task was restored after deletion, keep it.
     }
-    const existing = map.get(task.id);
-    if (!existing) {
-      map.set(task.id, task);
-      return;
-    }
-    const existingTime = toTimestamp(existing.updatedAt || existing.createdAt);
-    const remoteTime = toTimestamp(task.updatedAt || task.createdAt);
-    // Whole-task LWW base: take the task with the newer updatedAt.
-    const base = remoteTime > existingTime ? task : existing;
-    const result = { ...base };
+
+    if (!local)  { result.set(id, remote); continue; }
+    if (!remote) { result.set(id, local);  continue; }
+
+    // Standard whole-task LWW base, then per-field-group override.
+    const localUpdatedAt  = toTimestamp(local.updatedAt  || local.createdAt);
+    const remoteUpdatedAt = toTimestamp(remote.updatedAt || remote.createdAt);
+    const base = remoteUpdatedAt > localUpdatedAt ? remote : local;
+    const merged = { ...base };
+
     // Per-field-group override: for each tracked group, pick the source
     // whose _fieldTimestamps entry is newer. Falls back to updatedAt for
     // legacy tasks that predate _fieldTimestamps.
-    const mergedFt = { ...(result._fieldTimestamps || {}) };
+    const mergedFt = { ...(merged._fieldTimestamps || {}) };
     for (const [group, fields] of Object.entries(MERGE_FIELD_GROUPS)) {
-      const localTs = toTimestamp(existing._fieldTimestamps?.[group] || existing.updatedAt || existing.createdAt);
-      const remoteTs = toTimestamp(task._fieldTimestamps?.[group] || task.updatedAt || task.createdAt);
-      const src = remoteTs >= localTs ? task : existing;
-      for (const f of fields) result[f] = src[f];
+      const localTs  = toTimestamp(local._fieldTimestamps?.[group]  || local.updatedAt  || local.createdAt);
+      const remoteTs = toTimestamp(remote._fieldTimestamps?.[group] || remote.updatedAt || remote.createdAt);
+      const src = remoteTs >= localTs ? remote : local;
+      for (const f of fields) merged[f] = src[f];
       mergedFt[group] = remoteTs >= localTs
-        ? (task._fieldTimestamps?.[group] || task.updatedAt)
-        : (existing._fieldTimestamps?.[group] || existing.updatedAt);
+        ? (remote._fieldTimestamps?.[group] || remote.updatedAt)
+        : (local._fieldTimestamps?.[group]  || local.updatedAt);
     }
-    result._fieldTimestamps = mergedFt;
-    // Merge notes and listItems as collections so items added on either device
+    merged._fieldTimestamps = mergedFt;
+    // Merge notes and listItems as sub-collections so items added on either device
     // survive concurrent whole-task or field-group LWW on the other device.
-    result.notes = mergeSubcollection(existing.notes, task.notes);
-    result.listItems = mergeSubcollection(existing.listItems, task.listItems);
-    map.set(task.id, result);
-  });
-  return Array.from(map.values());
+    merged.notes = mergeSubcollection(local.notes, remote.notes);
+    merged.listItems = mergeSubcollection(local.listItems, remote.listItems);
+    result.set(id, merged);
+  }
+
+  return Array.from(result.values());
 }
 
 function advanceRecurrence(date, rule) {
@@ -3530,6 +3580,9 @@ function advanceRecurrence(date, rule) {
     case RECURRENCE_TYPES.MONTHLY:
       next.setMonth(next.getMonth() + interval);
       break;
+    case RECURRENCE_TYPES.YEARLY:
+      next.setFullYear(next.getFullYear() + interval);
+      break;
     default:
       return null;
   }
@@ -3543,70 +3596,29 @@ function formatIsoDate(date) {
   return clone.toISOString().slice(0, 10);
 }
 
-// Computes a summary of what the remote state changed relative to local state.
-// Called before mergeStates() so the pre-merge local snapshot is still available.
-// Returns changedTasks, addedTasks, removedTasks (by task id+title), and
-// changedSettingsGroups (by group name) where the remote timestamp is newer.
-function diffConflict(localState = {}, remoteState = {}) {
-  const localTasks  = Array.isArray(localState.tasks)  ? localState.tasks  : [];
-  const remoteTasks = Array.isArray(remoteState.tasks) ? remoteState.tasks : [];
-
-  const localTaskMap = new Map(localTasks.map((t) => [t.id, t]));
-
-  const changedTasks  = [];
-  const addedTasks    = [];
-  const removedTasks  = [];
-
-  for (const remoteTask of remoteTasks) {
-    if (!remoteTask?.id) continue;
-    const localTask = localTaskMap.get(remoteTask.id);
-    if (!localTask) {
-      addedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
-    } else {
-      const remoteTs = toTimestamp(remoteTask.updatedAt);
-      const localTs  = toTimestamp(localTask.updatedAt);
-      if (remoteTs > localTs) {
-        changedTasks.push({ id: remoteTask.id, title: remoteTask.title || remoteTask.id });
-      }
-    }
-  }
-
-  const remoteTaskIds = new Set(remoteTasks.map((t) => t?.id).filter(Boolean));
-  for (const localTask of localTasks) {
-    if (!localTask?.id) continue;
-    if (!remoteTaskIds.has(localTask.id)) {
-      removedTasks.push({ id: localTask.id, title: localTask.title || localTask.id });
-    }
-  }
-
-  const localTs  = localState.settings?._fieldTimestamps  || {};
-  const remoteTs = remoteState.settings?._fieldTimestamps || {};
-  const changedSettingsGroups = [];
-  for (const group of Object.keys(SETTINGS_MERGE_GROUPS)) {
-    const localTime  = toTimestamp(localTs[group]);
-    const remoteTime = toTimestamp(remoteTs[group]);
-    if (remoteTime > localTime) changedSettingsGroups.push(group);
-  }
-
-  return { changedTasks, addedTasks, removedTasks, changedSettingsGroups };
-}
-
 export const __testing = {
   mergeStates,
   mergeAnalytics,
   mergeSettings,
   mergeSubcollection,
-  diffConflict,
-  collectRemovalMarkers,
+  mergeTasks,
+  _buildConflictSummary,
   toTimestamp,
   advanceRecurrence,
   normalizeRecurrenceRule,
-  slimStateForHash,
   mergeOpLogs,
   appendOpLogEntries,
   readOpLogEntries,
   MERGE_FIELD_GROUPS,
   SETTINGS_MERGE_GROUPS,
+  // Tombstone helpers exposed for testing
+  _mergeTombstones: (a = {}, b = {}) => {
+    const result = { ...a };
+    for (const [id, ts] of Object.entries(b)) {
+      if (!result[id] || ts > result[id]) result[id] = ts;
+    }
+    return result;
+  },
 };
 
 function getCompletionFormatter(grouping) {

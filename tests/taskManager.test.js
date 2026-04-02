@@ -89,33 +89,31 @@ test("restoreCompletedTask rehydrates task and reattaches to project", () => {
   assert.deepEqual(manager.state.projects[0].tasks, ["task-sample"], "project relinked");
 });
 
-const { mergeStates, slimStateForHash } = __testing;
+const { mergeStates, mergeTasks, _buildConflictSummary, _mergeTombstones } = __testing;
 
-test("mergeStates honors removal markers from reference entries", () => {
+test("mergeTasks suppresses a task when the tombstone is newer than both sides' updatedAt", () => {
+  const localTasks  = [];
+  const remoteTasks = [{ id: "t-1", title: "Old remote task", updatedAt: "2024-01-01T00:00:00.000Z" }];
+  // Local tombstone for t-1, stamped after the remote task was last edited.
+  const localTombstones = { "t-1": "2024-02-01T00:00:00.000Z" };
+
+  const result = mergeTasks(localTasks, remoteTasks, localTombstones, {});
+
+  assert.equal(result.length, 0, "tombstone suppresses the remote task");
+});
+
+test("mergeStates honors tombstones — completed local task is not resurrected by stale remote copy", () => {
   const remoteState = {
     tasks: [{ id: "t-1", title: "Old remote task", updatedAt: "2024-01-01T00:00:00.000Z" }],
-    reference: [],
-    completionLog: [],
   };
   const localState = {
     tasks: [],
-    reference: [
-      {
-        id: "t-1",
-        archivedAt: "2024-02-01T00:00:00.000Z",
-        completedAt: "2024-02-01T00:00:00.000Z",
-      },
-    ],
-    completionLog: [],
+    _tombstones: { "t-1": "2024-02-01T00:00:00.000Z" },
   };
 
   const merged = mergeStates(remoteState, localState);
 
-  assert.equal(
-    merged.tasks.length,
-    0,
-    "task removed locally stays removed even when remote still has it"
-  );
+  assert.equal(merged.tasks.length, 0, "task removed locally stays removed even when remote still has it");
 });
 
 test("feature flags include highlightStaleTasks and can be toggled", () => {
@@ -157,26 +155,15 @@ test("mergeStates keeps restored tasks that are newer than their removal markers
   assert.equal(merged.tasks[0].title, "Restored locally");
 });
 
-test("mergeStates also respects completionLog removal markers", () => {
-  const remoteState = {
-    tasks: [{ id: "t-3", title: "Remote ghost", updatedAt: "2024-02-10T00:00:00.000Z" }],
-    reference: [],
-    completionLog: [
-      {
-        id: "t-3",
-        archivedAt: "2024-02-15T00:00:00.000Z",
-      },
-    ],
-  };
-  const localState = {
-    tasks: [],
-    reference: [],
-    completionLog: [],
-  };
+test("mergeTasks suppresses a task whose tombstone appears on the remote side", () => {
+  // Device A deleted t-3 and has a tombstone. Device B still has t-3 active (stale).
+  const localTasks  = [{ id: "t-3", title: "Stale local copy", updatedAt: "2024-02-10T00:00:00.000Z" }];
+  const remoteTasks = [];
+  const remoteTombstones = { "t-3": "2024-02-15T00:00:00.000Z" };
 
-  const merged = mergeStates(remoteState, localState);
+  const result = mergeTasks(localTasks, remoteTasks, {}, remoteTombstones);
 
-  assert.equal(merged.tasks.length, 0);
+  assert.equal(result.length, 0, "remote tombstone suppresses local active copy");
 });
 
 test("mergeStates leaves tasks untouched when no removal markers exist", () => {
@@ -612,48 +599,62 @@ test("archived task notes can be edited and deleted", () => {
   assert.equal(archived.notes.length, 0);
 });
 
-// ─── slimStateForHash ────────────────────────────────────────────────────────
+// ─── _tombstones — explicit deletion markers ──────────────────────────────────
 
-test("slimStateForHash strips completion collections and syncMeta, preserves other fields", () => {
-  const full = {
-    tasks: [{ id: "t-1" }],
-    projects: [{ id: "p-1" }],
-    completionLog: [{ id: "c-1" }],
-    reference: [{ id: "r-1" }],
-    completedProjects: [{ id: "cp-1" }],
-    settings: { theme: "dark" },
-    syncMeta: { deviceId: "dev-1" },
-  };
+test("deleteTask stamps a tombstone in state._tombstones", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To delete" });
+  const id = task.id;
+  manager.deleteTask(id);
 
-  const slim = slimStateForHash(full);
-
-  assert.ok(!("completionLog" in slim), "completionLog stripped");
-  assert.ok(!("reference" in slim), "reference stripped");
-  assert.ok(!("completedProjects" in slim), "completedProjects stripped");
-  assert.ok(!("syncMeta" in slim), "syncMeta stripped to avoid spurious conflict detection");
-  assert.deepEqual(slim.tasks, full.tasks, "tasks preserved");
-  assert.deepEqual(slim.projects, full.projects, "projects preserved");
-  assert.deepEqual(slim.settings, full.settings, "settings preserved");
+  assert.ok(manager.state._tombstones, "_tombstones map created");
+  assert.ok(manager.state._tombstones[id], "tombstone entry written for deleted task");
+  assert.equal(manager.state.tasks.length, 0, "task removed from active list");
+  assert.equal(manager.state.completionLog.length, 1, "snapshot still in completionLog");
 });
 
-test("slimStateForHash does not mutate the original object", () => {
-  const full = {
-    tasks: [],
-    completionLog: [{ id: "c-1" }],
-    reference: [],
-    completedProjects: [],
-  };
+test("completeTask stamps a tombstone in state._tombstones", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To complete" });
+  const id = task.id;
+  manager.completeTask(id, { archive: "reference" });
 
-  slimStateForHash(full);
-
-  assert.deepEqual(full.completionLog, [{ id: "c-1" }], "original completionLog unchanged");
+  assert.ok(manager.state._tombstones?.[id], "tombstone entry written for completed task");
+  assert.equal(manager.state.tasks.length, 0, "task removed from active list");
 });
 
-test("slimStateForHash handles null and non-object input safely", () => {
-  assert.equal(slimStateForHash(null), null);
-  assert.equal(slimStateForHash(undefined), undefined);
-  assert.equal(slimStateForHash("string"), "string");
-  assert.equal(slimStateForHash(42), 42);
+test("restoreCompletedTask clears the tombstone so merge won't re-suppress the task", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To restore" });
+  const id = task.id;
+  manager.completeTask(id, { archive: "reference" });
+  assert.ok(manager.state._tombstones?.[id], "tombstone set after completion");
+
+  manager.restoreCompletedTask(id);
+  assert.ok(!manager.state._tombstones?.[id], "tombstone cleared after restore");
+  assert.equal(manager.state.tasks.length, 1, "task back in active list");
+});
+
+test("_mergeTombstones unions both maps using max timestamp per id", () => {
+  const a = { "t-1": "2024-01-01T00:00:00.000Z", "t-2": "2024-06-01T00:00:00.000Z" };
+  const b = { "t-1": "2024-03-01T00:00:00.000Z", "t-3": "2024-02-01T00:00:00.000Z" };
+  const merged = _mergeTombstones(a, b);
+
+  assert.equal(merged["t-1"], "2024-03-01T00:00:00.000Z", "t-1: newer timestamp wins");
+  assert.equal(merged["t-2"], "2024-06-01T00:00:00.000Z", "t-2: only in a, preserved");
+  assert.equal(merged["t-3"], "2024-02-01T00:00:00.000Z", "t-3: only in b, preserved");
+});
+
+test("mergeTasks: restored task (newer updatedAt than tombstone) survives", () => {
+  // Device B deleted t-4 (tombstone at Feb 1). Device A then restored it (updatedAt Mar 1).
+  const localTasks  = [{ id: "t-4", title: "Restored", updatedAt: "2024-03-01T00:00:00.000Z" }];
+  const remoteTasks = [];
+  const remoteTombstones = { "t-4": "2024-02-01T00:00:00.000Z" };
+
+  const result = mergeTasks(localTasks, remoteTasks, {}, remoteTombstones);
+
+  assert.equal(result.length, 1, "restored task survives — updatedAt is newer than tombstone");
+  assert.equal(result[0].title, "Restored");
 });
 
 // ─── mergeStates with slim (Phase-6b) remote payloads ────────────────────────
@@ -676,22 +677,15 @@ test("mergeStates with absent completionLog on remote preserves local completion
   assert.equal(merged.reference.length, 1, "local reference preserved when remote omits it");
 });
 
-test("mergeStates with slim remote still prevents task resurrection via local completion markers", () => {
-  // Simulates: task completed locally, remote still has it (slim payload, no remoteState.completionLog)
+test("mergeStates with slim remote: local tombstone prevents task resurrection", () => {
+  // Simulates: task completed locally (tombstone written), remote still has it active (slim payload).
   const remoteState = {
     tasks: [{ id: "t-zombie", title: "Should stay gone", updatedAt: "2026-01-01T00:00:00.000Z" }],
-    // no completionLog
+    // no completionLog — slim remote payload
   };
   const localState = {
     tasks: [],
-    completionLog: [],
-    reference: [
-      {
-        id: "t-zombie",
-        archivedAt: "2026-02-01T00:00:00.000Z",
-        completedAt: "2026-02-01T00:00:00.000Z",
-      },
-    ],
+    _tombstones: { "t-zombie": "2026-02-01T00:00:00.000Z" },
   };
 
   const merged = mergeStates(remoteState, localState);
@@ -1070,21 +1064,16 @@ test("updateTheme stamps _fieldTimestamps.appearance and updateGoogleCalendarCon
   assert.ok(manager.state.settings._fieldTimestamps?.calendar, "calendar timestamp set after updateGoogleCalendarConfig");
 });
 
-test("slimStateForHash strips settings._fieldTimestamps to avoid spurious conflict detection", () => {
-  const { slimStateForHash } = __testing;
-  const stateWithTs = {
-    tasks: [],
-    settings: { theme: "dark", _fieldTimestamps: { appearance: "2026-03-30T10:00:00.000Z" } },
-  };
-  const stateWithoutTs = {
-    tasks: [],
-    settings: { theme: "dark" },
-  };
+test("_fieldTimestamps in settings survive mergeStates without spurious side effects", () => {
+  // _fieldTimestamps no longer needs to be stripped — conflict detection uses _rev, not hashing.
+  const { mergeSettings } = __testing;
+  const localSettings  = { theme: "dark",  _fieldTimestamps: { appearance: "2026-03-30T10:00:00.000Z" } };
+  const remoteSettings = { theme: "light", _fieldTimestamps: { appearance: "2026-03-29T10:00:00.000Z" } };
 
-  const slimWith = slimStateForHash(stateWithTs);
-  const slimWithout = slimStateForHash(stateWithoutTs);
-  assert.ok(!slimWith.settings._fieldTimestamps, "_fieldTimestamps stripped from slim state");
-  assert.ok(!slimWithout.settings?._fieldTimestamps, "no _fieldTimestamps in original is fine too");
+  const merged = mergeSettings(localSettings, remoteSettings);
+
+  assert.equal(merged.theme, "dark", "local wins because local appearance timestamp is newer");
+  assert.ok(merged._fieldTimestamps?.appearance, "_fieldTimestamps preserved through merge");
 });
 
 test("addTaskNote survives a concurrent status change on the other device", () => {
@@ -1277,10 +1266,9 @@ test("mergeAnalytics: both empty returns an empty-history object without error",
   assert.ok(typeof merged === "object", "returns an object");
 });
 
-// ─── Phase 4 — diffConflict ───────────────────────────────────────────────
+// ─── _buildConflictSummary (replaces diffConflict) ───────────────────────────
 
-test("diffConflict identifies tasks changed, added, and removed by remote", () => {
-  const { diffConflict } = __testing;
+test("_buildConflictSummary identifies tasks changed, added, and removed by remote", () => {
   const earlier = "2026-03-29T10:00:00.000Z";
   const later   = "2026-03-30T10:00:00.000Z";
 
@@ -1301,7 +1289,7 @@ test("diffConflict identifies tasks changed, added, and removed by remote", () =
     settings: {},
   };
 
-  const result = diffConflict(localState, remoteState);
+  const result = _buildConflictSummary(localState, remoteState);
 
   assert.equal(result.changedTasks.length,  1, "one task changed by remote");
   assert.equal(result.changedTasks[0].id,   "t2");
@@ -1311,8 +1299,7 @@ test("diffConflict identifies tasks changed, added, and removed by remote", () =
   assert.equal(result.removedTasks[0].id,   "t3");
 });
 
-test("diffConflict detects changed settings groups when remote timestamp is newer", () => {
-  const { diffConflict } = __testing;
+test("_buildConflictSummary detects changed settings groups when remote timestamp is newer", () => {
   const earlier = "2026-03-29T10:00:00.000Z";
   const later   = "2026-03-30T10:00:00.000Z";
 
@@ -1325,20 +1312,19 @@ test("diffConflict detects changed settings groups when remote timestamp is newe
     settings: { _fieldTimestamps: { appearance: earlier, calendar: later } },
   };
 
-  const result = diffConflict(localState, remoteState);
+  const result = _buildConflictSummary(localState, remoteState);
 
   assert.ok(!result.changedSettingsGroups.includes("appearance"), "appearance: local is newer — not a remote change");
   assert.ok(result.changedSettingsGroups.includes("calendar"), "calendar: remote is newer — flagged");
 });
 
-test("diffConflict returns empty arrays when states are identical", () => {
-  const { diffConflict } = __testing;
+test("_buildConflictSummary returns empty arrays when states are identical", () => {
   const ts = "2026-03-30T10:00:00.000Z";
   const state = {
     tasks: [{ id: "t1", title: "A task", updatedAt: ts }],
     settings: { _fieldTimestamps: { appearance: ts } },
   };
-  const result = diffConflict(state, state);
+  const result = _buildConflictSummary(state, state);
 
   assert.equal(result.changedTasks.length,        0, "no changed tasks");
   assert.equal(result.addedTasks.length,           0, "no added tasks");
@@ -1356,7 +1342,7 @@ test("addTask with status 'next' returns task with correct status", (t) => {
 
 test("addTask with status 'next' and projectId is retrievable by projectId filter", (t) => {
   const manager = createManager();
-  const project = manager.addProject({ name: "Test Project" });
+  const project = manager.addProject("Test Project");
   const task = manager.addTask({ title: "Do thing", status: "next", projectId: project.id });
   assert.ok(task, "task was created");
   const found = manager.getTasks({ projectId: project.id });

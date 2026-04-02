@@ -40,6 +40,15 @@ def _compute_server_version():
 
 SERVER_VERSION = _compute_server_version()
 WEB_ROOT = BASE_DIR / "web_ui"
+
+
+def _atomic_write(path, data):
+    """Write JSON data atomically: write to a .tmp file then os.replace() into place."""
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_text(json.dumps(data), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
 COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
 CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json"))
@@ -189,6 +198,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def _is_feedback_endpoint(self):
         return self._parsed_path.rstrip("/") == "/feedback"
 
+    def _is_feedback_item_endpoint(self):
+        """Matches /feedback/<id> — a single feedback item by hex id."""
+        parts = self._parsed_path.strip("/").split("/")
+        return len(parts) == 2 and parts[0] == "feedback" and parts[1]
+
+    def _feedback_item_id(self):
+        return self._parsed_path.strip("/").split("/")[1]
+
     def _is_completed_endpoint(self):
         return self._parsed_path.rstrip("/") == "/completed"
 
@@ -227,6 +244,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         if self._is_image_endpoint():
             self._handle_image_get()
             return
+        if self._is_feedback_item_endpoint():
+            self._handle_feedback_item_get()
+            return
         if self._is_feedback_endpoint():
             self._handle_feedback_get()
             return
@@ -240,7 +260,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self._is_state_endpoint():
-            self._handle_state_write()
+            self._send_json({"error": "Method Not Allowed — use PUT for state writes"}, status=405)
             return
         if self._is_credentials_endpoint():
             self._handle_credentials_write()
@@ -263,6 +283,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         super().do_PUT()
 
     def do_PATCH(self):
+        if self._is_feedback_item_endpoint():
+            self._handle_feedback_item_patch()
+            return
         if self._is_feedback_endpoint():
             self._handle_feedback_patch()
             return
@@ -271,6 +294,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         if self._is_credentials_endpoint():
             self._handle_credentials_delete()
+            return
+        if self._is_feedback_item_endpoint():
+            self._handle_feedback_item_delete()
             return
         if self._is_feedback_endpoint():
             self._handle_feedback_delete()
@@ -379,6 +405,20 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         except Exception as error:  # noqa: BLE001
             self._send_json({"error": str(error)}, status=500)
 
+    def _handle_feedback_item_get(self):
+        """Return a single feedback item by id prefix or full id."""
+        item_id = self._feedback_item_id()
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+        for item in items:
+            if item.get("id", "").startswith(item_id):
+                self._send_json(item)
+                return
+        self._send_json({"error": "Not found"}, status=404)
+
     def _handle_feedback_get(self):
         with FEEDBACK_LOCK:
             try:
@@ -440,6 +480,62 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
             FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
         self._send_json({"status": "ok", "resolved": len(ids)})
+
+    def _handle_feedback_item_patch(self):
+        """Update a single feedback item. Body: { description?, type?, resolved? }"""
+        item_id = self._feedback_item_id()
+        content_length = int(self.headers.get("Content-Length") or 0)
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8")) if content_length > 0 else {}
+        except (OSError, json.JSONDecodeError):
+            self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+        updates = {k: v for k, v in payload.items() if k in ("description", "type", "resolved")}
+        if not updates:
+            self._send_json({"error": "No valid fields to update"}, status=400)
+            return
+        if "type" in updates and updates["type"] not in ("bug", "feature"):
+            self._send_json({"error": "type must be bug or feature"}, status=400)
+            return
+        if "description" in updates:
+            updates["description"] = str(updates["description"]).strip()
+            if not updates["description"]:
+                self._send_json({"error": "description cannot be empty"}, status=400)
+                return
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            found = False
+            for item in items:
+                if item.get("id") == item_id:
+                    item.update(updates)
+                    found = True
+                    break
+            if not found:
+                self._send_json({"error": "Not found"}, status=404)
+                return
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok"})
+
+    def _handle_feedback_item_delete(self):
+        """Delete a single feedback item by id."""
+        item_id = self._feedback_item_id()
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            before = len(items)
+            items = [i for i in items if i.get("id") != item_id]
+            if len(items) == before:
+                self._send_json({"error": "Not found"}, status=404)
+                return
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok"})
 
     def _handle_feedback_delete(self):
         """Remove all resolved feedback items (or all if ?all=1)."""
@@ -520,8 +616,32 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"error": "Invalid JSON payload"}, status=400)
             return
 
+        if_match = self.headers.get("If-Match")
+
         self._ensure_state_dir()
         with STATE_LOCK:
+            # Read current state to get _rev for optimistic-locking check.
+            current_state = {}
+            try:
+                if STATE_FILE.exists():
+                    current_state = json.loads(STATE_FILE.read_text(encoding="utf-8") or "{}")
+            except json.JSONDecodeError:
+                current_state = {}
+            current_rev = current_state.get("_rev", 0)
+
+            # Optimistic concurrency check: If-Match must equal server's current _rev.
+            # A missing If-Match header is accepted without a conflict check (legacy/first-write).
+            if if_match is not None:
+                try:
+                    client_rev = int(if_match)
+                except (ValueError, TypeError):
+                    client_rev = -1
+                if client_rev != current_rev:
+                    conflict_state = dict(current_state)
+                    conflict_state["_serverVersion"] = SERVER_VERSION
+                    self._send_json(conflict_state, status=409)
+                    return
+
             core_payload = dict(payload or {})
             _COMPLETION_KEYS = ("completionLog", "reference", "completedProjects")
             if any(k in core_payload for k in _COMPLETION_KEYS):
@@ -560,14 +680,33 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         "updatedAt",
                     ),
                 }
-                COMPLETED_FILE.write_text(json.dumps(completed_payload), encoding="utf-8")
+                _atomic_write(COMPLETED_FILE, completed_payload)
             else:
                 # New-protocol client strips completion fields before sending.
                 # Leave completed.json untouched.
                 for k in _COMPLETION_KEYS:
                     core_payload.pop(k, None)
-            STATE_FILE.write_text(json.dumps(core_payload), encoding="utf-8")
-        self._send_json({"status": "ok"})
+
+            # Strip any client-supplied _rev — the server owns this field.
+            core_payload.pop("_rev", None)
+
+            # Prune tombstone records older than 30 days to keep state compact.
+            cutoff = (
+                datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
+            ).isoformat()
+            tombstones = core_payload.get("_tombstones")
+            if isinstance(tombstones, dict):
+                core_payload["_tombstones"] = {
+                    k: v for k, v in tombstones.items()
+                    if isinstance(v, str) and v >= cutoff
+                }
+
+            # Increment revision and write atomically.
+            new_rev = current_rev + 1
+            core_payload["_rev"] = new_rev
+            _atomic_write(STATE_FILE, core_payload)
+
+        self._send_json({"status": "ok", "_rev": new_rev})
         settings = core_payload.get("settings", {})
         flags = settings.get("featureFlags", {})
         gcal_enabled = flags.get("googleCalendarEnabled", True)

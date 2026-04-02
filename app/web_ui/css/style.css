@@ -2237,26 +2237,95 @@ button.meta-item:hover {
 
 .settings-panel {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.settings-card {
+/* Accordion */
+.settings-accordion {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-2);
-  padding: var(--space-3);
+}
+
+.settings-accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  gap: var(--space-2);
+}
+
+.settings-accordion-header::-webkit-details-marker {
+  display: none;
+}
+
+.settings-accordion-header:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.settings-accordion[open] > .settings-accordion-header {
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.settings-accordion-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.settings-accordion-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease;
+}
+
+.settings-accordion-icon::after {
+  content: "›";
+  font-size: 1.1rem;
+  display: block;
+  transform: rotate(90deg);
+  transition: transform 0.18s ease;
+}
+
+.settings-accordion[open] .settings-accordion-icon::after {
+  transform: rotate(270deg);
+}
+
+.settings-accordion-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* Subgroups within accordion sections */
+.settings-subgroup {
   display: grid;
   gap: var(--space-2);
 }
 
-.settings-card-header {
-  display: grid;
-  gap: 2px;
+.settings-subgroup-heading {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
-.settings-card-header h3 {
-  margin: 0;
-  font-family: var(--font-display);
+.settings-subgroup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .settings-item {
@@ -2288,6 +2357,34 @@ button.meta-item:hover {
 
 .settings-item-meta {
   font-size: 0.76rem;
+}
+
+.feedback-short-id {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.settings-inline-edit {
+  width: 100%;
+  resize: vertical;
+  font-size: 0.875rem;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.settings-inline-select {
+  font-size: 0.8rem;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 4px;
 }
 
 .settings-item-actions,
@@ -3766,10 +3863,6 @@ body.flyout-open .feedback-widget {
 
 .note-image:active {
   cursor: zoom-out;
-}
-
-.settings-card-body {
-  padding: var(--space-3) var(--space-4);
 }
 
 .update-banner {

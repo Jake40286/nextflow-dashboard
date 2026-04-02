@@ -21,11 +21,11 @@ docker compose logs -f
 npm test
 
 # Run a single test by name pattern
-node --test --test-name-pattern "mergeStates"
+node --test --test-name-pattern "mergeTasks"
 
 # Restore a backup
 gunzip -c data/backups/full/state-YYYYMMDD-HHMMSS.json.gz | \
-  curl -X POST http://localhost:8002/state -H "Content-Type: application/json" -d @-
+  curl -X PUT http://localhost:8002/state -H "Content-Type: application/json" -d @-
 ```
 
 ## Architecture
@@ -38,13 +38,17 @@ gunzip -c data/backups/full/state-YYYYMMDD-HHMMSS.json.gz | \
 
 Handles static file serving and a small JSON REST API. All JSON responses are gzip-compressed when the client sends `Accept-Encoding: gzip`. Key endpoints:
 
-- `GET /state` — returns active state (tasks, projects, settings, checklist, analytics). Completion history is **intentionally excluded** and served separately.
+- `GET /state` — returns active state (tasks, projects, settings, checklist, analytics) plus `_rev` and `_serverVersion`. Completion history is **intentionally excluded** and served separately.
 - `GET /completed` — returns `completionLog`, `reference`, `completedProjects`. Only fetched by Statistics and Reports panels on first activation.
-- `PUT`/`POST /state` — writes state, splits completion data into `data/completed.json`, triggers Google Calendar sync and backup.
+- `PUT /state` — writes state. Supports optimistic locking via `If-Match: <rev>` header; returns `409 Conflict` with current server state as the body when revisions don't match. Splits completion data into `data/completed.json`, triggers Google Calendar sync and backup. **POST to `/state` returns 405** — PUT only.
 - `POST /upload`, `GET /images/<filename>` — image upload/serve.
 - `/feedback` (CRUD), `/credentials/google` (CRUD), `POST /admin/cleanup-images`.
 
+**Optimistic locking:** The server owns the `_rev` field — it increments it on every write and strips any client-supplied value. Clients send `If-Match: <lastKnownRev>`. On mismatch the 409 body is the complete current server state, which the client merges and retries (up to 3 attempts). A missing `If-Match` header is accepted unconditionally (first write / legacy clients).
+
 **State split rationale:** `completionLog`/`reference`/`completedProjects` can grow large and are only needed by Statistics/Reports. Keeping them out of `/state` reduces the sync payload by ~50% as the app ages.
+
+**Atomic writes:** All state writes use `_atomic_write()` (write to `.tmp` then `os.replace()`), eliminating partial-write corruption.
 
 **Thread safety:** All reads/writes to `STATE_FILE`/`COMPLETED_FILE` are guarded by `STATE_LOCK`. Feedback uses a separate `FEEDBACK_LOCK`. Google Calendar sync uses `_CALENDAR_SYNC_LOCK`.
 
@@ -54,7 +58,7 @@ Handles static file serving and a small JSON REST API. All JSON responses are gz
 
 Two JSON files on disk, both bind-mounted from `./data/` into the container at `/data/`:
 
-- `data/state.json` — active tasks, projects, settings, checklist, analytics.
+- `data/state.json` — active tasks, projects, settings, checklist, analytics, `_rev`, `_tombstones`.
 - `data/completed.json` — `completionLog`, `reference`, `completedProjects`.
 
 Env vars for overriding paths (set in `.env`): `STATE_FILE`, `COMPLETED_FILE`, `IMAGES_DIR`, `FEEDBACK_FILE`, `GOOGLE_CREDENTIALS_FILE`, `STATE_BACKUP_DIR`, `STATE_BACKUP_RETENTION`.
@@ -67,13 +71,17 @@ Env vars for overriding paths (set in `.env`): `STATE_FILE`, `COMPLETED_FILE`, `
 
 **`data.js`** — `TaskManager extends EventTarget`. All business logic, state reads/writes, localStorage cache (`nextflow-state-v1`), server sync, and offline/merge-conflict resolution. Emits `statechange`, `toast`, `syncconflict`, `versionchange`, `connection` events. The single source of truth — `ui.js` and `analytics.js` read state only through `TaskManager` methods.
 
-Key sync flow: every mutation calls `emitChange()` → `save()` → `persistLocally()` (debounced 500ms, flushes immediately on `beforeunload`/`visibilitychange`) + `persistRemotely()` → `flushRemoteQueue()`. On conflict, `mergeStates()` resolves with last-write-wins per entity; `collectRemovalMarkers()` prevents zombie-resurrection of deleted tasks.
+**Sync flow:** every mutation calls `emitChange()` → `save()` → `persistLocally()` (debounced 500ms, flushes immediately on `beforeunload`/`visibilitychange`) + `persistRemotely()` → `flushRemoteQueue()`.
 
-Merge granularity: `mergeTasks()` uses `MERGE_FIELD_GROUPS` (groups: `scheduling`, `status`, `dueDate`, `followUpDate`) for per-group LWW using op log timestamps — finer than whole-task `updatedAt`. `mergeSettings()` uses `SETTINGS_MERGE_GROUPS` (groups: `appearance`, `calendar`, `flags`, `lists`) for per-group LWW.
+`flushRemoteQueue()` sends `PUT /state` with `If-Match: lastKnownRev`. On `409 Conflict` the response body (current server state) is merged with local state via `mergeStates()`, `lastKnownRev` is updated from the 409 body's `_rev`, and the PUT is retried. `lastKnownRev` is stored in localStorage under `REV_KEY` (`nextflow-last-rev`) and updated on every successful write or GET.
 
-On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a conflict is actually detected (not on every flush). Conflict detection uses `slimStateForHash()` to compare only the fields `/state` returns, keeping local and server signatures compatible.
+**Tombstones:** `deleteTask()` and `completeTask()` both write `state._tombstones[taskId] = ISO-timestamp`. `mergeTasks()` checks these maps: if a tombstone timestamp is newer than both sides' `updatedAt`, the task is suppressed entirely. `restoreCompletedTask()` deletes the tombstone entry. The server prunes `_tombstones` entries older than 30 days on every write.
 
-**Op log** (`nextflow-op-log` in localStorage, max 300 entries): every change to `OP_LOG_FIELDS` (`status`, `myDayDate`, `calendarDate`, `calendarTime`, `dueDate`, `followUpDate`) is recorded with a per-entry UUID, timestamp, device identity, task id/title, field name, previous value, and next value. The top 100 entries (`OP_LOG_SHARED_MAX`) are included as `deviceLog` in every server PUT payload and merged back from the remote state on load. Powers the Sync Diagnostics table in the Settings panel (`renderSyncDiagnostics()` in `ui.js`). Device identity is stored in `nextflow-device-info` localStorage key (auto-generated per browser, never sent to a remote service).
+**Merge granularity:** `mergeTasks()` uses `MERGE_FIELD_GROUPS` (groups: `scheduling`, `status`, `dueDate`, `followUpDate`) for per-group LWW via `_fieldTimestamps` on each task — finer than whole-task `updatedAt`. `mergeSettings()` uses `SETTINGS_MERGE_GROUPS` (groups: `appearance`, `calendar`, `flags`, `lists`) for per-group LWW. Notes and listItems use `mergeSubcollection()` (union + per-item LWW), so concurrent additions on either device always survive.
+
+On initial load, `loadRemoteState()` fetches `/state` and `/completed` in parallel. `flushRemoteQueue()` only fetches `/completed` when a 409 conflict actually occurs.
+
+**Op log** (`nextflow-op-log` in localStorage, max 300 entries): every change to `OP_LOG_FIELDS` (`status`, `myDayDate`, `calendarDate`, `calendarTime`, `dueDate`, `followUpDate`) is recorded with a per-entry UUID, timestamp, device identity, task id/title, field name, previous value, and next value. The top 100 entries (`OP_LOG_SHARED_MAX`) are included as `deviceLog` in every server PUT payload and merged back from the remote state on load. Powers the Sync Diagnostics table in the Settings panel (`renderSyncDiagnostics()` in `ui.js`). Device identity is stored in `nextflow-device-info` localStorage key (auto-generated per browser, never sent to a remote service). The op log is **diagnostics-only** — it does not drive merge decisions.
 
 **Client PUT payload never includes completion fields** — `writeServerState()` strips `completionLog`, `reference`, and `completedProjects` before sending. The server manages these exclusively in `completed.json`.
 
@@ -99,9 +107,11 @@ All DOM element references are looked up once in `cacheElements()` and accessed 
 - `PROJECT_STATUSES`: `Active | OnHold | Completed`
 - People tags match `PEOPLE_TAG_PATTERN`: `/^\+[A-Za-z0-9][A-Za-z0-9_-]*$/`
 
-Key task fields: `status`, `contexts`, `dueDate`, `followUpDate`, `myDayDate`, `areaOfFocus`, `project`, `waitingFor`, `effortLevel`, `timeRequired`, `recurrence`, `peopleTags`, `notes`.
+Key task fields: `status`, `contexts`, `dueDate`, `followUpDate`, `myDayDate`, `areaOfFocus`, `project`, `waitingFor`, `effortLevel`, `timeRequired`, `recurrence`, `peopleTags`, `notes`, `_fieldTimestamps`.
 
-Key settings fields: `peopleOptions`, `deletedPeopleOptions` (tracks explicitly deleted tags to prevent text-mention resurrection), `contextOptions`, `areaOptions`, `featureFlags`, `staleTaskThresholds`, `theme`, `customTheme`, `customThemePalettes`.
+Key settings fields: `peopleOptions`, `deletedPeopleOptions` (tracks explicitly deleted tags to prevent text-mention resurrection), `contextOptions`, `areaOptions`, `featureFlags`, `staleTaskThresholds`, `theme`, `customTheme`, `customThemePalettes`, `_fieldTimestamps`.
+
+Key state-level fields: `_rev` (server-assigned, monotonic), `_tombstones` (map of `taskId → ISO-timestamp`).
 
 ---
 
@@ -117,7 +127,7 @@ When adding a panel that needs a separate fetch, hook into `setActivePanel()` wi
 
 ### Google Calendar sync (`app/google_calendar.py`)
 
-Triggered asynchronously after each `POST /state`. Requires `GOOGLE_CREDENTIALS_FILE` (path to service account JSON) and `GOOGLE_CALENDAR_ID` env vars, or per-request settings stored via `POST /credentials/google`. A `_calendar_sync_key` tuple `(calendarId, timezone, duration)` tracks the active config; reinitialises the sync object only when config changes.
+Triggered asynchronously after each `PUT /state`. Requires `GOOGLE_CREDENTIALS_FILE` (path to service account JSON) and `GOOGLE_CALENDAR_ID` env vars, or per-request settings stored via `POST /credentials/google`. A `_calendar_sync_key` tuple `(calendarId, timezone, duration)` tracks the active config; reinitialises the sync object only when config changes.
 
 ### Backups (`app/backup.py`)
 
@@ -141,7 +151,7 @@ Both files are kept in sync with `data/feedback.json` — when items are impleme
 Tests live in `tests/taskManager.test.js` and use Node's built-in test runner. The file:
 - Sets `globalThis.fetch = undefined` to prevent any network calls.
 - Uses `manager.remoteSyncEnabled = false` on every constructed instance.
-- Imports `__testing` from `data.js` for access to internal helpers (`mergeStates`, `slimStateForHash`, `hydrateState`, etc.).
+- Imports `__testing` from `data.js` for access to internal helpers (`mergeStates`, `mergeTasks`, `mergeSettings`, `_buildConflictSummary`, `_mergeTombstones`, etc.).
 
 New tests should follow this pattern — no server required, no mocking framework.
 

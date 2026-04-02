@@ -29,7 +29,7 @@ You are a Senior Systems Architect providing expert consultation and architectur
 2. **Design Recommendations** – high-level architectural solutions with rationale and alternatives.
 3. **Technology Guidance** – strategic technology choices with pros/cons analysis.
 4. **Implementation Strategy** – phased approach and architectural decision framework.
-5. **Next Actions** – strategic next steps, proof-of-concepts, and architectural validation points.
+5. **Next Actions** – strategic next steps, proof-of-concepts, and architectural validation points, and the next claude command to implement
 
 ## Note
-This command focuses on architectural consultation and strategic guidance. For implementation details and code generation, use @code.md instead.
+This command focuses on architectural consultation and strategic guidance. For implementation details and code generation, use `/code` instead.

@@ -1,10 +1,12 @@
 import { TaskManager, STATUS, THEME_OPTIONS } from "./data.js";
 import { UIController } from "./ui.js";
 import { AnalyticsController } from "./analytics.js";
+import { ReviewController } from "./review.js";
 
 const taskManager = new TaskManager();
 const ui = new UIController(taskManager);
 const analytics = new AnalyticsController(taskManager);
+const review = new ReviewController(taskManager, ui);
 
 // Dev helper: run `_testUpdateBanner()` in the browser console to preview the banner.
 window._testUpdateBanner = () => ui.showUpdateBanner();
@@ -19,7 +21,19 @@ document.addEventListener("DOMContentLoaded", () => {
   setupProjects();
   setupExport();
   setupHelpModal();
+  setupReview();
 });
+
+function setupReview() {
+  const btn = document.getElementById("startReviewBtn");
+  if (!btn) return;
+  btn.addEventListener("click", () => review.start());
+
+  // Update the topbar indicator whenever state changes (streak data may update)
+  taskManager.addEventListener("statechange", () => review.updateTopbarIndicator());
+  // Set initial indicator state once state loads
+  review.updateTopbarIndicator();
+}
 
 function setupQuickAdd() {
   const form = document.getElementById("quickAddForm");

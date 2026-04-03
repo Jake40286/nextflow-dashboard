@@ -5817,6 +5817,16 @@ export class UIController {
       }
     });
 
+    clarifyDelegateNameInput?.addEventListener("input", () => {
+      this._showClarifyDelegateSuggestions(clarifyDelegateNameInput);
+    });
+    clarifyDelegateNameInput?.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        const dropdown = document.getElementById("clarifyDelegateDropdown");
+        if (dropdown) dropdown.hidden = true;
+      }, 120);
+    });
+
     // Date radios — show/hide date inputs inline
     const updateDateInputs = () => {
       const specificFields = document.getElementById("clarifySpecificDateFields");
@@ -6155,6 +6165,33 @@ export class UIController {
       opt.value = name;
       datalist.append(opt);
     }
+  }
+
+  _showClarifyDelegateSuggestions(input) {
+    const dropdown = document.getElementById("clarifyDelegateDropdown");
+    if (!dropdown) return;
+    const value = input.value.trim();
+    dropdown.innerHTML = "";
+    dropdown.hidden = true;
+    const names = this.taskManager.getKnownDelegateNames();
+    const lower = value.toLowerCase();
+    const matches = lower
+      ? names.filter((n) => n.toLowerCase().startsWith(lower))
+      : names;
+    if (matches.length === 0) return;
+    dropdown.hidden = false;
+    matches.forEach((name) => {
+      const item = document.createElement("div");
+      item.className = "suggestion-item";
+      item.textContent = name;
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        input.value = name;
+        dropdown.hidden = true;
+        dropdown.innerHTML = "";
+      });
+      dropdown.append(item);
+    });
   }
 
   populateProjectSelect() {

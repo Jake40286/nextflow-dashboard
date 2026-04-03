@@ -1001,7 +1001,7 @@ test("mergeSettings preserves changes from both devices when different groups ar
 
   const merged = mergeSettings(deviceA, deviceB);
 
-  assert.equal(merged.theme, "dark", "device A appearance wins (newer _fieldTimestamps.appearance)");
+  assert.equal(merged.theme, "dark", "local (device A) theme wins — theme is never synced across devices");
   assert.equal(merged.googleCalendarConfig.calendarId, "team@gmail.com",
     "device B calendar config wins (newer _fieldTimestamps.calendar)");
   assert.equal(merged.googleCalendarConfig.defaultDurationMinutes, 60,
@@ -1047,17 +1047,17 @@ test("mergeStates uses per-group LWW for settings rather than local-wins", () =>
 
   const merged = mergeStates(remoteState, localState);
   assert.equal(merged.settings.theme, "dark",
-    "local appearance wins (newer _fieldTimestamps.appearance)");
+    "local theme always wins — theme is device-local and not synced");
   assert.equal(merged.settings.googleCalendarConfig.calendarId, "remote-cal@gmail.com",
     "remote calendar config wins (newer _fieldTimestamps.calendar) — old code would have lost this");
 });
 
-test("updateTheme stamps _fieldTimestamps.appearance and updateGoogleCalendarConfig stamps calendar", () => {
+test("updateTheme stamps _fieldTimestamps.appearance (local only) and updateGoogleCalendarConfig stamps calendar", () => {
   const manager = createManager();
 
   assert.ok(!manager.state.settings._fieldTimestamps?.appearance, "no appearance timestamp before theme change");
   manager.updateTheme("dark");
-  assert.ok(manager.state.settings._fieldTimestamps?.appearance, "appearance timestamp set after updateTheme");
+  assert.ok(manager.state.settings._fieldTimestamps?.appearance, "appearance timestamp set locally after updateTheme (stripped before server sync)");
 
   assert.ok(!manager.state.settings._fieldTimestamps?.calendar, "no calendar timestamp before config change");
   manager.updateGoogleCalendarConfig({ calendarId: "test@gmail.com", timezone: "UTC", defaultDurationMinutes: 45 });
@@ -1072,8 +1072,8 @@ test("_fieldTimestamps in settings survive mergeStates without spurious side eff
 
   const merged = mergeSettings(localSettings, remoteSettings);
 
-  assert.equal(merged.theme, "dark", "local wins because local appearance timestamp is newer");
-  assert.ok(merged._fieldTimestamps?.appearance, "_fieldTimestamps preserved through merge");
+  assert.equal(merged.theme, "dark", "local theme always wins — device-local, not synced across devices");
+  assert.ok(merged._fieldTimestamps?.appearance, "_fieldTimestamps.appearance preserved locally (not sent to server)");
 });
 
 test("addTaskNote survives a concurrent status change on the other device", () => {

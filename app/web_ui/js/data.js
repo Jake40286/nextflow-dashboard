@@ -34,9 +34,10 @@ const MERGE_FIELD_GROUPS = {
   dueDate: ["dueDate"],
   followUpDate: ["followUpDate"],
 };
-// Field groups for per-field-group merge logic in mergeSettings()
+// Field groups for per-field-group merge logic in mergeSettings().
+// NOTE: theme/customTheme/customThemePalettes are intentionally excluded — they are
+// device-local and never merged across devices (stripped from server payload too).
 const SETTINGS_MERGE_GROUPS = {
-  appearance: ["theme", "customTheme", "customThemePalettes"],
   calendar: ["googleCalendarConfig"],
   flags: ["featureFlags", "staleTaskThresholds"],
   lists: ["contextOptions", "peopleOptions", "areaOptions", "deletedPeopleOptions"],
@@ -320,6 +321,15 @@ async function writeServerState(state, { ifMatch } = {}) {
     throw new Error("Fetch API is unavailable");
   }
   const { completionLog: _cl, reference: _ref, completedProjects: _cp, ...slim } = state;
+  // Strip device-local theme fields so they are never overwritten on another device.
+  if (slim.settings) {
+    const { theme: _t, customTheme: _ct, customThemePalettes: _ctp, ...settingsSlim } = slim.settings;
+    if (settingsSlim._fieldTimestamps) {
+      const { appearance: _a, ...tsRest } = settingsSlim._fieldTimestamps;
+      settingsSlim._fieldTimestamps = Object.keys(tsRest).length ? tsRest : undefined;
+    }
+    slim.settings = settingsSlim;
+  }
   const headers = { "Content-Type": "application/json" };
   if (ifMatch !== undefined && ifMatch !== null) {
     headers["If-Match"] = String(ifMatch);

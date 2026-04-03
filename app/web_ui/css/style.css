@@ -2977,6 +2977,31 @@ button.meta-item:hover {
   color: var(--text);
 }
 
+.task-reference-suggestions {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin-top: 4px;
+  background: var(--surface);
+  z-index: 10;
+}
+
+.task-reference-suggestions .suggestion-item {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.task-reference-suggestions .suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.task-reference-suggestions .suggestion-item:hover {
+  background: var(--surface-2);
+}
+
 .task-section-divider {
   display: flex;
   align-items: center;
@@ -3277,7 +3302,7 @@ button.meta-item:hover {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 130;
+  z-index: 2900;
 }
 
 .modal.is-open {

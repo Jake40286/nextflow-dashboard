@@ -1,4 +1,4 @@
-const CACHE_NAME = "nextflow-shell-v1";
+const CACHE_NAME = "nextflow-shell-v2";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -46,8 +46,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const isSameOrigin = url.origin === self.location.origin;
 
-  // Always bypass API/state calls.
-  if (isSameOrigin && url.pathname.startsWith("/state")) {
+  // Always bypass API calls — never cache dynamic data endpoints.
+  if (isSameOrigin && (url.pathname.startsWith("/state") || url.pathname.startsWith("/feedback"))) {
     return;
   }
 

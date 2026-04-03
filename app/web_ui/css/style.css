@@ -2310,7 +2310,12 @@ button.meta-item:hover {
 /* Subgroups within accordion sections */
 .settings-subgroup {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
+}
+
+.settings-subgroup + .settings-subgroup {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
 }
 
 .settings-subgroup-heading {
@@ -2328,11 +2333,21 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
+.settings-subgroup-actions--split {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-subgroup-actions-primary {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .settings-item {
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--surface);
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
@@ -2395,16 +2410,54 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
-.settings-flag-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
+/* Toggle switch — CSS-only pill toggle for feature flags */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
-.settings-flag-toggle input[type="checkbox"] {
-  width: auto;
-  margin: 0;
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-switch-track {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--text-muted) 40%, var(--line));
+  border-radius: 999px;
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.toggle-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 999px;
+  transition: transform 0.15s ease;
+}
+
+.toggle-switch input:checked + .toggle-switch-track {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-switch-track::after {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus-visible + .toggle-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .settings-item--block {
@@ -2554,10 +2607,15 @@ button.meta-item:hover {
   letter-spacing: 0.02em;
 }
 
+.settings-theme-custom-controls-heading {
+  padding: var(--space-2) 12px 0;
+  margin: 0;
+}
+
 .settings-theme-palette-manager {
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   margin: 0 12px 12px;
-  padding-top: 10px;
+  padding-top: var(--space-3);
   display: grid;
   gap: var(--space-2);
 }

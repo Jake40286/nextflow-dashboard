@@ -3469,6 +3469,10 @@ export class UIController {
       label.append(input, textWrap, swatches);
       item.append(label);
       if (theme.id === "custom") {
+        const customColorsHeading = document.createElement("p");
+        customColorsHeading.className = "settings-subgroup-heading settings-theme-custom-controls-heading";
+        customColorsHeading.textContent = "Custom Colors";
+        item.append(customColorsHeading);
         const controls = document.createElement("div");
         controls.className = "settings-theme-custom-controls";
         const customFields = [
@@ -3679,21 +3683,21 @@ export class UIController {
       const actions = document.createElement("div");
       actions.className = "settings-item-actions";
       const toggle = document.createElement("label");
-      toggle.className = "settings-flag-toggle";
+      toggle.className = "toggle-switch";
       toggle.setAttribute("for", `feature-flag-${entry.key}`);
+      toggle.setAttribute("title", entry.label);
       const input = document.createElement("input");
       input.type = "checkbox";
       input.id = `feature-flag-${entry.key}`;
       input.checked = Boolean(flags[entry.key]);
       input.dataset.featureFlag = entry.key;
-      const text = document.createElement("span");
-      text.className = "small-text";
-      text.textContent = input.checked ? "Enabled" : "Disabled";
+      const track = document.createElement("span");
+      track.className = "toggle-switch-track";
+      track.setAttribute("aria-hidden", "true");
       input.addEventListener("change", () => {
-        text.textContent = input.checked ? "Enabled" : "Disabled";
         if (configPanel) configPanel.hidden = !input.checked;
       });
-      toggle.append(input, text);
+      toggle.append(input, track);
       actions.append(toggle);
       main.append(labelWrap, actions);
       item.append(main);

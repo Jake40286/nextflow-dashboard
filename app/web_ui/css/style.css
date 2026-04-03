@@ -4248,3 +4248,322 @@ body.flyout-open .feedback-widget {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Weekly Review mode ───────────────────────────────────────────────────── */
+
+/* Full-screen overlay sits above most UI but below the task flyout (z:2600)
+   so "Edit" can open the flyout on top of the review card. */
+.review-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 40%),
+    linear-gradient(165deg, var(--bg), var(--bg-alt));
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: auto;
+}
+
+/* Prevent the normal app scrolling / pomodoro etc. from interfering */
+body.review-mode-active {
+  overflow: hidden;
+}
+
+/* ── Shell (header + body) ── */
+.review-shell {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5) var(--space-8);
+  gap: var(--space-5);
+}
+
+.review-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.review-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-brand {
+  font-family: var(--font-display);
+  font-size: 1.04rem;
+  color: var(--accent);
+}
+
+.review-progress {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.review-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+}
+
+.review-section-header {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.review-section-label {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.review-section-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* ── Item card ── */
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-5) var(--space-6);
+  display: grid;
+  gap: var(--space-3);
+  min-height: 140px;
+  animation: rise-in var(--transition-base) both;
+}
+
+.review-card-title {
+  font-size: 1.22rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.review-card-desc {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.review-card-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.review-next-action {
+  font-size: 0.88rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+}
+
+.review-missing-action {
+  color: var(--warning);
+  font-style: italic;
+}
+
+/* Inline next-action form inside project card */
+.review-add-next-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.review-add-next-input {
+  flex: 1;
+}
+
+/* ── Decision buttons ── */
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.review-action-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* ── Persistent nav bar (Back + Skip) ── */
+.review-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.review-nav-btn {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* History-mode annotation on the card */
+.review-card-meta--history {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-style: italic;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* ── Inline "Add next action" area for project cards ── */
+.review-add-next-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.review-add-next-area .review-add-next-form {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.review-someday-toggle {
+  white-space: nowrap;
+}
+
+/* Someday task picker list */
+.review-someday-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.review-someday-item {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.88rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.review-someday-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+
+/* ── Topbar "Review" button overdue state ── */
+#startReviewBtn.is-overdue .meta-value {
+  color: var(--warning);
+}
+
+#startReviewBtn.is-overdue {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
+}
+
+/* ── Completion screen ── */
+.review-complete {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-5);
+}
+
+.review-complete-inner {
+  max-width: 480px;
+  width: 100%;
+  display: grid;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+.review-complete-icon {
+  font-size: 3rem;
+  color: var(--accent);
+  line-height: 1;
+  animation: rise-in var(--transition-base) both;
+}
+
+.review-complete-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+}
+
+.review-complete-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.review-complete-stats {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  text-align: left;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.review-complete-stats li::before {
+  content: "✓ ";
+  color: var(--ok);
+}
+
+.review-streak {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--accent-strong);
+}
+
+.review-complete-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.review-empty {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .review-shell {
+    padding: var(--space-3) var(--space-3) var(--space-6);
+  }
+
+  .review-card {
+    padding: var(--space-4);
+  }
+
+  .review-action-btn {
+    min-width: 0;
+    flex: 1 1 calc(50% - var(--space-2));
+  }
+}

@@ -41,6 +41,7 @@ const SETTINGS_MERGE_GROUPS = {
   calendar: ["googleCalendarConfig"],
   flags: ["featureFlags", "staleTaskThresholds"],
   lists: ["contextOptions", "peopleOptions", "areaOptions", "deletedPeopleOptions"],
+  review: ["review"],
 };
 export const RECURRENCE_TYPES = Object.freeze({
   DAILY: "daily",
@@ -198,6 +199,7 @@ const defaultSettings = (projects = [], completedProjects = []) => ({
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
   staleTaskThresholds: { ...DEFAULT_STALE_TASK_THRESHOLDS },
   googleCalendarConfig: { ...DEFAULT_GOOGLE_CALENDAR_CONFIG },
+  review: normalizeReviewSettings(),
 });
 
 const defaultState = () => ({
@@ -271,6 +273,7 @@ function hydrateState(raw = {}) {
     featureFlags: normalizeFeatureFlags(nextState.settings?.featureFlags),
     staleTaskThresholds: normalizeStaleTaskThresholds(nextState.settings?.staleTaskThresholds),
     googleCalendarConfig: normalizeGoogleCalendarConfig(nextState.settings?.googleCalendarConfig),
+    review: normalizeReviewSettings(nextState.settings?.review),
     _fieldTimestamps: nextState.settings?._fieldTimestamps || {},
   };
   return nextState;
@@ -960,6 +963,15 @@ export class TaskManager extends EventTarget {
     }
 
     this.state.tasks.unshift(task);
+    if (task.projectId) {
+      const project = this.state.projects.find((p) => p.id === task.projectId);
+      if (project) {
+        project.tasks = project.tasks || [];
+        if (!project.tasks.includes(task.id)) {
+          project.tasks.unshift(task.id);
+        }
+      }
+    }
     this.emitChange();
     const destLabel = {
       [STATUS.INBOX]: "Inbox",
@@ -2696,6 +2708,22 @@ export class TaskManager extends EventTarget {
     return normalizeFeatureFlags(this.state.settings?.featureFlags);
   }
 
+  getReviewData() {
+    return normalizeReviewSettings(this.state.settings?.review);
+  }
+
+  updateReviewData(data) {
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    if (!this.state.settings.review) {
+      this.state.settings.review = normalizeReviewSettings();
+    }
+    Object.assign(this.state.settings.review, data);
+    stampSettingsTimestamp(this.state.settings, "review");
+    this.emitChange();
+  }
+
   getFeatureFlag(flag) {
     if (!Object.prototype.hasOwnProperty.call(DEFAULT_FEATURE_FLAGS, flag)) {
       return false;
@@ -2890,6 +2918,15 @@ function normalizeGoogleCalendarConfig(config) {
     calendarId: typeof config?.calendarId === "string" ? config.calendarId : DEFAULT_GOOGLE_CALENDAR_CONFIG.calendarId,
     timezone: typeof config?.timezone === "string" && config.timezone ? config.timezone : DEFAULT_GOOGLE_CALENDAR_CONFIG.timezone,
     defaultDurationMinutes: Number.isFinite(duration) && duration >= 5 ? duration : DEFAULT_GOOGLE_CALENDAR_CONFIG.defaultDurationMinutes,
+  };
+}
+
+function normalizeReviewSettings(raw = {}) {
+  return {
+    lastReviewDate: typeof raw?.lastReviewDate === "string" ? raw.lastReviewDate : null,
+    currentStreak: Number.isFinite(raw?.currentStreak) && raw.currentStreak >= 0 ? Math.floor(raw.currentStreak) : 0,
+    longestStreak: Number.isFinite(raw?.longestStreak) && raw.longestStreak >= 0 ? Math.floor(raw.longestStreak) : 0,
+    lastStreakWeek: typeof raw?.lastStreakWeek === "string" ? raw.lastStreakWeek : null,
   };
 }
 

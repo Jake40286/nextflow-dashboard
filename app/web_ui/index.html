@@ -58,6 +58,16 @@
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Cycle dashboard theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
         </button>
+        <button id="startReviewBtn" class="meta-item" type="button" title="Start weekly review" aria-label="Start weekly review">
+          <span class="meta-label">Review</span>
+          <span id="reviewTopbarStatus" class="meta-value">—</span>
+        </button>
+        <button id="topbarSettings" class="settings-toggle" type="button" aria-label="Open settings">
+          <span class="settings-icon" aria-hidden="true">⚙</span>
+        </button>
+        <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Cycle dashboard theme">
+          <span class="theme-icon" aria-hidden="true">☀︎</span>
+        </button>
         <button id="openHelp" class="btn btn-light" type="button" aria-haspopup="dialog" aria-controls="helpModal">How it works</button>
       </div>
     </header>
@@ -1046,6 +1056,55 @@
         <textarea id="feedbackDescription" class="feedback-textarea" rows="4" placeholder="Describe the bug or feature request..." required></textarea>
         <button type="submit" class="btn btn-primary feedback-submit">Submit</button>
       </form>
+    </div>
+  </div>
+  <!-- ── Weekly Review overlay ───────────────────────────────────────────── -->
+  <div
+    id="reviewMode"
+    class="review-mode"
+    hidden
+    role="dialog"
+    aria-modal="true"
+    aria-label="Weekly Review"
+  >
+    <!-- Main review shell -->
+    <div id="reviewShell" class="review-shell">
+      <header class="review-header">
+        <div class="review-header-left">
+          <span class="review-brand">◎ Weekly Review</span>
+          <span id="reviewProgress" class="review-progress" aria-live="polite"></span>
+        </div>
+        <button id="reviewPauseBtn" class="btn btn-light review-pause-btn" type="button">
+          Pause
+        </button>
+      </header>
+      <div class="review-body">
+        <div class="review-section-header">
+          <h2 id="reviewSectionLabel" class="review-section-label"></h2>
+          <p id="reviewSectionDesc" class="review-section-desc"></p>
+        </div>
+        <div id="reviewCard" class="review-card" aria-live="polite"></div>
+        <div id="reviewActions" class="review-actions" role="group" aria-label="Review decisions"></div>
+        <div id="reviewNav" class="review-nav">
+          <button id="reviewBackBtn" class="btn btn-light review-nav-btn" type="button" hidden>← Back</button>
+          <button id="reviewSkipBtn" class="btn btn-light review-nav-btn" type="button" hidden>Skip section →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completion screen (shown after all sections done) -->
+    <div id="reviewComplete" class="review-complete" hidden>
+      <div class="review-complete-inner">
+        <div class="review-complete-icon" aria-hidden="true">◎</div>
+        <h2 class="review-complete-title">Review Complete</h2>
+        <p class="review-complete-subtitle">Your system is current. Mind like water.</p>
+        <ul id="reviewCompleteStats" class="review-complete-stats" aria-label="Review summary"></ul>
+        <p id="reviewStreakDisplay" class="review-streak" hidden></p>
+        <div class="review-complete-actions">
+          <button id="reviewDoneBtn" class="btn btn-primary" type="button">Done</button>
+          <button id="reviewRestartBtn" class="btn btn-light" type="button">Review again</button>
+        </div>
+      </div>
     </div>
   </div>
 </body>

@@ -16,6 +16,7 @@ const NEXT_HIDE_SCHEDULED_KEY = "nextflow-next-hide-scheduled";
 const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
 const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
 const KANBAN_GROUP_BY_KEY = "nextflow-kanban-group-by";
+const ACTIVE_AREA_KEY = "nextflow-active-area";
 
 // One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
 (function migrateUiStorageKeys() {
@@ -129,6 +130,7 @@ export class UIController {
     this.nextGroupBy = loadNextGroupByPreference();
     this.nextGroupLimit = loadNextGroupLimitPreference();
     this.kanbanGroupBy = loadKanbanGroupByPreference();
+    this.activeArea = loadActiveAreaPreference();
     this.summaryCache = null;
     this.reportFilters = {
       grouping: "week",
@@ -206,6 +208,7 @@ export class UIController {
     this.bindProjectCompletionModal();
     this.setupLightbox();
     this.setupFeedbackWidget();
+    this.setupAreaScope();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -911,6 +914,7 @@ export class UIController {
     this.projectLookup = new Map(this.projectCache.map((project) => [project.id, project]));
     // Always-unconditional: summary bar, flyout, global UI state
     this.updateSuggestionLists();
+    this.renderAreaScopeRow();
     this.renderSummary();
     this.renderAssociationFlyout();
     this.applySearchVisibility();
@@ -921,6 +925,39 @@ export class UIController {
     // Hidden panels render on-demand when the user switches to them.
     Object.keys(PANEL_RENDER_FNS).forEach((id) => this._dirtyPanels.add(id));
     this._renderPanelIfDirty(this.activePanel);
+  }
+
+  setupAreaScope() {
+    const { areaScopeRow } = this.elements;
+    if (!areaScopeRow) return;
+    areaScopeRow.addEventListener("click", (event) => {
+      const pill = event.target.closest(".area-scope-pill");
+      if (!pill) return;
+      const area = pill.dataset.area || null;
+      this.activeArea = area;
+      storeActiveAreaPreference(area);
+      this.renderAll();
+    });
+  }
+
+  renderAreaScopeRow() {
+    const { areaScopeRow } = this.elements;
+    if (!areaScopeRow) return;
+    const areas = this.taskManager.getAreasOfFocus();
+    areaScopeRow.innerHTML = "";
+
+    const makePill = (label, areaValue) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "area-scope-pill";
+      btn.textContent = label;
+      btn.dataset.area = areaValue || "";
+      if (this.activeArea === areaValue) btn.classList.add("is-active");
+      return btn;
+    };
+
+    areaScopeRow.append(makePill("All", null));
+    areas.forEach((area) => areaScopeRow.append(makePill(area, area)));
   }
 
   applySearchVisibility() {
@@ -1171,12 +1208,12 @@ export class UIController {
     if (!contextContainer || !peopleContainer || !projectContainer) return;
 
     const contexts = this.taskManager
-      .getContexts()
+      .getContexts({ areaLens: this.activeArea })
       .slice()
       .sort((a, b) => a.localeCompare(b))
       .map((value) => ({ value, label: value }));
     const people = this.taskManager
-      .getPeopleTags()
+      .getPeopleTags({ areaLens: this.activeArea })
       .slice()
       .sort((a, b) => a.localeCompare(b))
       .map((value) => ({ value, label: value }));
@@ -1341,6 +1378,7 @@ export class UIController {
       effort: overrides.effort ?? this.filters.effort,
       time: overrides.time ?? this.filters.time,
       searchTerm: overrides.searchTerm ?? this.filters.search,
+      areaLens: overrides.areaLens ?? this.activeArea,
     };
   }
 
@@ -1634,7 +1672,7 @@ export class UIController {
 
   buildNextActionsGroups(tasks, groupBy) {
     if (groupBy === "context") {
-      const contexts = this.taskManager.getContexts();
+      const contexts = this.taskManager.getContexts({ areaLens: this.activeArea });
       const byContext = new Map(contexts.map((c) => [c, []]));
       const noContext = [];
       tasks.forEach((task) => {
@@ -7884,7 +7922,7 @@ export class UIController {
     const query = term.toLowerCase();
     if (trigger === "@") {
       return this.taskManager
-        .getContexts()
+        .getContexts({ areaLens: this.activeArea })
         .map((value) => ({
           key: value.toLowerCase(),
           label: value,
@@ -7896,7 +7934,7 @@ export class UIController {
     }
     if (trigger === "+") {
       return this.taskManager
-        .getPeopleTags()
+        .getPeopleTags({ areaLens: this.activeArea })
         .map((value) => ({
           key: value.toLowerCase(),
           label: value,
@@ -9247,6 +9285,7 @@ function mapElements() {
     projectAreaSuggestions: document.getElementById("projectAreaSuggestions"),
     projectThemeSuggestions: document.getElementById("projectThemeSuggestions"),
     projectStatusSuggestions: document.getElementById("projectStatusSuggestions"),
+    areaScopeRow: byId("areaScopeRow"),
     randomContext: byId("randomContext"),
     pickRandomTask: byId("pickRandomTask"),
     toggleNextProjectFanout: document.getElementById("toggleNextProjectFanout"),
@@ -9504,6 +9543,26 @@ function storeNextGroupLimitPreference(value) {
   try {
     localStorage.setItem(NEXT_GROUP_LIMIT_KEY, String(value));
   } catch (error) {
+    /* noop */
+  }
+}
+
+function loadActiveAreaPreference() {
+  try {
+    return localStorage.getItem(ACTIVE_AREA_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function storeActiveAreaPreference(area) {
+  try {
+    if (area) {
+      localStorage.setItem(ACTIVE_AREA_KEY, area);
+    } else {
+      localStorage.removeItem(ACTIVE_AREA_KEY);
+    }
+  } catch {
     /* noop */
   }
 }

@@ -807,6 +807,17 @@ export class TaskManager extends EventTarget {
     }
   }
 
+  // Returns the effective area for a task: explicit task area, then inherited from
+  // its project, then null (universal — visible in all area lenses).
+  _effectiveTaskArea(task) {
+    if (task.areaOfFocus) return task.areaOfFocus;
+    if (task.projectId) {
+      const project = this.state.projects.find((p) => p.id === task.projectId);
+      if (project?.areaOfFocus) return project.areaOfFocus;
+    }
+    return null;
+  }
+
   getTasks({
     status,
     context,
@@ -824,6 +835,7 @@ export class TaskManager extends EventTarget {
     times,
     myDayDate,
     myDayDates,
+    areaLens = null,
     includeCompleted = false,
     includeFutureScheduled = true,
   } = {}) {
@@ -841,6 +853,10 @@ export class TaskManager extends EventTarget {
       if (!includeCompleted && task.completedAt) return false;
       if (status && task.status !== status) return false;
       if (!matchesTaskFilters(task, filterRules)) return false;
+      if (areaLens) {
+        const area = this._effectiveTaskArea(task);
+        if (area !== null && area !== areaLens) return false;
+      }
       if (!includeFutureScheduled && task.calendarDate) {
         const today = new Date();
         const y = today.getUTCFullYear();
@@ -1836,7 +1852,7 @@ export class TaskManager extends EventTarget {
     return true;
   }
 
-  getContexts() {
+  getContexts({ areaLens = null } = {}) {
     const contexts = new Set();
     const addContext = (value) => {
       const raw = typeof value === "object" && value !== null ? value.name : value;
@@ -1851,7 +1867,19 @@ export class TaskManager extends EventTarget {
     if (!contexts.size) {
       PHYSICAL_CONTEXTS.forEach((context) => contexts.add(context));
     }
-    return Array.from(contexts).sort((a, b) => a.localeCompare(b));
+    const all = Array.from(contexts).sort((a, b) => a.localeCompare(b));
+    if (!areaLens) return all;
+    // Filter to contexts visible in the active area: universal (areas=[]) + matching area
+    const options = this.state.settings?.contextOptions || [];
+    const areaMap = new Map(options.map((opt) => {
+      const name = typeof opt === "object" && opt !== null ? opt.name : opt;
+      const areas = typeof opt === "object" && opt !== null && Array.isArray(opt.areas) ? opt.areas : [];
+      return [typeof name === "string" ? name.toLowerCase() : "", areas];
+    }));
+    return all.filter((name) => {
+      const areas = areaMap.get(name.toLowerCase()) ?? [];
+      return areas.length === 0 || areas.includes(areaLens);
+    });
   }
 
   getPeopleTagOptions() {
@@ -1880,7 +1908,7 @@ export class TaskManager extends EventTarget {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }
 
-  getPeopleTags({ includeNoteMentions = true } = {}) {
+  getPeopleTags({ includeNoteMentions = true, areaLens = null } = {}) {
     const tags = new Set();
     const addTag = (value) => {
       if (typeof value !== "string") return;
@@ -1896,7 +1924,19 @@ export class TaskManager extends EventTarget {
     this.state.tasks.forEach((task) => addEntryTags(task));
     (this.state.reference || []).forEach((entry) => addEntryTags(entry));
     (this.state.completionLog || []).forEach((entry) => addEntryTags(entry));
-    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+    const all = Array.from(tags).sort((a, b) => a.localeCompare(b));
+    if (!areaLens) return all;
+    // Filter to people visible in the active area: universal (areas=[]) + matching area
+    const options = this.state.settings?.peopleOptions || [];
+    const areaMap = new Map(options.map((opt) => {
+      const name = typeof opt === "object" && opt !== null ? opt.name : opt;
+      const areas = typeof opt === "object" && opt !== null && Array.isArray(opt.areas) ? opt.areas : [];
+      return [typeof name === "string" ? name.toLowerCase() : "", areas];
+    }));
+    return all.filter((name) => {
+      const areas = areaMap.get(name.toLowerCase()) ?? [];
+      return areas.length === 0 || areas.includes(areaLens);
+    });
   }
 
   addContextOption(value, { notify = true } = {}) {

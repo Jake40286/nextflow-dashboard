@@ -256,11 +256,12 @@ function hydrateState(raw = {}) {
       nextState.tasks,
       nextState.reference,
       nextState.completionLog
-    ).filter((tag) => {
+    ).filter((opt) => {
       // Exclude any tags the user has explicitly deleted, preventing text-mention
       // resurrection on page reload.
+      const tag = typeof opt === "object" && opt !== null ? opt.name : opt;
       const deleted = nextState.settings?.deletedPeopleOptions || [];
-      return !deleted.some((d) => typeof d === "string" && d.toLowerCase() === tag.toLowerCase());
+      return !deleted.some((d) => typeof d === "string" && typeof tag === "string" && d.toLowerCase() === tag.toLowerCase());
     }),
     deletedPeopleOptions: normalizePeopleTagCollection(
       nextState.settings?.deletedPeopleOptions || []
@@ -1838,8 +1839,9 @@ export class TaskManager extends EventTarget {
   getContexts() {
     const contexts = new Set();
     const addContext = (value) => {
-      if (typeof value !== "string") return;
-      const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
+      const raw = typeof value === "object" && value !== null ? value.name : value;
+      if (typeof raw !== "string") return;
+      const normalized = sanitizePhysicalContext(raw, { allowEmpty: false });
       if (normalized) contexts.add(normalized);
     };
     (this.state.settings?.contextOptions || []).forEach((value) => addContext(value));
@@ -1857,15 +1859,16 @@ export class TaskManager extends EventTarget {
     // Used by the Settings panel so deleted tags don't resurface via text mentions.
     const raw = this.state.settings?.peopleOptions || [];
     return raw
-      .map((v) => sanitizePeopleTag(v))
+      .map((v) => sanitizePeopleTag(typeof v === "object" && v !== null ? v.name : v))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
   }
 
   getKnownDelegateNames() {
     const names = new Set();
-    for (const tag of (this.state.settings?.peopleOptions || [])) {
-      const name = tag.startsWith("+") ? tag.slice(1) : tag;
+    for (const entry of (this.state.settings?.peopleOptions || [])) {
+      const tag = typeof entry === "object" && entry !== null ? entry.name : entry;
+      const name = typeof tag === "string" && tag.startsWith("+") ? tag.slice(1) : tag;
       if (name) names.add(name);
     }
     for (const task of this.state.tasks) {
@@ -1887,7 +1890,9 @@ export class TaskManager extends EventTarget {
     const addEntryTags = (entry) => {
       collectEntryPeopleTags(entry, { includeNoteMentions }).forEach((tag) => addTag(tag));
     };
-    (this.state.settings?.peopleOptions || []).forEach((value) => addTag(value));
+    (this.state.settings?.peopleOptions || []).forEach((value) =>
+      addTag(typeof value === "object" && value !== null ? value.name : value)
+    );
     this.state.tasks.forEach((task) => addEntryTags(task));
     (this.state.reference || []).forEach((entry) => addEntryTags(entry));
     (this.state.completionLog || []).forEach((entry) => addEntryTags(entry));
@@ -1913,7 +1918,7 @@ export class TaskManager extends EventTarget {
       ? this.state.settings.contextOptions
       : [];
     this.state.settings.contextOptions = normalizeContextOptions(
-      [...currentOptions, normalized],
+      [...currentOptions, { name: normalized, areas: [] }],
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
@@ -1945,7 +1950,7 @@ export class TaskManager extends EventTarget {
       ? this.state.settings.peopleOptions
       : [];
     this.state.settings.peopleOptions = normalizePeopleOptions(
-      [...currentOptions, normalized],
+      [...currentOptions, { name: normalized, areas: [] }],
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
@@ -2024,8 +2029,19 @@ export class TaskManager extends EventTarget {
       entry.contexts = entry.contexts.map((c) => (c === from ? to : c));
       entry.updatedAt = nowIso();
     });
+    // Carry area configuration forward: rename the matching entry, keep all others as-is
+    const currentContextOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? this.state.settings.contextOptions
+      : [];
+    const renamedContextOptions = currentContextOptions.map((opt) => {
+      const name = typeof opt === "object" && opt !== null ? opt.name : opt;
+      if (typeof name === "string" && name.toLowerCase() === from.toLowerCase()) {
+        return { name: to, areas: Array.isArray(opt.areas) ? opt.areas : [] };
+      }
+      return opt;
+    });
     this.state.settings.contextOptions = normalizeContextOptions(
-      [],
+      renamedContextOptions,
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
@@ -2064,7 +2080,10 @@ export class TaskManager extends EventTarget {
       ? this.state.settings.contextOptions
       : [];
     const normalizedOptions = normalizeContextOptions(
-      contextOptions.filter((context) => context.toLowerCase() !== target.toLowerCase()),
+      contextOptions.filter((opt) => {
+        const name = typeof opt === "object" && opt !== null ? opt.name : opt;
+        return typeof name !== "string" || name.toLowerCase() !== target.toLowerCase();
+      }),
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
@@ -2115,8 +2134,19 @@ export class TaskManager extends EventTarget {
     this.state.tasks.forEach(renameEntry);
     (this.state.reference || []).forEach(renameEntry);
     (this.state.completionLog || []).forEach(renameEntry);
+    // Carry area configuration forward: rename the matching entry, keep all others as-is
+    const currentPeopleOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? this.state.settings.peopleOptions
+      : [];
+    const renamedPeopleOptions = currentPeopleOptions.map((opt) => {
+      const name = typeof opt === "object" && opt !== null ? opt.name : opt;
+      if (typeof name === "string" && name.toLowerCase() === from.toLowerCase()) {
+        return { name: to, areas: Array.isArray(opt.areas) ? opt.areas : [] };
+      }
+      return opt;
+    });
     this.state.settings.peopleOptions = normalizePeopleOptions(
-      [],
+      renamedPeopleOptions,
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
@@ -2153,12 +2183,19 @@ export class TaskManager extends EventTarget {
       : [];
     // Always write the filtered list. normalizePeopleOptions re-scans text mentions
     // and would re-add the tag if we relied on a length guard, preventing deletion.
+    const optName = (opt) => (typeof opt === "object" && opt !== null ? opt.name : opt);
     this.state.settings.peopleOptions = normalizePeopleOptions(
-      peopleOptions.filter((tag) => tag.toLowerCase() !== target.toLowerCase()),
+      peopleOptions.filter((opt) => {
+        const name = optName(opt);
+        return typeof name !== "string" || name.toLowerCase() !== target.toLowerCase();
+      }),
       this.state.tasks,
       this.state.reference,
       this.state.completionLog
-    ).filter((tag) => tag.toLowerCase() !== target.toLowerCase());
+    ).filter((opt) => {
+      const name = optName(opt);
+      return typeof name !== "string" || name.toLowerCase() !== target.toLowerCase();
+    });
     // Record explicit deletion so hydrateState's text-mention rescan can't resurrect the tag.
     const deletedOptions = Array.isArray(this.state.settings?.deletedPeopleOptions)
       ? this.state.settings.deletedPeopleOptions
@@ -3237,35 +3274,73 @@ function normalizeLinkedSchedule({ calendarDate, myDayDate, calendarTime } = {})
 }
 
 function normalizeContextOptions(options, tasks = [], reference = [], completionLog = []) {
-  // Keep explicitly-added options plus any contexts currently in use on tasks.
-  const values = new Set();
-  const addContext = (value) => {
-    const normalized = sanitizePhysicalContext(value, { allowEmpty: false });
-    if (normalized) values.add(normalized);
+  // Each entry is { name: string, areas: string[] }. Accepts legacy string entries
+  // (treated as universal, areas=[]) for backward-compatible migration on first load.
+  const map = new Map(); // normalized name -> areas[]
+
+  // Process explicit options first — objects carry area configuration, strings are universal.
+  (Array.isArray(options) ? options : []).forEach((value) => {
+    let name, areas;
+    if (typeof value === "object" && value !== null && typeof value.name === "string") {
+      name = sanitizePhysicalContext(value.name, { allowEmpty: false });
+      areas = Array.isArray(value.areas) ? [...value.areas] : [];
+    } else if (typeof value === "string") {
+      name = sanitizePhysicalContext(value, { allowEmpty: false });
+      areas = [];
+    } else {
+      return;
+    }
+    if (name && !map.has(name)) map.set(name, areas);
+  });
+
+  // Add contexts found in task usage — universal (areas=[]), don't override explicit config.
+  const addFromUsage = (value) => {
+    const name = sanitizePhysicalContext(value, { allowEmpty: false });
+    if (name && !map.has(name)) map.set(name, []);
   };
-  (Array.isArray(options) ? options : []).forEach((value) => addContext(value));
-  (Array.isArray(tasks) ? tasks : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
-  (Array.isArray(reference) ? reference : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
-  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => (entry?.contexts || []).forEach((c) => addContext(c)));
-  return Array.from(values).sort((a, b) => a.localeCompare(b));
+  (Array.isArray(tasks) ? tasks : []).forEach((entry) => (entry?.contexts || []).forEach(addFromUsage));
+  (Array.isArray(reference) ? reference : []).forEach((entry) => (entry?.contexts || []).forEach(addFromUsage));
+  (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => (entry?.contexts || []).forEach(addFromUsage));
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, areas]) => ({ name, areas }));
 }
 
 function normalizePeopleOptions(options, tasks = [], reference = [], completionLog = []) {
-  const values = new Set();
-  const addTag = (value) => {
-    const normalized = sanitizePeopleTag(value);
-    if (normalized) {
-      values.add(normalized);
+  // Each entry is { name: string, areas: string[] }. Accepts legacy string entries
+  // (treated as universal, areas=[]) for backward-compatible migration on first load.
+  const map = new Map(); // normalized tag -> areas[]
+
+  (Array.isArray(options) ? options : []).forEach((value) => {
+    let name, areas;
+    if (typeof value === "object" && value !== null && typeof value.name === "string") {
+      name = sanitizePeopleTag(value.name);
+      areas = Array.isArray(value.areas) ? [...value.areas] : [];
+    } else if (typeof value === "string") {
+      name = sanitizePeopleTag(value);
+      areas = [];
+    } else {
+      return;
     }
+    if (name && !map.has(name)) map.set(name, areas);
+  });
+
+  // Add tags found in task usage — universal (areas=[]), don't override explicit config.
+  const addFromUsage = (value) => {
+    const name = sanitizePeopleTag(value);
+    if (name && !map.has(name)) map.set(name, []);
   };
   const addEntryTags = (entry) => {
-    collectEntryPeopleTags(entry).forEach((tag) => addTag(tag));
+    collectEntryPeopleTags(entry).forEach(addFromUsage);
   };
-  (Array.isArray(options) ? options : []).forEach((value) => addTag(value));
   (Array.isArray(tasks) ? tasks : []).forEach((entry) => addEntryTags(entry));
   (Array.isArray(reference) ? reference : []).forEach((entry) => addEntryTags(entry));
   (Array.isArray(completionLog) ? completionLog : []).forEach((entry) => addEntryTags(entry));
-  return Array.from(values).sort((a, b) => a.localeCompare(b));
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, areas]) => ({ name, areas }));
 }
 
 function normalizePeopleTagCollection(values = []) {

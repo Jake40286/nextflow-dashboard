@@ -89,33 +89,31 @@ test("restoreCompletedTask rehydrates task and reattaches to project", () => {
   assert.deepEqual(manager.state.projects[0].tasks, ["task-sample"], "project relinked");
 });
 
-const { mergeStates, slimStateForHash } = __testing;
+const { mergeStates, mergeTasks, _buildConflictSummary, _mergeTombstones } = __testing;
 
-test("mergeStates honors removal markers from reference entries", () => {
+test("mergeTasks suppresses a task when the tombstone is newer than both sides' updatedAt", () => {
+  const localTasks  = [];
+  const remoteTasks = [{ id: "t-1", title: "Old remote task", updatedAt: "2024-01-01T00:00:00.000Z" }];
+  // Local tombstone for t-1, stamped after the remote task was last edited.
+  const localTombstones = { "t-1": "2024-02-01T00:00:00.000Z" };
+
+  const result = mergeTasks(localTasks, remoteTasks, localTombstones, {});
+
+  assert.equal(result.length, 0, "tombstone suppresses the remote task");
+});
+
+test("mergeStates honors tombstones — completed local task is not resurrected by stale remote copy", () => {
   const remoteState = {
     tasks: [{ id: "t-1", title: "Old remote task", updatedAt: "2024-01-01T00:00:00.000Z" }],
-    reference: [],
-    completionLog: [],
   };
   const localState = {
     tasks: [],
-    reference: [
-      {
-        id: "t-1",
-        archivedAt: "2024-02-01T00:00:00.000Z",
-        completedAt: "2024-02-01T00:00:00.000Z",
-      },
-    ],
-    completionLog: [],
+    _tombstones: { "t-1": "2024-02-01T00:00:00.000Z" },
   };
 
   const merged = mergeStates(remoteState, localState);
 
-  assert.equal(
-    merged.tasks.length,
-    0,
-    "task removed locally stays removed even when remote still has it"
-  );
+  assert.equal(merged.tasks.length, 0, "task removed locally stays removed even when remote still has it");
 });
 
 test("feature flags include highlightStaleTasks and can be toggled", () => {
@@ -157,26 +155,15 @@ test("mergeStates keeps restored tasks that are newer than their removal markers
   assert.equal(merged.tasks[0].title, "Restored locally");
 });
 
-test("mergeStates also respects completionLog removal markers", () => {
-  const remoteState = {
-    tasks: [{ id: "t-3", title: "Remote ghost", updatedAt: "2024-02-10T00:00:00.000Z" }],
-    reference: [],
-    completionLog: [
-      {
-        id: "t-3",
-        archivedAt: "2024-02-15T00:00:00.000Z",
-      },
-    ],
-  };
-  const localState = {
-    tasks: [],
-    reference: [],
-    completionLog: [],
-  };
+test("mergeTasks suppresses a task whose tombstone appears on the remote side", () => {
+  // Device A deleted t-3 and has a tombstone. Device B still has t-3 active (stale).
+  const localTasks  = [{ id: "t-3", title: "Stale local copy", updatedAt: "2024-02-10T00:00:00.000Z" }];
+  const remoteTasks = [];
+  const remoteTombstones = { "t-3": "2024-02-15T00:00:00.000Z" };
 
-  const merged = mergeStates(remoteState, localState);
+  const result = mergeTasks(localTasks, remoteTasks, {}, remoteTombstones);
 
-  assert.equal(merged.tasks.length, 0);
+  assert.equal(result.length, 0, "remote tombstone suppresses local active copy");
 });
 
 test("mergeStates leaves tasks untouched when no removal markers exist", () => {
@@ -612,48 +599,62 @@ test("archived task notes can be edited and deleted", () => {
   assert.equal(archived.notes.length, 0);
 });
 
-// ─── slimStateForHash ────────────────────────────────────────────────────────
+// ─── _tombstones — explicit deletion markers ──────────────────────────────────
 
-test("slimStateForHash strips completion collections and preserves other fields", () => {
-  const full = {
-    tasks: [{ id: "t-1" }],
-    projects: [{ id: "p-1" }],
-    completionLog: [{ id: "c-1" }],
-    reference: [{ id: "r-1" }],
-    completedProjects: [{ id: "cp-1" }],
-    settings: { theme: "dark" },
-    syncMeta: { deviceId: "dev-1" },
-  };
+test("deleteTask stamps a tombstone in state._tombstones", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To delete" });
+  const id = task.id;
+  manager.deleteTask(id);
 
-  const slim = slimStateForHash(full);
-
-  assert.ok(!("completionLog" in slim), "completionLog stripped");
-  assert.ok(!("reference" in slim), "reference stripped");
-  assert.ok(!("completedProjects" in slim), "completedProjects stripped");
-  assert.deepEqual(slim.tasks, full.tasks, "tasks preserved");
-  assert.deepEqual(slim.projects, full.projects, "projects preserved");
-  assert.deepEqual(slim.settings, full.settings, "settings preserved");
-  assert.deepEqual(slim.syncMeta, full.syncMeta, "syncMeta preserved");
+  assert.ok(manager.state._tombstones, "_tombstones map created");
+  assert.ok(manager.state._tombstones[id], "tombstone entry written for deleted task");
+  assert.equal(manager.state.tasks.length, 0, "task removed from active list");
+  assert.equal(manager.state.completionLog.length, 1, "snapshot still in completionLog");
 });
 
-test("slimStateForHash does not mutate the original object", () => {
-  const full = {
-    tasks: [],
-    completionLog: [{ id: "c-1" }],
-    reference: [],
-    completedProjects: [],
-  };
+test("completeTask stamps a tombstone in state._tombstones", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To complete" });
+  const id = task.id;
+  manager.completeTask(id, { archive: "reference" });
 
-  slimStateForHash(full);
-
-  assert.deepEqual(full.completionLog, [{ id: "c-1" }], "original completionLog unchanged");
+  assert.ok(manager.state._tombstones?.[id], "tombstone entry written for completed task");
+  assert.equal(manager.state.tasks.length, 0, "task removed from active list");
 });
 
-test("slimStateForHash handles null and non-object input safely", () => {
-  assert.equal(slimStateForHash(null), null);
-  assert.equal(slimStateForHash(undefined), undefined);
-  assert.equal(slimStateForHash("string"), "string");
-  assert.equal(slimStateForHash(42), 42);
+test("restoreCompletedTask clears the tombstone so merge won't re-suppress the task", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To restore" });
+  const id = task.id;
+  manager.completeTask(id, { archive: "reference" });
+  assert.ok(manager.state._tombstones?.[id], "tombstone set after completion");
+
+  manager.restoreCompletedTask(id);
+  assert.ok(!manager.state._tombstones?.[id], "tombstone cleared after restore");
+  assert.equal(manager.state.tasks.length, 1, "task back in active list");
+});
+
+test("_mergeTombstones unions both maps using max timestamp per id", () => {
+  const a = { "t-1": "2024-01-01T00:00:00.000Z", "t-2": "2024-06-01T00:00:00.000Z" };
+  const b = { "t-1": "2024-03-01T00:00:00.000Z", "t-3": "2024-02-01T00:00:00.000Z" };
+  const merged = _mergeTombstones(a, b);
+
+  assert.equal(merged["t-1"], "2024-03-01T00:00:00.000Z", "t-1: newer timestamp wins");
+  assert.equal(merged["t-2"], "2024-06-01T00:00:00.000Z", "t-2: only in a, preserved");
+  assert.equal(merged["t-3"], "2024-02-01T00:00:00.000Z", "t-3: only in b, preserved");
+});
+
+test("mergeTasks: restored task (newer updatedAt than tombstone) survives", () => {
+  // Device B deleted t-4 (tombstone at Feb 1). Device A then restored it (updatedAt Mar 1).
+  const localTasks  = [{ id: "t-4", title: "Restored", updatedAt: "2024-03-01T00:00:00.000Z" }];
+  const remoteTasks = [];
+  const remoteTombstones = { "t-4": "2024-02-01T00:00:00.000Z" };
+
+  const result = mergeTasks(localTasks, remoteTasks, {}, remoteTombstones);
+
+  assert.equal(result.length, 1, "restored task survives — updatedAt is newer than tombstone");
+  assert.equal(result[0].title, "Restored");
 });
 
 // ─── mergeStates with slim (Phase-6b) remote payloads ────────────────────────
@@ -676,22 +677,15 @@ test("mergeStates with absent completionLog on remote preserves local completion
   assert.equal(merged.reference.length, 1, "local reference preserved when remote omits it");
 });
 
-test("mergeStates with slim remote still prevents task resurrection via local completion markers", () => {
-  // Simulates: task completed locally, remote still has it (slim payload, no remoteState.completionLog)
+test("mergeStates with slim remote: local tombstone prevents task resurrection", () => {
+  // Simulates: task completed locally (tombstone written), remote still has it active (slim payload).
   const remoteState = {
     tasks: [{ id: "t-zombie", title: "Should stay gone", updatedAt: "2026-01-01T00:00:00.000Z" }],
-    // no completionLog
+    // no completionLog — slim remote payload
   };
   const localState = {
     tasks: [],
-    completionLog: [],
-    reference: [
-      {
-        id: "t-zombie",
-        archivedAt: "2026-02-01T00:00:00.000Z",
-        completedAt: "2026-02-01T00:00:00.000Z",
-      },
-    ],
+    _tombstones: { "t-zombie": "2026-02-01T00:00:00.000Z" },
   };
 
   const merged = mergeStates(remoteState, localState);
@@ -851,6 +845,509 @@ test("ensureCompletedLoaded does not overwrite existing state when server return
   assert.equal(manager._completedDataLoaded, true);
 
   globalThis.fetch = undefined;
+});
+
+// ── Op log + field-level merge tests ────────────────────────────────────────
+
+const { mergeOpLogs, appendOpLogEntries, readOpLogEntries, MERGE_FIELD_GROUPS } = __testing;
+
+test("updateTask emits op log entry when myDayDate changes", () => {
+  const storage = new Map();
+  storage.getItem = (k) => storage.get(k) ?? null;
+  storage.setItem = (k, v) => storage.set(k, v);
+  storage.removeItem = (k) => storage.delete(k);
+
+  const manager = new TaskManager();
+  manager.remoteSyncEnabled = false;
+  manager.storage = storage;
+  manager.state = {
+    tasks: [], reference: [], completionLog: [], projects: [],
+    completedProjects: [], checklist: [], analytics: { history: [] },
+    settings: { theme: "light", customTheme: { canvas: "#f5efe2", accent: "#0f766e", signal: "#b45309" }, customThemePalettes: [], areaOptions: [], featureFlags: {} },
+  };
+
+  const task = manager.addTask({ title: "My Day test" });
+  manager.updateTask(task.id, { myDayDate: "2026-03-30" });
+
+  const entries = readOpLogEntries(storage);
+  const myDayEntry = entries.find((e) => e.field === "myDayDate");
+  assert.ok(myDayEntry, "op log entry created for myDayDate change");
+  assert.equal(myDayEntry.next, "2026-03-30");
+  assert.equal(myDayEntry.taskId, task.id);
+});
+
+test("updateTask emits op log entry when status changes", () => {
+  const storage = new Map();
+  storage.getItem = (k) => storage.get(k) ?? null;
+  storage.setItem = (k, v) => storage.set(k, v);
+  storage.removeItem = (k) => storage.delete(k);
+
+  const manager = new TaskManager();
+  manager.remoteSyncEnabled = false;
+  manager.storage = storage;
+  manager.state = {
+    tasks: [], reference: [], completionLog: [], projects: [],
+    completedProjects: [], checklist: [], analytics: { history: [] },
+    settings: { theme: "light", customTheme: { canvas: "#f5efe2", accent: "#0f766e", signal: "#b45309" }, customThemePalettes: [], areaOptions: [], featureFlags: {} },
+  };
+
+  const task = manager.addTask({ title: "Status test" });
+  manager.updateTask(task.id, { status: "next" });
+
+  const entries = readOpLogEntries(storage);
+  const statusEntry = entries.find((e) => e.field === "status");
+  assert.ok(statusEntry, "op log entry created for status change");
+  assert.equal(statusEntry.prev, "inbox");
+  assert.equal(statusEntry.next, "next");
+});
+
+test("mergeOpLogs deduplicates by id and sorts newest-first", () => {
+  const a = [
+    { id: "op1", ts: "2026-03-30T10:00:00Z", field: "status" },
+    { id: "op2", ts: "2026-03-30T09:00:00Z", field: "myDayDate" },
+  ];
+  const b = [
+    { id: "op2", ts: "2026-03-30T09:00:00Z", field: "myDayDate" }, // duplicate
+    { id: "op3", ts: "2026-03-30T11:00:00Z", field: "dueDate" },
+  ];
+  const merged = mergeOpLogs(a, b);
+  assert.equal(merged.length, 3, "duplicates removed");
+  assert.equal(merged[0].id, "op3", "sorted newest-first");
+  assert.equal(merged[1].id, "op1");
+  assert.equal(merged[2].id, "op2");
+});
+
+test("mergeTasks field-group merge: myDayDate from Device A survives status update from Device B", () => {
+  // Simulate the reported bug: A adds task to My Day, B later changes status.
+  // Before this fix, B's whole-task win would clobber A's myDayDate.
+  const t1 = "2026-03-30T09:00:00Z";
+  const t2 = "2026-03-30T10:00:00Z"; // B is later overall
+
+  const deviceATask = {
+    id: "task-1", title: "Test", status: "inbox",
+    myDayDate: "2026-03-30", calendarDate: "2026-03-30", calendarTime: null,
+    dueDate: null, followUpDate: null,
+    updatedAt: t1,
+    _fieldTimestamps: { scheduling: t2, status: t1, dueDate: t1, followUpDate: t1 },
+    createdAt: t1,
+  };
+
+  const deviceBTask = {
+    id: "task-1", title: "Test", status: "next",
+    myDayDate: null, calendarDate: null, calendarTime: null,
+    dueDate: null, followUpDate: null,
+    updatedAt: t2,
+    _fieldTimestamps: { scheduling: t1, status: t2, dueDate: t1, followUpDate: t1 },
+    createdAt: t1,
+  };
+
+  const { mergeStates } = __testing;
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+
+  const result = merged.tasks.find((t) => t.id === "task-1");
+  assert.ok(result, "task present after merge");
+  assert.equal(result.status, "next", "Device B's status update wins (newer _fieldTimestamps.status)");
+  assert.equal(result.myDayDate, "2026-03-30", "Device A's My Day wins (newer _fieldTimestamps.scheduling)");
+});
+
+test("mergeTasks falls back to updatedAt LWW for legacy tasks without _fieldTimestamps", () => {
+  const t1 = "2026-03-29T09:00:00Z";
+  const t2 = "2026-03-30T10:00:00Z";
+
+  const older = { id: "task-2", title: "Old", status: "inbox", myDayDate: "2026-03-29", updatedAt: t1, createdAt: t1 };
+  const newer = { id: "task-2", title: "Old", status: "next", myDayDate: null, updatedAt: t2, createdAt: t1 };
+
+  const { mergeStates } = __testing;
+  const merged = mergeStates(
+    { tasks: [newer], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [older], reference: [], completionLog: [], completedProjects: [] }
+  );
+
+  const result = merged.tasks.find((t) => t.id === "task-2");
+  assert.ok(result, "task present");
+  assert.equal(result.status, "next", "newer whole-task wins for all fields when no _fieldTimestamps");
+  assert.equal(result.myDayDate, null, "newer whole-task wins — no field override");
+});
+
+test("mergeSettings preserves changes from both devices when different groups are modified", () => {
+  const { mergeSettings } = __testing;
+  const earlier = "2026-03-29T10:00:00.000Z";
+  const later = "2026-03-30T10:00:00.000Z";
+
+  const deviceA = {
+    theme: "dark",
+    customTheme: { canvas: "#111111", accent: "#222222", signal: "#333333" },
+    customThemePalettes: [],
+    googleCalendarConfig: { calendarId: "", timezone: "UTC", defaultDurationMinutes: 30 },
+    featureFlags: { showFiltersCard: false },
+    staleTaskThresholds: { warn: 7, stale: 14, old: 30, ancient: 90 },
+    contextOptions: [], peopleOptions: [], areaOptions: [], deletedPeopleOptions: [],
+    _fieldTimestamps: { appearance: later, flags: earlier, calendar: earlier, lists: earlier },
+  };
+
+  const deviceB = {
+    theme: "light",
+    customTheme: { canvas: "#f5efe2", accent: "#0f766e", signal: "#b45309" },
+    customThemePalettes: [],
+    googleCalendarConfig: { calendarId: "team@gmail.com", timezone: "America/New_York", defaultDurationMinutes: 60 },
+    featureFlags: { showFiltersCard: true },
+    staleTaskThresholds: { warn: 5, stale: 10, old: 20, ancient: 60 },
+    contextOptions: [], peopleOptions: [], areaOptions: [], deletedPeopleOptions: [],
+    _fieldTimestamps: { appearance: earlier, flags: later, calendar: later, lists: earlier },
+  };
+
+  const merged = mergeSettings(deviceA, deviceB);
+
+  assert.equal(merged.theme, "dark", "local (device A) theme wins — theme is never synced across devices");
+  assert.equal(merged.googleCalendarConfig.calendarId, "team@gmail.com",
+    "device B calendar config wins (newer _fieldTimestamps.calendar)");
+  assert.equal(merged.googleCalendarConfig.defaultDurationMinutes, 60,
+    "all calendar fields come from the winning source");
+  assert.equal(merged.featureFlags.showFiltersCard, true,
+    "device B flags win (newer _fieldTimestamps.flags)");
+  assert.equal(merged.staleTaskThresholds.warn, 5,
+    "staleTaskThresholds merges with featureFlags in the flags group");
+});
+
+test("mergeSettings falls back to local-wins when neither side has timestamps", () => {
+  const { mergeSettings } = __testing;
+  const local = { theme: "dark", featureFlags: { showFiltersCard: false } };
+  const remote = { theme: "light", featureFlags: { showFiltersCard: true } };
+
+  const merged = mergeSettings(local, remote);
+  assert.equal(merged.theme, "dark", "local wins when no timestamps");
+  assert.equal(merged.featureFlags.showFiltersCard, false, "local flags win when no timestamps");
+  assert.ok(!merged._fieldTimestamps, "no _fieldTimestamps emitted when neither side had them");
+});
+
+test("mergeStates uses per-group LWW for settings rather than local-wins", () => {
+  const { mergeStates } = __testing;
+  const earlier = "2026-03-29T10:00:00.000Z";
+  const later = "2026-03-30T10:00:00.000Z";
+
+  const remoteState = {
+    tasks: [], reference: [], completionLog: [], completedProjects: [],
+    settings: {
+      theme: "light",
+      googleCalendarConfig: { calendarId: "remote-cal@gmail.com", timezone: "UTC", defaultDurationMinutes: 60 },
+      _fieldTimestamps: { appearance: earlier, calendar: later },
+    },
+  };
+  const localState = {
+    tasks: [], reference: [], completionLog: [], completedProjects: [],
+    settings: {
+      theme: "dark",
+      googleCalendarConfig: { calendarId: "", timezone: "UTC", defaultDurationMinutes: 30 },
+      _fieldTimestamps: { appearance: later, calendar: earlier },
+    },
+  };
+
+  const merged = mergeStates(remoteState, localState);
+  assert.equal(merged.settings.theme, "dark",
+    "local theme always wins — theme is device-local and not synced");
+  assert.equal(merged.settings.googleCalendarConfig.calendarId, "remote-cal@gmail.com",
+    "remote calendar config wins (newer _fieldTimestamps.calendar) — old code would have lost this");
+});
+
+test("updateTheme stamps _fieldTimestamps.appearance (local only) and updateGoogleCalendarConfig stamps calendar", () => {
+  const manager = createManager();
+
+  assert.ok(!manager.state.settings._fieldTimestamps?.appearance, "no appearance timestamp before theme change");
+  manager.updateTheme("dark");
+  assert.ok(manager.state.settings._fieldTimestamps?.appearance, "appearance timestamp set locally after updateTheme (stripped before server sync)");
+
+  assert.ok(!manager.state.settings._fieldTimestamps?.calendar, "no calendar timestamp before config change");
+  manager.updateGoogleCalendarConfig({ calendarId: "test@gmail.com", timezone: "UTC", defaultDurationMinutes: 45 });
+  assert.ok(manager.state.settings._fieldTimestamps?.calendar, "calendar timestamp set after updateGoogleCalendarConfig");
+});
+
+test("_fieldTimestamps in settings survive mergeStates without spurious side effects", () => {
+  // _fieldTimestamps no longer needs to be stripped — conflict detection uses _rev, not hashing.
+  const { mergeSettings } = __testing;
+  const localSettings  = { theme: "dark",  _fieldTimestamps: { appearance: "2026-03-30T10:00:00.000Z" } };
+  const remoteSettings = { theme: "light", _fieldTimestamps: { appearance: "2026-03-29T10:00:00.000Z" } };
+
+  const merged = mergeSettings(localSettings, remoteSettings);
+
+  assert.equal(merged.theme, "dark", "local theme always wins — device-local, not synced across devices");
+  assert.ok(merged._fieldTimestamps?.appearance, "_fieldTimestamps.appearance preserved locally (not sent to server)");
+});
+
+test("addTaskNote survives a concurrent status change on the other device", () => {
+  const { mergeStates } = __testing;
+  const t1 = "2026-03-30T09:00:00.000Z";
+  const t2 = "2026-03-30T10:00:00.000Z";
+
+  // Device A added a note at t1
+  const deviceATask = {
+    id: "task-notes-1", title: "Test", status: "inbox",
+    updatedAt: t1, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t1, dueDate: t1, followUpDate: t1 },
+    notes: [{ id: "note-1", text: "Important insight", createdAt: t1, updatedAt: t1 }],
+    listItems: [],
+  };
+
+  // Device B changed status at t2 (no notes)
+  const deviceBTask = {
+    id: "task-notes-1", title: "Test", status: "next",
+    updatedAt: t2, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t2, dueDate: t1, followUpDate: t1 },
+    notes: [],
+    listItems: [],
+  };
+
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+  const result = merged.tasks.find((t) => t.id === "task-notes-1");
+  assert.ok(result, "task present");
+  assert.equal(result.status, "next", "Device B status wins");
+  assert.equal(result.notes.length, 1, "Device A note survives despite Device B having no notes");
+  assert.equal(result.notes[0].text, "Important insight");
+});
+
+test("listItem added on device A survives whole-task LWW win by device B", () => {
+  const { mergeStates } = __testing;
+  const t1 = "2026-03-30T09:00:00.000Z";
+  const t2 = "2026-03-30T10:00:00.000Z";
+
+  const deviceATask = {
+    id: "task-list-1", title: "Test", status: "inbox",
+    updatedAt: t1, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t1, dueDate: t1, followUpDate: t1 },
+    notes: [],
+    listItems: [{ id: "li-1", text: "Buy milk", done: false, updatedAt: t1 }],
+  };
+
+  const deviceBTask = {
+    id: "task-list-1", title: "Test (edited title)", status: "next",
+    updatedAt: t2, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t2, dueDate: t1, followUpDate: t1 },
+    notes: [],
+    listItems: [],
+  };
+
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+  const result = merged.tasks.find((t) => t.id === "task-list-1");
+  assert.ok(result, "task present");
+  assert.equal(result.listItems.length, 1, "Device A listItem survives Device B whole-task win");
+  assert.equal(result.listItems[0].text, "Buy milk");
+});
+
+test("both devices add different notes — both survive in chronological order", () => {
+  const { mergeStates } = __testing;
+  const t1 = "2026-03-30T08:00:00.000Z";
+  const t2 = "2026-03-30T09:00:00.000Z";
+  const t3 = "2026-03-30T10:00:00.000Z";
+
+  const deviceATask = {
+    id: "task-both-1", title: "Both add notes", status: "inbox",
+    updatedAt: t3, createdAt: t1,
+    notes: [
+      { id: "note-a", text: "Device A note", createdAt: t1, updatedAt: t1 },
+      { id: "note-c", text: "Device A second note", createdAt: t3, updatedAt: t3 },
+    ],
+    listItems: [],
+  };
+
+  const deviceBTask = {
+    id: "task-both-1", title: "Both add notes", status: "inbox",
+    updatedAt: t2, createdAt: t1,
+    notes: [
+      { id: "note-a", text: "Device A note", createdAt: t1, updatedAt: t1 },
+      { id: "note-b", text: "Device B note", createdAt: t2, updatedAt: t2 },
+    ],
+    listItems: [],
+  };
+
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+  const result = merged.tasks.find((t) => t.id === "task-both-1");
+  assert.ok(result, "task present");
+  assert.equal(result.notes.length, 3, "all three notes present");
+  const ids = result.notes.map((n) => n.id);
+  assert.deepEqual(ids, ["note-a", "note-b", "note-c"], "sorted chronologically by createdAt");
+});
+
+test("listItem toggle on device A preserved when device B edits title", () => {
+  const { mergeStates } = __testing;
+  const t1 = "2026-03-30T09:00:00.000Z";
+  const t2 = "2026-03-30T10:00:00.000Z";
+
+  const deviceATask = {
+    id: "task-toggle-1", title: "Task", status: "next",
+    updatedAt: t2, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t1, dueDate: t1, followUpDate: t1 },
+    notes: [],
+    listItems: [{ id: "li-x", text: "Step one", done: true, updatedAt: t2 }],
+  };
+
+  const deviceBTask = {
+    id: "task-toggle-1", title: "Task (edited)", status: "next",
+    updatedAt: t2, createdAt: t1,
+    _fieldTimestamps: { scheduling: t1, status: t1, dueDate: t1, followUpDate: t1 },
+    notes: [],
+    listItems: [{ id: "li-x", text: "Step one", done: false, updatedAt: t1 }],
+  };
+
+  const merged = mergeStates(
+    { tasks: [deviceBTask], reference: [], completionLog: [], completedProjects: [] },
+    { tasks: [deviceATask], reference: [], completionLog: [], completedProjects: [] }
+  );
+  const result = merged.tasks.find((t) => t.id === "task-toggle-1");
+  assert.ok(result, "task present");
+  assert.equal(result.listItems[0].done, true,
+    "Device A toggle (newer updatedAt) wins over Device B untoggled item");
+});
+
+test("addTaskNote stamps updatedAt and addTaskListItems stamps updatedAt", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Note and list test" });
+
+  const note = manager.addTaskNote(task.id, "My note");
+  assert.ok(note.updatedAt, "note has updatedAt after creation");
+
+  const [item] = manager.addTaskListItems(task.id, ["Step 1"]);
+  assert.ok(item.updatedAt, "listItem has updatedAt after creation");
+
+  const beforeDone = manager.getTaskById(task.id).listItems[0].done;
+  manager.toggleTaskListItem(task.id, item.id);
+  const toggled = manager.getTaskById(task.id).listItems[0];
+  assert.notEqual(toggled.done, beforeDone, "done toggles");
+  assert.ok(toggled.updatedAt, "updatedAt present after toggle");
+});
+
+test("mergeAnalytics unions history from both devices in chronological order", () => {
+  const { mergeAnalytics } = __testing;
+  const local  = { history: [{ week: "Week 10", complete: 5, remaining: 8 }, { week: "Week 12", complete: 3, remaining: 10 }] };
+  const remote = { history: [{ week: "Week 10", complete: 5, remaining: 8 }, { week: "Week 11", complete: 7, remaining: 9 }] };
+
+  const merged = mergeAnalytics(local, remote);
+  const weeks = merged.history.map((e) => e.week);
+  assert.deepEqual(weeks, ["Week 10", "Week 11", "Week 12"],
+    "all weeks present; remote order first, then local-only weeks appended");
+});
+
+test("mergeAnalytics: max(complete) and min(remaining) win for the same week", () => {
+  const { mergeAnalytics } = __testing;
+  const local  = { history: [{ week: "Week 08", complete: 14, remaining: 3 }] };
+  const remote = { history: [{ week: "Week 08", complete: 10, remaining: 6 }] };
+
+  const merged = mergeAnalytics(local, remote);
+  assert.equal(merged.history.length, 1);
+  assert.equal(merged.history[0].complete,  14, "max(complete) wins");
+  assert.equal(merged.history[0].remaining,  3, "min(remaining) wins");
+});
+
+test("mergeAnalytics preserves one side when the other has empty history", () => {
+  const { mergeAnalytics } = __testing;
+  const local  = { history: [{ week: "Week 08", complete: 12, remaining: 6 }] };
+  const remote = {};
+
+  const fromEmpty = mergeAnalytics(local, remote);
+  assert.equal(fromEmpty.history.length, 1, "local history preserved when remote is empty");
+
+  const toEmpty = mergeAnalytics({}, local);
+  assert.equal(toEmpty.history.length, 1, "remote history preserved when local is empty");
+});
+
+test("mergeAnalytics: both empty returns an empty-history object without error", () => {
+  const { mergeAnalytics } = __testing;
+  const merged = mergeAnalytics({}, {});
+  assert.ok(typeof merged === "object", "returns an object");
+});
+
+// ─── _buildConflictSummary (replaces diffConflict) ───────────────────────────
+
+test("_buildConflictSummary identifies tasks changed, added, and removed by remote", () => {
+  const earlier = "2026-03-29T10:00:00.000Z";
+  const later   = "2026-03-30T10:00:00.000Z";
+
+  const localState = {
+    tasks: [
+      { id: "t1", title: "Existing unchanged", updatedAt: later },
+      { id: "t2", title: "Remote updated this", updatedAt: earlier },
+      { id: "t3", title: "Only on local",       updatedAt: earlier },
+    ],
+    settings: {},
+  };
+  const remoteState = {
+    tasks: [
+      { id: "t1", title: "Existing unchanged", updatedAt: later },
+      { id: "t2", title: "Remote updated this", updatedAt: later },
+      { id: "t4", title: "Only on remote",      updatedAt: later },
+    ],
+    settings: {},
+  };
+
+  const result = _buildConflictSummary(localState, remoteState);
+
+  assert.equal(result.changedTasks.length,  1, "one task changed by remote");
+  assert.equal(result.changedTasks[0].id,   "t2");
+  assert.equal(result.addedTasks.length,    1, "one task added by remote");
+  assert.equal(result.addedTasks[0].id,     "t4");
+  assert.equal(result.removedTasks.length,  1, "one task removed by remote");
+  assert.equal(result.removedTasks[0].id,   "t3");
+});
+
+test("_buildConflictSummary detects changed settings groups when remote timestamp is newer", () => {
+  const earlier = "2026-03-29T10:00:00.000Z";
+  const later   = "2026-03-30T10:00:00.000Z";
+
+  const localState = {
+    tasks: [],
+    settings: { _fieldTimestamps: { appearance: later, calendar: earlier } },
+  };
+  const remoteState = {
+    tasks: [],
+    settings: { _fieldTimestamps: { appearance: earlier, calendar: later } },
+  };
+
+  const result = _buildConflictSummary(localState, remoteState);
+
+  assert.ok(!result.changedSettingsGroups.includes("appearance"), "appearance: local is newer — not a remote change");
+  assert.ok(result.changedSettingsGroups.includes("calendar"), "calendar: remote is newer — flagged");
+});
+
+test("_buildConflictSummary returns empty arrays when states are identical", () => {
+  const ts = "2026-03-30T10:00:00.000Z";
+  const state = {
+    tasks: [{ id: "t1", title: "A task", updatedAt: ts }],
+    settings: { _fieldTimestamps: { appearance: ts } },
+  };
+  const result = _buildConflictSummary(state, state);
+
+  assert.equal(result.changedTasks.length,        0, "no changed tasks");
+  assert.equal(result.addedTasks.length,           0, "no added tasks");
+  assert.equal(result.removedTasks.length,          0, "no removed tasks");
+  assert.equal(result.changedSettingsGroups.length, 0, "no changed settings groups");
+});
+
+test("addTask with status 'next' returns task with correct status", (t) => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Write tests", status: "next" });
+  assert.equal(task.status, "next");
+  assert.equal(manager.getTasks({ status: "next" }).length, 1);
+  assert.equal(manager.getTasks({ status: "inbox" }).length, 0);
+});
+
+test("addTask with status 'next' and projectId is retrievable by projectId filter", (t) => {
+  const manager = createManager();
+  const project = manager.addProject("Test Project");
+  const task = manager.addTask({ title: "Do thing", status: "next", projectId: project.id });
+  assert.ok(task, "task was created");
+  const found = manager.getTasks({ projectId: project.id });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, task.id);
 });
 
 test.after(() => {

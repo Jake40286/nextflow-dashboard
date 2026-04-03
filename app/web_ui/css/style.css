@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap");
 
 :root {
   color-scheme: light;
@@ -509,7 +508,8 @@ button.meta-item:hover {
   animation: sync-pulse 1s infinite;
 }
 
-.theme-toggle {
+.theme-toggle,
+.settings-toggle {
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -529,30 +529,13 @@ button.meta-item:hover {
   background: var(--surface);
 }
 
-.theme-icon {
-  font-size: 1.12rem;
-}
-
-.settings-toggle {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--text);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: transform var(--transition-fast), border var(--transition-fast), background var(--transition-fast);
-}
-
 .settings-toggle:hover {
   transform: translateY(-1px) rotate(30deg);
   border-color: var(--line-strong);
   background: var(--surface);
 }
 
+.theme-icon,
 .settings-icon {
   font-size: 1.12rem;
 }
@@ -1058,7 +1041,7 @@ button.meta-item:hover {
 
 .project-task-count {
   margin-left: auto;
-  background: var(--surface-raised);
+  background: var(--surface-3);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1704,7 +1687,7 @@ button.meta-item:hover {
 }
 
 .task-meta-age {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .task-meta-age-warn {
@@ -2237,33 +2220,117 @@ button.meta-item:hover {
 
 .settings-panel {
   display: grid;
-  gap: var(--space-3);
-}
-
-.settings-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  padding: var(--space-3);
-  display: grid;
   gap: var(--space-2);
 }
 
-.settings-card-header {
-  display: grid;
-  gap: 2px;
+/* Accordion */
+.settings-accordion {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
 }
 
-.settings-card-header h3 {
-  margin: 0;
+.settings-accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  gap: var(--space-2);
+}
+
+.settings-accordion-header::-webkit-details-marker {
+  display: none;
+}
+
+.settings-accordion-header:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.settings-accordion[open] > .settings-accordion-header {
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.settings-accordion-title {
   font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.settings-accordion-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast);
+}
+
+.settings-accordion-icon::after {
+  content: "›";
+  font-size: 1.1rem;
+  display: block;
+  transform: rotate(90deg);
+  transition: transform var(--transition-fast);
+}
+
+.settings-accordion[open] .settings-accordion-icon::after {
+  transform: rotate(270deg);
+}
+
+.settings-accordion-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* Subgroups within accordion sections */
+.settings-subgroup {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-subgroup + .settings-subgroup {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+
+.settings-subgroup-heading {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.settings-subgroup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.settings-subgroup-actions--split {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-subgroup-actions-primary {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .settings-item {
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--surface);
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
@@ -2280,6 +2347,10 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
+.settings-item-main--top {
+  align-items: flex-start;
+}
+
 .settings-item-label {
   min-width: 0;
   display: grid;
@@ -2290,24 +2361,91 @@ button.meta-item:hover {
   font-size: 0.76rem;
 }
 
+.feedback-short-id {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.settings-inline-edit {
+  width: 100%;
+  resize: vertical;
+  font-size: 0.875rem;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.settings-inline-select {
+  font-size: 0.8rem;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
 .settings-item-actions,
 .settings-task-actions {
   display: flex;
   flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--space-2);
 }
 
-.settings-flag-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
+/* Toggle switch — CSS-only pill toggle for feature flags */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
-.settings-flag-toggle input[type="checkbox"] {
-  width: auto;
-  margin: 0;
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-switch-track {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--text-muted) 40%, var(--line));
+  border-radius: 999px;
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.toggle-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 999px;
+  transition: transform 0.15s ease;
+}
+
+.toggle-switch input:checked + .toggle-switch-track {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-switch-track::after {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus-visible + .toggle-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .settings-item--block {
@@ -2333,7 +2471,7 @@ button.meta-item:hover {
 .feature-flag-config-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -2457,10 +2595,15 @@ button.meta-item:hover {
   letter-spacing: 0.02em;
 }
 
+.settings-theme-custom-controls-heading {
+  padding: var(--space-2) 12px 0;
+  margin: 0;
+}
+
 .settings-theme-palette-manager {
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   margin: 0 12px 12px;
-  padding-top: 10px;
+  padding-top: var(--space-3);
   display: grid;
   gap: var(--space-2);
 }
@@ -2880,6 +3023,31 @@ button.meta-item:hover {
   color: var(--text);
 }
 
+.task-reference-suggestions {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin-top: 4px;
+  background: var(--surface);
+  z-index: 10;
+}
+
+.task-reference-suggestions .suggestion-item {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.task-reference-suggestions .suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.task-reference-suggestions .suggestion-item:hover {
+  background: var(--surface-2);
+}
+
 .task-section-divider {
   display: flex;
   align-items: center;
@@ -3180,7 +3348,7 @@ button.meta-item:hover {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 130;
+  z-index: 2900;
 }
 
 .modal.is-open {
@@ -3400,7 +3568,7 @@ button.meta-item:hover {
 .btn-icon {
   border-color: transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   padding: 0 6px;
   font-size: 1.1rem;
   line-height: 1;
@@ -3535,6 +3703,71 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
+.sync-diag-container {
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+.sync-diag-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sync-diag-table th,
+.sync-diag-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.sync-diag-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.sync-diag-table td:nth-child(5),
+.sync-diag-table td:nth-child(6) {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-diag-empty {
+  padding: var(--space-3) 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.settings-device-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-device-name-input {
+  flex: 1;
+  max-width: 280px;
+}
+
+.settings-device-id-suffix {
+  white-space: nowrap;
+}
+
+.sync-diag-self-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .feedback-widget {
   position: fixed;
   bottom: var(--space-5);
@@ -3647,7 +3880,7 @@ body.flyout-open .feedback-widget {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  background: var(--canvas);
+  background: var(--bg);
   color: var(--text);
   font-family: inherit;
   font-size: 0.875rem;
@@ -3701,10 +3934,6 @@ body.flyout-open .feedback-widget {
 
 .note-image:active {
   cursor: zoom-out;
-}
-
-.settings-card-body {
-  padding: var(--space-3) var(--space-4);
 }
 
 .update-banner {
@@ -3771,6 +4000,41 @@ body.flyout-open .feedback-widget {
   background: color-mix(in srgb, rgba(194, 65, 12, 0.2) 70%, var(--surface));
   border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
   color: color-mix(in srgb, var(--danger) 72%, var(--text));
+}
+
+.toast-action {
+  margin-left: auto;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.conflict-modal-section-title {
+  font-size: 0.9em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.conflict-modal-section-title:first-child {
+  margin-top: 0;
+}
+
+.conflict-modal-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.conflict-modal-list li {
+  padding: 2px 0;
 }
 
 .app-footer {
@@ -3982,5 +4246,324 @@ body.flyout-open .feedback-widget {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ── Weekly Review mode ───────────────────────────────────────────────────── */
+
+/* Full-screen overlay sits above most UI but below the task flyout (z:2600)
+   so "Edit" can open the flyout on top of the review card. */
+.review-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 40%),
+    linear-gradient(165deg, var(--bg), var(--bg-alt));
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: auto;
+}
+
+/* Prevent the normal app scrolling / pomodoro etc. from interfering */
+body.review-mode-active {
+  overflow: hidden;
+}
+
+/* ── Shell (header + body) ── */
+.review-shell {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5) var(--space-8);
+  gap: var(--space-5);
+}
+
+.review-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.review-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-brand {
+  font-family: var(--font-display);
+  font-size: 1.04rem;
+  color: var(--accent);
+}
+
+.review-progress {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.review-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+}
+
+.review-section-header {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.review-section-label {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.review-section-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* ── Item card ── */
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-5) var(--space-6);
+  display: grid;
+  gap: var(--space-3);
+  min-height: 140px;
+  animation: rise-in var(--transition-base) both;
+}
+
+.review-card-title {
+  font-size: 1.22rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.review-card-desc {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.review-card-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.review-next-action {
+  font-size: 0.88rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+}
+
+.review-missing-action {
+  color: var(--warning);
+  font-style: italic;
+}
+
+/* Inline next-action form inside project card */
+.review-add-next-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.review-add-next-input {
+  flex: 1;
+}
+
+/* ── Decision buttons ── */
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.review-action-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* ── Persistent nav bar (Back + Skip) ── */
+.review-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.review-nav-btn {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* History-mode annotation on the card */
+.review-card-meta--history {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-style: italic;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* ── Inline "Add next action" area for project cards ── */
+.review-add-next-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.review-add-next-area .review-add-next-form {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.review-someday-toggle {
+  white-space: nowrap;
+}
+
+/* Someday task picker list */
+.review-someday-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.review-someday-item {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.88rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.review-someday-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+
+/* ── Topbar "Review" button overdue state ── */
+#startReviewBtn.is-overdue .meta-value {
+  color: var(--warning);
+}
+
+#startReviewBtn.is-overdue {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
+}
+
+/* ── Completion screen ── */
+.review-complete {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-5);
+}
+
+.review-complete-inner {
+  max-width: 480px;
+  width: 100%;
+  display: grid;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+.review-complete-icon {
+  font-size: 3rem;
+  color: var(--accent);
+  line-height: 1;
+  animation: rise-in var(--transition-base) both;
+}
+
+.review-complete-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+}
+
+.review-complete-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.review-complete-stats {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  text-align: left;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.review-complete-stats li::before {
+  content: "✓ ";
+  color: var(--ok);
+}
+
+.review-streak {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--accent-strong);
+}
+
+.review-complete-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.review-empty {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .review-shell {
+    padding: var(--space-3) var(--space-3) var(--space-6);
+  }
+
+  .review-card {
+    padding: var(--space-4);
+  }
+
+  .review-action-btn {
+    min-width: 0;
+    flex: 1 1 calc(50% - var(--space-2));
   }
 }

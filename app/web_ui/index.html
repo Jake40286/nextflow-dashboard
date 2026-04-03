@@ -9,6 +9,9 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" />
   <link rel="stylesheet" href="css/reset.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -33,10 +36,10 @@
         </div>
       </form>
       <div class="topbar-meta" role="status" aria-live="polite">
-        <div class="meta-item">
+        <button type="button" id="topbarInboxBtn" class="meta-item" title="Go to Inbox">
           <span class="meta-label">Inbox</span>
           <span id="inboxCount" class="meta-value">0</span>
-        </div>
+        </button>
         <div class="meta-item">
           <span class="meta-label">Due Today</span>
           <span id="dueTodayCount" class="meta-value">0</span>
@@ -54,6 +57,10 @@
         </button>
         <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Cycle dashboard theme">
           <span class="theme-icon" aria-hidden="true">☀︎</span>
+        </button>
+        <button id="startReviewBtn" class="meta-item" type="button" title="Start weekly review" aria-label="Start weekly review">
+          <span class="meta-label">Review</span>
+          <span id="reviewTopbarStatus" class="meta-value">—</span>
         </button>
         <button id="openHelp" class="btn btn-light" type="button" aria-haspopup="dialog" aria-controls="helpModal">How it works</button>
       </div>
@@ -534,61 +541,113 @@
 
       <section class="workspace-view" data-panel="settings" role="tabpanel" aria-labelledby="topbarSettings" id="panel-settings" hidden>
         <div class="panel-content settings-panel">
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Appearance</h3>
-              <p class="muted small-text">Choose a dashboard theme.</p>
-            </header>
-            <ul id="settingsThemesList" class="settings-list settings-theme-list" role="list"></ul>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Feature Flags</h3>
-              <p class="muted small-text">Enable or disable optional UI behavior.</p>
-            </header>
-            <ul id="settingsFeatureFlagsList" class="settings-list" role="list"></ul>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Contexts</h3>
-              <p class="muted small-text">Rename or delete contexts used by tasks.</p>
-            </header>
-            <ul id="settingsContextsList" class="settings-list" role="list"></ul>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>People Tags</h3>
-              <p class="muted small-text">Manage +people tags for delegation and coordination.</p>
-            </header>
-            <ul id="settingsPeopleList" class="settings-list" role="list"></ul>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Areas of Focus</h3>
-              <p class="muted small-text">Manage project swimlane areas.</p>
-            </header>
-            <ul id="settingsAreasList" class="settings-list" role="list"></ul>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Storage</h3>
-              <p class="muted small-text">Remove images no longer referenced by any task.</p>
-            </header>
-            <div class="settings-card-body">
-              <button id="settingsCleanupBtn" class="btn btn-light" type="button">Clean up now</button>
+
+          <details class="settings-accordion" id="settingsAccordionAppearance" open>
+            <summary class="settings-accordion-header">
+              <span class="settings-accordion-title">Appearance</span>
+              <span class="settings-accordion-icon" aria-hidden="true"></span>
+            </summary>
+            <div class="settings-accordion-body">
+              <ul id="settingsThemesList" class="settings-list settings-theme-list" role="list"></ul>
             </div>
-          </section>
-          <section class="settings-card">
-            <header class="settings-card-header">
-              <h3>Feedback</h3>
-              <p class="muted small-text">Review and manage feedback submitted via the feedback widget.</p>
-            </header>
-            <div class="settings-card-body">
-              <button id="settingsLoadFeedbackBtn" class="btn btn-light" type="button">Load feedback</button>
-              <button id="settingsClearFeedbackBtn" class="btn btn-light" type="button">Clear resolved</button>
+          </details>
+
+          <details class="settings-accordion" id="settingsAccordionFeatures">
+            <summary class="settings-accordion-header">
+              <span class="settings-accordion-title">Features</span>
+              <span class="settings-accordion-icon" aria-hidden="true"></span>
+            </summary>
+            <div class="settings-accordion-body">
+              <ul id="settingsFeatureFlagsList" class="settings-list" role="list"></ul>
             </div>
-            <ul id="settingsFeedbackList" class="settings-list" role="list"></ul>
-          </section>
+          </details>
+
+          <details class="settings-accordion" id="settingsAccordionSync">
+            <summary class="settings-accordion-header">
+              <span class="settings-accordion-title">Sync</span>
+              <span class="settings-accordion-icon" aria-hidden="true"></span>
+            </summary>
+            <div class="settings-accordion-body">
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">This Device</h4>
+                <p class="muted small-text">Name this browser so it's identifiable in Sync Diagnostics across devices.</p>
+                <div class="settings-device-row">
+                  <input
+                    id="settingsDeviceNameInput"
+                    type="text"
+                    class="settings-device-name-input"
+                    maxlength="40"
+                    placeholder="e.g. Home Desktop, Work Laptop, Phone"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <span id="settingsDeviceIdSuffix" class="settings-device-id-suffix muted small-text"></span>
+                </div>
+              </div>
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Diagnostics</h4>
+                <p class="muted small-text">Field-level change log shared across devices on sync. Useful for diagnosing merge conflicts.</p>
+                <div class="settings-subgroup-actions settings-subgroup-actions--split">
+                  <div class="settings-subgroup-actions-primary">
+                    <button id="syncDiagRefreshBtn" class="btn btn-light" type="button">Refresh</button>
+                    <button id="syncDiagCopyBtn" class="btn btn-light" type="button">Copy log</button>
+                  </div>
+                  <button id="syncDiagClearBtn" class="btn btn-light" type="button">Clear log</button>
+                </div>
+                <div id="syncDiagContainer" class="sync-diag-container"></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="settings-accordion" id="settingsAccordionLists">
+            <summary class="settings-accordion-header">
+              <span class="settings-accordion-title">Tags &amp; Contexts</span>
+              <span class="settings-accordion-icon" aria-hidden="true"></span>
+            </summary>
+            <div class="settings-accordion-body">
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Contexts</h4>
+                <p class="muted small-text">Rename or delete contexts used by tasks.</p>
+                <ul id="settingsContextsList" class="settings-list" role="list"></ul>
+              </div>
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">People Tags</h4>
+                <p class="muted small-text">Manage +people tags for delegation and coordination.</p>
+                <ul id="settingsPeopleList" class="settings-list" role="list"></ul>
+              </div>
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Areas of Focus</h4>
+                <p class="muted small-text">Manage project swimlane areas.</p>
+                <ul id="settingsAreasList" class="settings-list" role="list"></ul>
+              </div>
+            </div>
+          </details>
+
+          <details class="settings-accordion" id="settingsAccordionAdmin">
+            <summary class="settings-accordion-header">
+              <span class="settings-accordion-title">Data</span>
+              <span class="settings-accordion-icon" aria-hidden="true"></span>
+            </summary>
+            <div class="settings-accordion-body">
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Storage</h4>
+                <p class="muted small-text">Remove images no longer referenced by any task.</p>
+                <div class="settings-subgroup-actions">
+                  <button id="settingsCleanupBtn" class="btn btn-light" type="button">Clean up now</button>
+                </div>
+              </div>
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Feedback</h4>
+                <p class="muted small-text">Review and manage feedback submitted via the feedback widget.</p>
+                <div class="settings-subgroup-actions">
+                  <button id="settingsLoadFeedbackBtn" class="btn btn-light" type="button">Load feedback</button>
+                  <button id="settingsClearFeedbackBtn" class="btn btn-light" type="button">Clear resolved</button>
+                </div>
+                <ul id="settingsFeedbackList" class="settings-list" role="list"></ul>
+              </div>
+            </div>
+          </details>
+
         </div>
       </section>
     </section>
@@ -811,7 +870,9 @@
               </div>
               <div id="clarifyDelegateRow" hidden>
                 <label class="visually-hidden" for="clarifyDelegateNameInput">Delegate to</label>
-                <input id="clarifyDelegateNameInput" type="text" placeholder="Who are you delegating to?" autocomplete="off" />
+                <input id="clarifyDelegateNameInput" type="text" placeholder="Who are you delegating to?" autocomplete="off" list="clarifyDelegateNameSuggestions" />
+                <datalist id="clarifyDelegateNameSuggestions"></datalist>
+                <div id="clarifyDelegateDropdown" class="task-reference-suggestions" hidden></div>
               </div>
             </div>
 
@@ -874,6 +935,21 @@
               </div>
             </div>
 
+            <!-- Recurrence -->
+            <div class="clarify-field clarify-field-section">
+              <p class="clarify-question">Does it repeat?</p>
+              <div class="task-recurrence-controls">
+                <select id="clarifyRecurrenceType">
+                  <option value="">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+                <input id="clarifyRecurrenceInterval" type="number" min="1" step="1" value="1" disabled />
+              </div>
+            </div>
+
             <!-- Route button -->
             <div class="clarify-field">
               <button id="clarifyDoneButton" class="btn btn-primary" type="button">Route task →</button>
@@ -923,6 +999,21 @@
     </div>
   </div>
 
+  <!-- Conflict visibility modal -->
+  <div id="conflictModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="conflictModalTitle" hidden>
+    <div class="modal-backdrop" id="conflictModalBackdrop"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="conflictModalTitle">Sync conflict resolved</h2>
+      </header>
+      <div class="modal-body" id="conflictModalBody"></div>
+      <footer class="modal-footer">
+        <button id="conflictModalDismiss" class="btn btn-primary" type="button">Dismiss</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Shared in-app confirm dialog -->
   <div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalHeading" hidden>
     <div class="modal-backdrop"></div>
@@ -959,6 +1050,55 @@
         <textarea id="feedbackDescription" class="feedback-textarea" rows="4" placeholder="Describe the bug or feature request..." required></textarea>
         <button type="submit" class="btn btn-primary feedback-submit">Submit</button>
       </form>
+    </div>
+  </div>
+  <!-- ── Weekly Review overlay ───────────────────────────────────────────── -->
+  <div
+    id="reviewMode"
+    class="review-mode"
+    hidden
+    role="dialog"
+    aria-modal="true"
+    aria-label="Weekly Review"
+  >
+    <!-- Main review shell -->
+    <div id="reviewShell" class="review-shell">
+      <header class="review-header">
+        <div class="review-header-left">
+          <span class="review-brand">◎ Weekly Review</span>
+          <span id="reviewProgress" class="review-progress" aria-live="polite"></span>
+        </div>
+        <button id="reviewPauseBtn" class="btn btn-light review-pause-btn" type="button">
+          Pause
+        </button>
+      </header>
+      <div class="review-body">
+        <div class="review-section-header">
+          <h2 id="reviewSectionLabel" class="review-section-label"></h2>
+          <p id="reviewSectionDesc" class="review-section-desc"></p>
+        </div>
+        <div id="reviewCard" class="review-card" aria-live="polite"></div>
+        <div id="reviewActions" class="review-actions" role="group" aria-label="Review decisions"></div>
+        <div id="reviewNav" class="review-nav">
+          <button id="reviewBackBtn" class="btn btn-light review-nav-btn" type="button" hidden>← Back</button>
+          <button id="reviewSkipBtn" class="btn btn-light review-nav-btn" type="button" hidden>Skip section →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completion screen (shown after all sections done) -->
+    <div id="reviewComplete" class="review-complete" hidden>
+      <div class="review-complete-inner">
+        <div class="review-complete-icon" aria-hidden="true">◎</div>
+        <h2 class="review-complete-title">Review Complete</h2>
+        <p class="review-complete-subtitle">Your system is current. Mind like water.</p>
+        <ul id="reviewCompleteStats" class="review-complete-stats" aria-label="Review summary"></ul>
+        <p id="reviewStreakDisplay" class="review-streak" hidden></p>
+        <div class="review-complete-actions">
+          <button id="reviewDoneBtn" class="btn btn-primary" type="button">Done</button>
+          <button id="reviewRestartBtn" class="btn btn-light" type="button">Review again</button>
+        </div>
+      </div>
     </div>
   </div>
 </body>

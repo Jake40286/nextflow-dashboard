@@ -418,9 +418,19 @@ export class UIController {
     manualSyncButton?.addEventListener("click", () => {
       this.triggerManualSync();
     });
+    this.elements.topbarInboxBtn?.addEventListener("click", () => {
+      this.setActivePanel("inbox");
+    });
     this.elements.topbarSettings?.addEventListener("click", () => {
       this.setActivePanel("settings");
     });
+    // Accordion: close siblings when one opens
+    document.getElementById("panel-settings")?.addEventListener("toggle", (event) => {
+      if (!event.target.matches("details.settings-accordion") || !event.target.open) return;
+      document.querySelectorAll("#panel-settings details.settings-accordion").forEach((el) => {
+        if (el !== event.target) el.removeAttribute("open");
+      });
+    }, { capture: true });
     const settingsLists = [
       this.elements.settingsContextsList,
       this.elements.settingsPeopleList,
@@ -513,6 +523,37 @@ export class UIController {
       this.loadFeedbackList();
     });
 
+    this.elements.settingsDeviceNameInput?.addEventListener("change", () => {
+      const input = this.elements.settingsDeviceNameInput;
+      let newLabel = input.value.trim();
+      try {
+        const stored = JSON.parse(localStorage.getItem("nextflow-device-info") || "{}");
+        if (!newLabel) newLabel = stored.label || stored.id || "";
+        stored.label = newLabel;
+        localStorage.setItem("nextflow-device-info", JSON.stringify(stored));
+        if (this.taskManager.deviceInfo) this.taskManager.deviceInfo.label = newLabel;
+        input.value = newLabel.replace(/\s*\([a-f0-9]{4}\)$/i, "");
+      } catch { /* ignore */ }
+      this.showToast("info", "Device name saved.");
+    });
+
+    this.elements.syncDiagRefreshBtn?.addEventListener("click", () => {
+      this.renderSyncDiagnostics();
+    });
+
+    this.elements.syncDiagCopyBtn?.addEventListener("click", () => {
+      const entries = this._readOpLog();
+      navigator.clipboard?.writeText(JSON.stringify(entries, null, 2))
+        .then(() => this.showToast("info", "Sync log copied to clipboard."))
+        .catch(() => this.showToast("error", "Could not copy to clipboard."));
+    });
+
+    this.elements.syncDiagClearBtn?.addEventListener("click", () => {
+      try { localStorage.removeItem("nextflow-op-log"); } catch { /* ignore */ }
+      this.renderSyncDiagnostics();
+      this.showToast("info", "Sync log cleared.");
+    });
+
     this.elements.settingsClearFeedbackBtn?.addEventListener("click", async () => {
       const btn = this.elements.settingsClearFeedbackBtn;
       btn.disabled = true;
@@ -568,8 +609,11 @@ export class UIController {
     });
 
     this.taskManager.addEventListener("syncconflict", (event) => {
-      const { remoteDevice } = event.detail;
-      this.showToast("warn", `Merged changes from ${remoteDevice}. Review your tasks — last-write-wins was applied.`);
+      const { remoteDevice, summary } = event.detail;
+      this._lastConflictSummary = summary || null;
+      this.showToast("warn", `Merged with ${remoteDevice}.`, {
+        action: { label: "Review", onClick: () => this.showConflictModal() },
+      });
     });
 
     this.taskManager.addEventListener("versionchange", () => {
@@ -622,6 +666,7 @@ export class UIController {
     this._renderPanelIfDirty(panelName);
     if (panelName === "settings") {
       this.loadFeedbackList();
+      this.renderSyncDiagnostics();
     }
     if (panelName === "statistics" || panelName === "reports") {
       this.taskManager.ensureCompletedLoaded().then(() => {
@@ -1778,7 +1823,7 @@ export class UIController {
     }
     populateAreaSelect(this.elements.projectAreaSelect, areas, this.elements.projectAreaSelect?.value || "");
 
-    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters());
+    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters({ context: "all" }));
 
     visibleProjects.forEach((project) => {
       const details = document.createElement("details");
@@ -3130,54 +3175,231 @@ export class UIController {
       const li = document.createElement("li");
       li.className = "settings-item" + (item.resolved ? " is-muted" : "");
       const main = document.createElement("div");
-      main.className = "settings-item-main";
+      main.className = "settings-item-main settings-item-main--top";
       const labelWrap = document.createElement("div");
       labelWrap.className = "settings-item-label";
-      const typePill = document.createElement("span");
-      typePill.className = `task-meta-pill ${item.type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
-      typePill.textContent = item.type;
-      const desc = document.createElement("span");
-      desc.textContent = " " + item.description;
-      const meta = document.createElement("span");
-      meta.className = "settings-item-meta muted small-text";
-      meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
-      labelWrap.append(typePill, desc, document.createElement("br"), meta);
+
+      const buildLabel = (type, description) => {
+        const shortId = document.createElement("span");
+        shortId.className = "feedback-short-id";
+        shortId.textContent = "#" + item.id.slice(0, 6);
+        const typePill = document.createElement("span");
+        typePill.className = `task-meta-pill ${type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
+        typePill.textContent = type;
+        const desc = document.createElement("span");
+        desc.textContent = " " + description;
+        // Wrap inline content in a single span so the grid sees one child per row,
+        // preventing the pill from stretching to full grid-track width.
+        const headline = document.createElement("span");
+        headline.className = "feedback-item-headline";
+        headline.append(shortId, " ", typePill, desc);
+        const meta = document.createElement("span");
+        meta.className = "settings-item-meta muted small-text";
+        meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
+        labelWrap.innerHTML = "";
+        labelWrap.append(headline, meta);
+      };
+      buildLabel(item.type, item.description);
+
       const actions = document.createElement("div");
       actions.className = "settings-item-actions";
-      if (!item.resolved) {
+
+      const buildActions = () => {
+        actions.innerHTML = "";
+
+        // Edit — swaps label and actions to inline form
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn btn-light btn-small";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", () => {
+          const shortId = document.createElement("span");
+          shortId.className = "feedback-short-id";
+          shortId.textContent = "#" + item.id.slice(0, 6);
+          const typeSelect = document.createElement("select");
+          typeSelect.className = "settings-inline-select";
+          ["bug", "feature"].forEach((t) => {
+            const opt = document.createElement("option");
+            opt.value = t;
+            opt.textContent = t;
+            if (t === item.type) opt.selected = true;
+            typeSelect.append(opt);
+          });
+          const descInput = document.createElement("textarea");
+          descInput.className = "settings-inline-edit";
+          descInput.value = item.description;
+          descInput.rows = 2;
+          labelWrap.innerHTML = "";
+          labelWrap.append(shortId, " ", typeSelect, document.createElement("br"), descInput);
+
+          actions.innerHTML = "";
+          const saveBtn = document.createElement("button");
+          saveBtn.type = "button";
+          saveBtn.className = "btn btn-light btn-small";
+          saveBtn.textContent = "Save";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn btn-light btn-small";
+          cancelBtn.textContent = "Cancel";
+          actions.append(saveBtn, " ", cancelBtn);
+
+          cancelBtn.addEventListener("click", () => this.loadFeedbackList());
+          saveBtn.addEventListener("click", async () => {
+            const newDesc = descInput.value.trim();
+            const newType = typeSelect.value;
+            if (!newDesc) return;
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+              const res = await fetch("/feedback/" + item.id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: newDesc, type: newType }),
+              });
+              if (!res.ok) throw new Error();
+              item.description = newDesc;
+              item.type = newType;
+              buildLabel(newType, newDesc);
+              buildActions();
+            } catch {
+              saveBtn.disabled = false;
+              cancelBtn.disabled = false;
+              this.showToast("error", "Could not update item.");
+            }
+          });
+        });
+
+        // Resolve / Unresolve toggle
         const resolveBtn = document.createElement("button");
         resolveBtn.type = "button";
         resolveBtn.className = "btn btn-light btn-small";
-        resolveBtn.textContent = "Resolve";
+        resolveBtn.textContent = item.resolved ? "Unresolve" : "Resolve";
         resolveBtn.addEventListener("click", async () => {
           resolveBtn.disabled = true;
           try {
-            const res = await fetch("/feedback", {
+            const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ids: [item.id] }),
+              body: JSON.stringify({ resolved: !item.resolved }),
             });
             if (!res.ok) throw new Error();
-            this.loadFeedbackList();
+            item.resolved = !item.resolved;
+            li.classList.toggle("is-muted", item.resolved);
+            resolveBtn.textContent = item.resolved ? "Unresolve" : "Resolve";
+            resolveBtn.disabled = false;
           } catch {
             resolveBtn.disabled = false;
-            this.showToast("error", "Could not resolve item.");
+            this.showToast("error", "Could not update item.");
           }
         });
-        actions.append(resolveBtn);
-      } else {
-        const badge = document.createElement("span");
-        badge.className = "muted small-text";
-        badge.textContent = "Resolved";
-        actions.append(badge);
-      }
+
+        // Delete with re-click confirm
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-light btn-small";
+        deleteBtn.textContent = "Delete";
+        let awaitingConfirm = false;
+        let confirmTimer = null;
+        deleteBtn.addEventListener("click", async () => {
+          if (!awaitingConfirm) {
+            awaitingConfirm = true;
+            deleteBtn.textContent = "Sure?";
+            confirmTimer = setTimeout(() => {
+              awaitingConfirm = false;
+              deleteBtn.textContent = "Delete";
+            }, 3000);
+            return;
+          }
+          clearTimeout(confirmTimer);
+          deleteBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, { method: "DELETE" });
+            if (!res.ok) throw new Error();
+            li.remove();
+          } catch {
+            deleteBtn.disabled = false;
+            awaitingConfirm = false;
+            deleteBtn.textContent = "Delete";
+            this.showToast("error", "Could not delete item.");
+          }
+        });
+
+        actions.append(editBtn, " ", resolveBtn, " ", deleteBtn);
+      };
+      buildActions();
+
       main.append(labelWrap, actions);
       li.append(main);
       container.append(li);
     });
   }
 
+  _readOpLog() {
+    try {
+      const raw = localStorage.getItem("nextflow-op-log");
+      const entries = raw ? JSON.parse(raw) : [];
+      return Array.isArray(entries) ? entries : [];
+    } catch {
+      return [];
+    }
+  }
+
+  renderSyncDiagnostics() {
+    const container = this.elements.syncDiagContainer;
+    if (!container) return;
+    const entries = this._readOpLog();
+    container.innerHTML = "";
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "sync-diag-empty";
+      empty.textContent = "No field changes recorded yet. Changes to status, My Day, due date, and follow-up date will appear here.";
+      container.append(empty);
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "sync-diag-table";
+    const head = document.createElement("thead");
+    head.innerHTML = "<tr><th>Time</th><th>Device</th><th>Task</th><th>Field</th><th>Was</th><th>Now</th></tr>";
+    table.append(head);
+    const body = document.createElement("tbody");
+    entries.slice(0, 100).forEach((entry) => {
+      const tr = document.createElement("tr");
+      const cells = [
+        entry.ts ? new Date(entry.ts).toLocaleString() : "—",
+        entry.deviceLabel || entry.deviceId || "—",
+        entry.taskTitle ? entry.taskTitle.slice(0, 30) : entry.taskId || "—",
+        entry.field || "—",
+        entry.prev !== undefined ? String(entry.prev) || "(empty)" : "—",
+        entry.next !== undefined ? String(entry.next) || "(empty)" : "—",
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (i === 2 && entry.taskTitle) td.title = entry.taskTitle;
+        if (i === 1 && entry.deviceId && this.taskManager.deviceInfo?.id === entry.deviceId) {
+          const badge = document.createElement("span");
+          badge.className = "sync-diag-self-badge";
+          badge.textContent = "you";
+          td.append(badge);
+        }
+        tr.append(td);
+      });
+      body.append(tr);
+    });
+    table.append(body);
+    container.append(table);
+  }
+
   renderSettings() {
+    try {
+      const deviceInfo = JSON.parse(localStorage.getItem("nextflow-device-info") || "{}");
+      if (this.elements.settingsDeviceNameInput) {
+        this.elements.settingsDeviceNameInput.value = (deviceInfo.label || "").replace(/\s*\([a-f0-9]{4}\)$/i, "");
+      }
+      if (this.elements.settingsDeviceIdSuffix && deviceInfo.id) {
+        this.elements.settingsDeviceIdSuffix.textContent = `(${deviceInfo.id.slice(-4)})`;
+      }
+    } catch { /* ignore */ }
     const themesList = this.elements.settingsThemesList;
     const featureFlagsList = this.elements.settingsFeatureFlagsList;
     const contextsList = this.elements.settingsContextsList;
@@ -3252,6 +3474,10 @@ export class UIController {
       label.append(input, textWrap, swatches);
       item.append(label);
       if (theme.id === "custom") {
+        const customColorsHeading = document.createElement("p");
+        customColorsHeading.className = "settings-subgroup-heading settings-theme-custom-controls-heading";
+        customColorsHeading.textContent = "Custom Colors";
+        item.append(customColorsHeading);
         const controls = document.createElement("div");
         controls.className = "settings-theme-custom-controls";
         const customFields = [
@@ -3462,21 +3688,21 @@ export class UIController {
       const actions = document.createElement("div");
       actions.className = "settings-item-actions";
       const toggle = document.createElement("label");
-      toggle.className = "settings-flag-toggle";
+      toggle.className = "toggle-switch";
       toggle.setAttribute("for", `feature-flag-${entry.key}`);
+      toggle.setAttribute("title", entry.label);
       const input = document.createElement("input");
       input.type = "checkbox";
       input.id = `feature-flag-${entry.key}`;
       input.checked = Boolean(flags[entry.key]);
       input.dataset.featureFlag = entry.key;
-      const text = document.createElement("span");
-      text.className = "small-text";
-      text.textContent = input.checked ? "Enabled" : "Disabled";
+      const track = document.createElement("span");
+      track.className = "toggle-switch-track";
+      track.setAttribute("aria-hidden", "true");
       input.addEventListener("change", () => {
-        text.textContent = input.checked ? "Enabled" : "Disabled";
         if (configPanel) configPanel.hidden = !input.checked;
       });
-      toggle.append(input, text);
+      toggle.append(input, track);
       actions.append(toggle);
       main.append(labelWrap, actions);
       item.append(main);
@@ -5498,6 +5724,8 @@ export class UIController {
       clarifyTimeSelect,
       clarifyAddContext,
       clarifyPreviewText,
+      clarifyRecurrenceType,
+      clarifyRecurrenceInterval,
     } = this.elements;
     if (!clarifyModal) return;
     this.handleClarifyKeydown = (event) => {
@@ -5593,8 +5821,19 @@ export class UIController {
       const row = document.getElementById("clarifyDelegateRow");
       if (row) {
         row.hidden = false;
+        this._populateDelegateSuggestions();
         clarifyDelegateNameInput?.focus();
       }
+    });
+
+    clarifyDelegateNameInput?.addEventListener("input", () => {
+      this._showClarifyDelegateSuggestions(clarifyDelegateNameInput);
+    });
+    clarifyDelegateNameInput?.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        const dropdown = document.getElementById("clarifyDelegateDropdown");
+        if (dropdown) dropdown.hidden = true;
+      }, 120);
     });
 
     // Date radios — show/hide date inputs inline
@@ -5606,6 +5845,13 @@ export class UIController {
     };
     [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone].forEach((radio) => {
       radio?.addEventListener("change", updateDateInputs);
+    });
+
+    // Recurrence — enable/disable interval input based on type selection
+    clarifyRecurrenceType?.addEventListener("change", () => {
+      if (clarifyRecurrenceInterval) {
+        clarifyRecurrenceInterval.disabled = !clarifyRecurrenceType.value;
+      }
     });
 
     // Metadata live updates
@@ -5742,6 +5988,7 @@ export class UIController {
       previewText: "",
       actionPlanInitialized: false,
       expectResponse: false,
+      recurrenceRule: null,
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
@@ -5882,6 +6129,13 @@ export class UIController {
     if (this.elements.clarifyTimeSelect) {
       this.elements.clarifyTimeSelect.value = this.clarifyState.time || "";
     }
+    if (this.elements.clarifyRecurrenceType) {
+      this.elements.clarifyRecurrenceType.value = "";
+    }
+    if (this.elements.clarifyRecurrenceInterval) {
+      this.elements.clarifyRecurrenceInterval.value = "1";
+      this.elements.clarifyRecurrenceInterval.disabled = true;
+    }
   }
 
   populateClarifyContexts() {
@@ -5909,6 +6163,44 @@ export class UIController {
     const container = this.elements.clarifyContextList;
     if (!container) return [];
     return Array.from(container.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+  }
+
+  _populateDelegateSuggestions() {
+    const datalist = document.getElementById("clarifyDelegateNameSuggestions");
+    if (!datalist) return;
+    datalist.innerHTML = "";
+    for (const name of this.taskManager.getKnownDelegateNames()) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      datalist.append(opt);
+    }
+  }
+
+  _showClarifyDelegateSuggestions(input) {
+    const dropdown = document.getElementById("clarifyDelegateDropdown");
+    if (!dropdown) return;
+    const value = input.value.trim();
+    dropdown.innerHTML = "";
+    dropdown.hidden = true;
+    const names = this.taskManager.getKnownDelegateNames();
+    const lower = value.toLowerCase();
+    const matches = lower
+      ? names.filter((n) => n.toLowerCase().startsWith(lower))
+      : names;
+    if (matches.length === 0) return;
+    dropdown.hidden = false;
+    matches.forEach((name) => {
+      const item = document.createElement("div");
+      item.className = "suggestion-item";
+      item.textContent = name;
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        input.value = name;
+        dropdown.hidden = true;
+        dropdown.innerHTML = "";
+      });
+      dropdown.append(item);
+    });
   }
 
   populateProjectSelect() {
@@ -6287,6 +6579,11 @@ export class UIController {
     }
     const statusTarget = this.clarifyState.statusTarget || STATUS.NEXT;
     const nextActionTitle = this.clarifyState.previewText?.trim() || task.title;
+    const recurrenceType = this.elements.clarifyRecurrenceType?.value || "";
+    const recurrenceInterval = parseInt(this.elements.clarifyRecurrenceInterval?.value, 10) || 1;
+    const recurrenceRule = recurrenceType
+      ? { type: recurrenceType, interval: Math.max(1, recurrenceInterval) }
+      : null;
     const updates = {
       title: nextActionTitle,
       description: task.description,
@@ -6300,6 +6597,7 @@ export class UIController {
       followUpDate: null,
       waitingFor: statusTarget === STATUS.WAITING ? this.clarifyState.waitingFor || task.waitingFor || null : null,
       status: statusTarget,
+      recurrenceRule,
     };
     if (this.clarifyState.dueType === "calendar" && this.clarifyState.calendarDate) {
       updates.calendarDate = this.clarifyState.calendarTime
@@ -6678,10 +6976,8 @@ export class UIController {
       if (e.target.type !== "radio") return;
       selectedType = e.target.value;
       waitingInput.placeholder = placeholders[selectedType] || "";
-      if (selectedType !== "task") {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-      }
+      suggestionList.style.display = "none";
+      suggestionList.innerHTML = "";
     });
 
     waitingField.append(waitingLabel, typeSelector, waitingInput);
@@ -6699,41 +6995,53 @@ export class UIController {
     suggestionList.style.zIndex = "10";
 
     waitingInput.addEventListener("input", () => {
-      if (selectedType !== "task") return;
       const value = waitingInput.value.trim();
-      if (value.length < 2) {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-        return;
-      }
-      const suggestions = this.taskManager.searchTasksForReference(value, { excludeTaskId: task.id });
-      if (suggestions.length === 0) {
-        suggestionList.style.display = "none";
-        suggestionList.innerHTML = "";
-        return;
-      }
       suggestionList.innerHTML = "";
-      suggestionList.style.display = "block";
-      suggestions.forEach((suggestionTask) => {
-        const item = document.createElement("div");
-        item.style.padding = "8px";
-        item.style.borderBottom = "1px solid var(--line)";
-        item.style.cursor = "pointer";
-        item.style.fontSize = "0.9em";
-        item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
-        item.addEventListener("click", () => {
-          waitingInput.value = suggestionTask.slug || suggestionTask.id;
-          suggestionList.style.display = "none";
-          suggestionList.innerHTML = "";
+      suggestionList.style.display = "none";
+      if (selectedType === "task") {
+        if (value.length < 2) return;
+        const suggestions = this.taskManager.searchTasksForReference(value, { excludeTaskId: task.id });
+        if (suggestions.length === 0) return;
+        suggestionList.style.display = "block";
+        suggestions.forEach((suggestionTask) => {
+          const item = document.createElement("div");
+          item.style.padding = "8px";
+          item.style.borderBottom = "1px solid var(--line)";
+          item.style.cursor = "pointer";
+          item.style.fontSize = "0.9em";
+          item.textContent = `${suggestionTask.slug || suggestionTask.id} — ${suggestionTask.title} [${STATUS_LABELS[suggestionTask.status] || suggestionTask.status}]`;
+          item.addEventListener("click", () => {
+            waitingInput.value = suggestionTask.slug || suggestionTask.id;
+            suggestionList.style.display = "none";
+            suggestionList.innerHTML = "";
+          });
+          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          suggestionList.append(item);
         });
-        item.addEventListener("mouseover", () => {
-          item.style.background = "var(--surface-2)";
+      } else if (selectedType === "person") {
+        if (value.length < 1) return;
+        const lower = value.toLowerCase();
+        const matches = this.taskManager.getKnownDelegateNames().filter((n) => n.toLowerCase().startsWith(lower));
+        if (matches.length === 0) return;
+        suggestionList.style.display = "block";
+        matches.forEach((name) => {
+          const item = document.createElement("div");
+          item.style.padding = "8px";
+          item.style.borderBottom = "1px solid var(--line)";
+          item.style.cursor = "pointer";
+          item.style.fontSize = "0.9em";
+          item.textContent = name;
+          item.addEventListener("click", () => {
+            waitingInput.value = name;
+            suggestionList.style.display = "none";
+            suggestionList.innerHTML = "";
+          });
+          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          suggestionList.append(item);
         });
-        item.addEventListener("mouseout", () => {
-          item.style.background = "transparent";
-        });
-        suggestionList.append(item);
-      });
+      }
     });
 
     waitingField.append(suggestionList);
@@ -7193,6 +7501,7 @@ export class UIController {
       { value: "daily", label: "Daily" },
       { value: "weekly", label: "Weekly" },
       { value: "monthly", label: "Monthly" },
+      { value: "yearly", label: "Yearly" },
     ].forEach((option) => {
       const opt = document.createElement("option");
       opt.value = option.value;
@@ -7936,6 +8245,7 @@ export class UIController {
       daily: "day",
       weekly: "week",
       monthly: "month",
+      yearly: "year",
     };
     const unit = labelMap[rule.type];
     if (!unit) return null;
@@ -8369,6 +8679,101 @@ export class UIController {
     });
   }
 
+  showConflictModal() {
+    const modal    = this.elements.conflictModal;
+    const body     = this.elements.conflictModalBody;
+    const dismiss  = this.elements.conflictModalDismiss;
+    const backdrop = this.elements.conflictModalBackdrop;
+    if (!modal || !body) return;
+
+    const SETTINGS_LABELS = {
+      appearance: "Theme & colors",
+      calendar:   "Google Calendar",
+      flags:      "Feature flags & stale thresholds",
+      lists:      "Contexts, people tags & areas",
+    };
+
+    const summary = this._lastConflictSummary;
+    body.innerHTML = "";
+
+    if (!summary) {
+      const p = document.createElement("p");
+      p.textContent = "No change details available for this conflict.";
+      body.appendChild(p);
+    } else {
+      const { changedTasks = [], addedTasks = [], removedTasks = [], changedSettingsGroups = [] } = summary;
+      const hasTaskChanges    = changedTasks.length || addedTasks.length || removedTasks.length;
+      const hasSettingChanges = changedSettingsGroups.length;
+
+      if (!hasTaskChanges && !hasSettingChanges) {
+        const p = document.createElement("p");
+        p.textContent = "No specific changes detected.";
+        body.appendChild(p);
+      } else {
+        if (hasTaskChanges) {
+          const section = document.createElement("section");
+          const h3 = document.createElement("h3");
+          h3.className = "conflict-modal-section-title";
+          h3.textContent = "Tasks affected";
+          section.appendChild(h3);
+          const ul = document.createElement("ul");
+          ul.className = "conflict-modal-list";
+          for (const t of changedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Updated: ${t.title}`;
+            ul.appendChild(li);
+          }
+          for (const t of addedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Added: ${t.title}`;
+            ul.appendChild(li);
+          }
+          for (const t of removedTasks) {
+            const li = document.createElement("li");
+            li.textContent = `Removed: ${t.title}`;
+            ul.appendChild(li);
+          }
+          section.appendChild(ul);
+          body.appendChild(section);
+        }
+
+        if (hasSettingChanges) {
+          const section = document.createElement("section");
+          const h3 = document.createElement("h3");
+          h3.className = "conflict-modal-section-title";
+          h3.textContent = "Settings changed";
+          section.appendChild(h3);
+          const ul = document.createElement("ul");
+          ul.className = "conflict-modal-list";
+          for (const group of changedSettingsGroups) {
+            const li = document.createElement("li");
+            li.textContent = SETTINGS_LABELS[group] || group;
+            ul.appendChild(li);
+          }
+          section.appendChild(ul);
+          body.appendChild(section);
+        }
+      }
+    }
+
+    const closeModal = () => {
+      modal.classList.remove("is-open");
+      modal.setAttribute("hidden", "");
+      dismiss?.removeEventListener("click", closeModal);
+      backdrop?.removeEventListener("click", closeModal);
+      document.removeEventListener("keydown", onKeydown);
+    };
+    const onKeydown = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); closeModal(); }
+    };
+    dismiss?.addEventListener("click", closeModal);
+    backdrop?.addEventListener("click", closeModal);
+    document.addEventListener("keydown", onKeydown);
+    modal.classList.add("is-open");
+    modal.removeAttribute("hidden");
+    setTimeout(() => dismiss?.focus(), 50);
+  }
+
   showUpdateBanner() {
     // Defer if user is mid-clarify flow; re-check when state settles
     if (this.clarifyState?.taskId) {
@@ -8389,12 +8794,22 @@ export class UIController {
     document.body.prepend(banner);
   }
 
-  showToast(level, message) {
+  showToast(level, message, { action } = {}) {
     const region = this.elements.alerts;
     if (!message) return;
     const toast = document.createElement("div");
     toast.className = `toast ${level}`;
     toast.textContent = message;
+    if (action) {
+      const btn = document.createElement("button");
+      btn.className = "toast-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => {
+        if (region.contains(toast)) region.removeChild(toast);
+        action.onClick();
+      });
+      toast.appendChild(btn);
+    }
     region.innerHTML = "";
     region.append(toast);
     setTimeout(() => {
@@ -8747,6 +9162,11 @@ function mapElements() {
     promptModalInput: byId("promptModalInput"),
     promptModalOk: byId("promptModalOk"),
     promptModalCancel: byId("promptModalCancel"),
+    conflictModal: byId("conflictModal"),
+    conflictModalTitle: byId("conflictModalTitle"),
+    conflictModalBody: byId("conflictModalBody"),
+    conflictModalBackdrop: byId("conflictModalBackdrop"),
+    conflictModalDismiss: byId("conflictModalDismiss"),
     confirmModal: byId("confirmModal"),
     confirmModalHeading: byId("confirmModalHeading"),
     confirmModalMessage: byId("confirmModalMessage"),
@@ -8810,8 +9230,15 @@ function mapElements() {
     settingsClearFeedbackBtn: byId("settingsClearFeedbackBtn"),
     settingsLoadFeedbackBtn: byId("settingsLoadFeedbackBtn"),
     settingsFeedbackList: byId("settingsFeedbackList"),
+    settingsDeviceNameInput: byId("settingsDeviceNameInput"),
+    settingsDeviceIdSuffix:  byId("settingsDeviceIdSuffix"),
+    syncDiagContainer: byId("syncDiagContainer"),
+    syncDiagRefreshBtn: byId("syncDiagRefreshBtn"),
+    syncDiagCopyBtn: byId("syncDiagCopyBtn"),
+    syncDiagClearBtn: byId("syncDiagClearBtn"),
     footerYear: byId("footerYear"),
     themeToggle: document.getElementById("themeToggle"),
+    topbarInboxBtn: byId("topbarInboxBtn"),
     topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
     contextSuggestions: document.getElementById("contextSuggestions"),
@@ -8877,6 +9304,8 @@ function mapElements() {
     clarifyAddContext: byId("clarifyAddContext"),
     clarifyEffortSelect: byId("clarifyEffortSelect"),
     clarifyTimeSelect: byId("clarifyTimeSelect"),
+    clarifyRecurrenceType: byId("clarifyRecurrenceType"),
+    clarifyRecurrenceInterval: byId("clarifyRecurrenceInterval"),
     clarifysomedayDetails: byId("clarifysomedayDetails"),
     clarifysomedayContextList: byId("clarifysomedayContextList"),
     clarifysomedayEffort: byId("clarifysomedayEffort"),

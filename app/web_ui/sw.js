@@ -1,4 +1,4 @@
-const CACHE_NAME = "nextflow-shell-v1";
+const CACHE_NAME = "nextflow-shell-v2";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -46,8 +46,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const isSameOrigin = url.origin === self.location.origin;
 
-  // Always bypass API/state calls.
-  if (isSameOrigin && url.pathname.startsWith("/state")) {
+  // Always bypass API calls — never cache dynamic data endpoints.
+  if (isSameOrigin && (url.pathname.startsWith("/state") || url.pathname.startsWith("/feedback"))) {
     return;
   }
 
@@ -70,8 +70,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for navigations and other static assets (images, fonts, etc.).
-  if (request.mode === "navigate" || isSameOrigin) {
+  // Network-first for navigations so PWA installs always pick up fresh HTML
+  // when online. Falls back to cache when offline.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match("/index.html")))
+    );
+    return;
+  }
+
+  // Cache-first for other same-origin static assets (images, fonts, etc.).
+  if (isSameOrigin) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

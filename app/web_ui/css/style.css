@@ -2364,6 +2364,10 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
+.settings-item-main--top {
+  align-items: flex-start;
+}
+
 .settings-item-label {
   min-width: 0;
   display: grid;
@@ -2406,6 +2410,7 @@ button.meta-item:hover {
 .settings-task-actions {
   display: flex;
   flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--space-2);
 }

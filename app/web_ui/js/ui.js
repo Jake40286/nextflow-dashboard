@@ -3175,7 +3175,7 @@ export class UIController {
       const li = document.createElement("li");
       li.className = "settings-item" + (item.resolved ? " is-muted" : "");
       const main = document.createElement("div");
-      main.className = "settings-item-main";
+      main.className = "settings-item-main settings-item-main--top";
       const labelWrap = document.createElement("div");
       labelWrap.className = "settings-item-label";
 
@@ -3188,11 +3188,16 @@ export class UIController {
         typePill.textContent = type;
         const desc = document.createElement("span");
         desc.textContent = " " + description;
+        // Wrap inline content in a single span so the grid sees one child per row,
+        // preventing the pill from stretching to full grid-track width.
+        const headline = document.createElement("span");
+        headline.className = "feedback-item-headline";
+        headline.append(shortId, " ", typePill, desc);
         const meta = document.createElement("span");
         meta.className = "settings-item-meta muted small-text";
         meta.textContent = [item.panel, item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ");
         labelWrap.innerHTML = "";
-        labelWrap.append(shortId, " ", typePill, desc, document.createElement("br"), meta);
+        labelWrap.append(headline, meta);
       };
       buildLabel(item.type, item.description);
 

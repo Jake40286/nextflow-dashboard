@@ -4097,19 +4097,11 @@ export class UIController {
       deleteButton.dataset.settingsType = type;
       deleteButton.dataset.settingsValue = value;
 
-      actions.append(renameButton, deleteButton);
-      main.append(labelWrap, actions);
-      item.append(main);
-
-      // Area assignment chips (only for context/people when areas exist)
+      // Area assignment chips — rendered inline between label and actions
       if (areasData && areasData.all.length && areasData.byItem.has(value)) {
         const assignedAreas = areasData.byItem.get(value) || [];
-        const areaRow = document.createElement("div");
-        areaRow.className = "settings-item-areas";
-        const areaLabel = document.createElement("span");
-        areaLabel.className = "settings-item-areas-label muted small-text";
-        areaLabel.textContent = "Areas:";
-        areaRow.append(areaLabel);
+        const chipGroup = document.createElement("div");
+        chipGroup.className = "settings-item-areas";
         areasData.all.forEach((area) => {
           const chip = document.createElement("button");
           chip.type = "button";
@@ -4123,10 +4115,13 @@ export class UIController {
             ? `Remove from ${area}`
             : `Assign to ${area}`;
           if (assignedAreas.includes(area)) chip.classList.add("is-assigned");
-          areaRow.append(chip);
+          chipGroup.append(chip);
         });
-        item.append(areaRow);
+        main.append(labelWrap, chipGroup, actions);
+      } else {
+        main.append(labelWrap, actions);
       }
+      item.append(main);
 
       if (type === "context" && value === this.selectedSettingsContext) {
         item.append(this.renderSettingsContextTasksInline(value));

@@ -2368,8 +2368,6 @@ button.meta-item:hover {
   border-radius: var(--radius-xs);
   background: var(--surface);
   padding: var(--space-2) var(--space-3);
-  display: grid;
-  gap: var(--space-2);
 }
 
 .settings-item[data-settings-type="context"] {
@@ -2379,6 +2377,7 @@ button.meta-item:hover {
 .settings-item-main,
 .settings-task-row-top {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-2);
@@ -2448,18 +2447,12 @@ button.meta-item:hover {
   margin-bottom: 0;
 }
 
-/* Area assignment chips — shown on context/people settings items */
+/* Area assignment chips — inline within settings-item-main */
 .settings-item-areas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-1) 0 var(--space-1) 2px;
-}
-
-.settings-item-areas-label {
-  font-size: 0.72rem;
-  margin-right: 2px;
 }
 
 .settings-area-chip {

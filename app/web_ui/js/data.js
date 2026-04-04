@@ -1892,6 +1892,37 @@ export class TaskManager extends EventTarget {
       .sort((a, b) => a.localeCompare(b));
   }
 
+  // Returns [{name, areas}] for each explicitly managed context option.
+  // Used by the Settings panel to render area assignment chips.
+  getContextOptionsWithAreas() {
+    const raw = this.state.settings?.contextOptions || [];
+    return raw
+      .map((v) => {
+        const name = sanitizePhysicalContext(
+          typeof v === "object" && v !== null ? v.name : v,
+          { allowEmpty: false }
+        );
+        const areas = typeof v === "object" && v !== null && Array.isArray(v.areas) ? [...v.areas] : [];
+        return name ? { name, areas } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Returns [{name, areas}] for each explicitly managed people tag option.
+  // Used by the Settings panel to render area assignment chips.
+  getPeopleTagOptionsWithAreas() {
+    const raw = this.state.settings?.peopleOptions || [];
+    return raw
+      .map((v) => {
+        const name = sanitizePeopleTag(typeof v === "object" && v !== null ? v.name : v);
+        const areas = typeof v === "object" && v !== null && Array.isArray(v.areas) ? [...v.areas] : [];
+        return name ? { name, areas } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   getKnownDelegateNames() {
     const names = new Set();
     for (const entry of (this.state.settings?.peopleOptions || [])) {
@@ -2006,6 +2037,56 @@ export class TaskManager extends EventTarget {
       this.notify("info", `Added people tag "${normalized}".`);
     }
     return normalized;
+  }
+
+  setContextAreas(contextName, areas) {
+    const name = sanitizePhysicalContext(contextName, { allowEmpty: false });
+    if (!name) return false;
+    const validAreas = Array.isArray(areas)
+      ? areas.filter((a) => typeof a === "string" && a.trim())
+      : [];
+    const currentOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? this.state.settings.contextOptions
+      : [];
+    if (!currentOptions.some((opt) => {
+      const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+      return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
+    })) return false;
+    this.state.settings.contextOptions = currentOptions.map((opt) => {
+      const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+      if (typeof n === "string" && n.toLowerCase() === name.toLowerCase()) {
+        return { name: n, areas: validAreas };
+      }
+      return opt;
+    });
+    stampSettingsTimestamp(this.state.settings, "lists");
+    this.emitChange();
+    return true;
+  }
+
+  setPeopleTagAreas(tagName, areas) {
+    const name = sanitizePeopleTag(tagName);
+    if (!name) return false;
+    const validAreas = Array.isArray(areas)
+      ? areas.filter((a) => typeof a === "string" && a.trim())
+      : [];
+    const currentOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? this.state.settings.peopleOptions
+      : [];
+    if (!currentOptions.some((opt) => {
+      const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+      return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
+    })) return false;
+    this.state.settings.peopleOptions = currentOptions.map((opt) => {
+      const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+      if (typeof n === "string" && n.toLowerCase() === name.toLowerCase()) {
+        return { name: n, areas: validAreas };
+      }
+      return opt;
+    });
+    stampSettingsTimestamp(this.state.settings, "lists");
+    this.emitChange();
+    return true;
   }
 
   getAreasOfFocus() {

@@ -2435,6 +2435,45 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
+/* Area assignment chips — shown on context/people settings items */
+.settings-item-areas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-1) 2px;
+}
+
+.settings-item-areas-label {
+  font-size: 0.72rem;
+  margin-right: 2px;
+}
+
+.settings-area-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.settings-area-chip:hover {
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface));
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.settings-area-chip.is-assigned {
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  font-weight: 600;
+}
+
 /* Toggle switch — CSS-only pill toggle for feature flags */
 .toggle-switch {
   position: relative;

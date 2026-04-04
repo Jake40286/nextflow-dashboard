@@ -446,7 +446,8 @@ export class UIController {
           const action = button.dataset.settingsAction;
           const type = button.dataset.settingsType;
           const value = button.dataset.settingsValue;
-          this.handleSettingsAction({ action, type, value });
+          const areaValue = button.dataset.settingsArea;
+          this.handleSettingsAction({ action, type, value, areaValue });
           return;
         }
         if (event.target.closest(".settings-context-inline")) {
@@ -3448,14 +3449,22 @@ export class UIController {
     const peopleTags = this.taskManager.getPeopleTagOptions();
     const areas = this.taskManager.getAreasOfFocus();
     const usage = this.buildSettingsUsageCounts();
+    const contextOptionsWithAreas = this.taskManager.getContextOptionsWithAreas();
+    const peopleTagOptionsWithAreas = this.taskManager.getPeopleTagOptionsWithAreas();
+    const contextAreasData = areas.length
+      ? { all: areas, byItem: new Map(contextOptionsWithAreas.map((o) => [o.name, o.areas])) }
+      : null;
+    const peopleAreasData = areas.length
+      ? { all: areas, byItem: new Map(peopleTagOptionsWithAreas.map((o) => [o.name, o.areas])) }
+      : null;
 
     if (this.selectedSettingsContext && !contexts.includes(this.selectedSettingsContext)) {
       this.selectedSettingsContext = null;
     }
     this.renderThemeSettings(themesList);
     this.renderFeatureFlagSettings(featureFlagsList);
-    this.renderSettingsList(contextsList, contexts, "context", usage.contexts);
-    this.renderSettingsList(peopleList, peopleTags, "people", usage.people);
+    this.renderSettingsList(contextsList, contexts, "context", usage.contexts, contextAreasData);
+    this.renderSettingsList(peopleList, peopleTags, "people", usage.people, peopleAreasData);
     this.renderSettingsList(areasList, areas, "area", usage.areas);
   }
 
@@ -4038,7 +4047,7 @@ export class UIController {
     return { contexts, people, areas };
   }
 
-  renderSettingsList(container, values, type, usageMap = new Map()) {
+  renderSettingsList(container, values, type, usageMap = new Map(), areasData = null) {
     container.innerHTML = "";
     if (!values.length) {
       const empty = document.createElement("li");
@@ -4091,6 +4100,34 @@ export class UIController {
       actions.append(renameButton, deleteButton);
       main.append(labelWrap, actions);
       item.append(main);
+
+      // Area assignment chips (only for context/people when areas exist)
+      if (areasData && areasData.all.length && areasData.byItem.has(value)) {
+        const assignedAreas = areasData.byItem.get(value) || [];
+        const areaRow = document.createElement("div");
+        areaRow.className = "settings-item-areas";
+        const areaLabel = document.createElement("span");
+        areaLabel.className = "settings-item-areas-label muted small-text";
+        areaLabel.textContent = "Areas:";
+        areaRow.append(areaLabel);
+        areasData.all.forEach((area) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "settings-area-chip";
+          chip.textContent = area;
+          chip.dataset.settingsAction = "toggle-area";
+          chip.dataset.settingsType = type;
+          chip.dataset.settingsValue = value;
+          chip.dataset.settingsArea = area;
+          chip.title = assignedAreas.includes(area)
+            ? `Remove from ${area}`
+            : `Assign to ${area}`;
+          if (assignedAreas.includes(area)) chip.classList.add("is-assigned");
+          areaRow.append(chip);
+        });
+        item.append(areaRow);
+      }
+
       if (type === "context" && value === this.selectedSettingsContext) {
         item.append(this.renderSettingsContextTasksInline(value));
       }
@@ -4243,8 +4280,30 @@ export class UIController {
     return wrapper;
   }
 
-  async handleSettingsAction({ action, type, value }) {
+  async handleSettingsAction({ action, type, value, areaValue }) {
     if (!action || !type || !value) return;
+    if (action === "toggle-area") {
+      if (!areaValue) return;
+      if (type === "context") {
+        const opts = this.taskManager.getContextOptionsWithAreas();
+        const opt = opts.find((o) => o.name === value);
+        if (!opt) return;
+        const newAreas = opt.areas.includes(areaValue)
+          ? opt.areas.filter((a) => a !== areaValue)
+          : [...opt.areas, areaValue];
+        this.taskManager.setContextAreas(value, newAreas);
+      }
+      if (type === "people") {
+        const opts = this.taskManager.getPeopleTagOptionsWithAreas();
+        const opt = opts.find((o) => o.name === value);
+        if (!opt) return;
+        const newAreas = opt.areas.includes(areaValue)
+          ? opt.areas.filter((a) => a !== areaValue)
+          : [...opt.areas, areaValue];
+        this.taskManager.setPeopleTagAreas(value, newAreas);
+      }
+      return;
+    }
     if (action === "rename") {
       const displayValue = stripTagPrefix(value);
       const candidate = await this.showPrompt(`Rename "${displayValue}" to:`, displayValue);

@@ -30,6 +30,8 @@ This dashboard handles all five steps.
 - **Waiting For tracking** — tag tasks by person or reference another task so nothing falls through the cracks
 - **Rich filtering** — filter any view by context, project, person, energy level, time required, or waiting-for
 - **Reports & Statistics** — completion trends, task-by-context breakdown, and weekly history charts
+- **Area of Focus** — a workspace lens (Work, Personal, Home, etc.) that scopes all views, filters, contexts, and people tags app-wide
+- **Weekly Review** — a guided review workflow to process all open loops and keep your system current
 - **Google Calendar sync** — tasks with dates/times are pushed to a Google Calendar automatically
 - **Offline support with multi-device sync** — work without internet; changes merge back to the server when you reconnect, with conflict notifications
 - **Automatic backups** — every save writes a compressed snapshot so you can roll back to any point
@@ -50,9 +52,10 @@ This dashboard handles all five steps.
 | **Waiting For** | Tasks delegated or blocked, with who/what they're waiting on |
 | **Someday / Maybe** | Ideas and tasks parked for later review |
 | **All Active** | Every non-completed task in one scrollable list |
+| **Weekly Review** | Guided review flow to process open loops and keep the system current |
 | **Reports** | Completion rate charts, context breakdowns, weekly trends |
 | **Statistics** | Deeper analytics on your task history |
-| **Settings** | Themes, contexts, people tags, and feature flags |
+| **Settings** | Themes, contexts, people tags, area of focus, and feature flags |
 
 ---
 
@@ -192,9 +195,9 @@ The server keeps the most recent `STATE_BACKUP_RETENTION` snapshots (default: 30
 **To restore a backup:**
 
 ```bash
-# Decompress and POST the snapshot back to the server
+# Decompress and PUT the snapshot back to the server
 gunzip -c data/backups/full/state-20250317-120000.json.gz | \
-  curl -X POST http://localhost:8002/state \
+  curl -X PUT http://localhost:8002/state \
        -H "Content-Type: application/json" \
        -d @-
 ```
@@ -229,6 +232,7 @@ Tests live in `tests/taskManager.test.js` and cover the core data layer includin
 │       │   ├── data.js     # TaskManager, state, sync, offline/conflict logic
 │       │   ├── ui.js       # All rendering and event handling
 │       │   ├── analytics.js
+│       │   ├── review.js   # Weekly review workflow
 │       │   └── app.js      # Entry point
 │       └── css/
 ├── data/                   # Persisted state and backups (bind-mounted into container)
@@ -246,4 +250,4 @@ Tests live in `tests/taskManager.test.js` and cover the core data layer includin
 - No build tools required — the frontend is plain JavaScript modules served directly
 - Base image: `python:3.11-slim`; no third-party Python packages needed for core operation
 - Do **not** commit `.env` or anything inside `data/` or `secrets/`
-- The `/state` endpoint accepts both `GET` (read) and `PUT`/`POST` (write)
+- The `/state` endpoint accepts `GET` (read) and `PUT` (write); `POST` returns 405

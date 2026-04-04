@@ -6,3 +6,6 @@
 /app/web_ui/data/*
 /memory/
 .claude/settings.local.json
+__pycache__/
+*.pyc
+*.pyo

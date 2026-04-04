@@ -1,4 +1,4 @@
-# GTD Dashboard — Project Context
+# NextFlow — Project Context
 
 > Auto-generated architectural reference. Use `@project-context.md` in other commands to skip re-reading memory files.
 

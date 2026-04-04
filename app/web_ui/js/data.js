@@ -1863,7 +1863,8 @@ export class TaskManager extends EventTarget {
     (this.state.settings?.contextOptions || []).forEach((value) => addContext(value));
     this.state.tasks.forEach((task) => (task.contexts || []).forEach((c) => addContext(c)));
     (this.state.reference || []).forEach((entry) => (entry.contexts || []).forEach((c) => addContext(c)));
-    (this.state.completionLog || []).forEach((entry) => (entry.contexts || []).forEach((c) => addContext(c)));
+    // Intentionally not scanning completionLog for contexts — deleted contexts would
+    // otherwise resurface from historical completed tasks.
     if (!contexts.size) {
       PHYSICAL_CONTEXTS.forEach((context) => contexts.add(context));
     }
@@ -1955,7 +1956,12 @@ export class TaskManager extends EventTarget {
     this.state.tasks.forEach((task) => addEntryTags(task));
     (this.state.reference || []).forEach((entry) => addEntryTags(entry));
     (this.state.completionLog || []).forEach((entry) => addEntryTags(entry));
-    const all = Array.from(tags).sort((a, b) => a.localeCompare(b));
+    const deleted = new Set(
+      (this.state.settings?.deletedPeopleOptions || []).map((t) => t.toLowerCase())
+    );
+    const all = Array.from(tags)
+      .filter((t) => !deleted.has(t.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b));
     if (!areaLens) return all;
     // Filter to people visible in the active area: universal (areas=[]) + matching area
     const options = this.state.settings?.peopleOptions || [];

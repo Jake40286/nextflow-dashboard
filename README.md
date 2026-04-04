@@ -1,22 +1,18 @@
-# GTD Dashboard
+# NextFlow
 
-A self-hosted personal productivity dashboard built around the **Getting Things Done (GTD)** methodology. Run it on any machine with Docker — your tasks, projects, and calendar events live in a single JSON file that every browser on your network shares in real time.
+A self-hosted personal productivity app. Run it on any machine with Docker — your tasks, projects, and calendar events live in a single JSON file that every browser on your network shares in real time.
 
 ---
 
-## What is GTD?
+## How it works
 
-Getting Things Done is a time-management approach that works by capturing *everything* you need to do into a trusted system, then systematically deciding what to act on. The key insight is that your brain is for thinking, not remembering — so you offload all your tasks, ideas, and commitments to an external system and process them in a structured way.
-
-The core workflow is:
+NextFlow is built around a structured workflow for capturing and processing everything that needs your attention:
 
 1. **Capture** — write down anything that has your attention (the "Inbox")
 2. **Clarify** — decide what each item is and what, if anything, you should do about it
 3. **Organise** — sort it into the right bucket (Next Actions, Projects, Waiting For, Someday/Maybe, Reference)
 4. **Reflect** — review your lists regularly so you trust what's in them
 5. **Engage** — pick your next action with confidence
-
-This dashboard handles all five steps.
 
 ---
 

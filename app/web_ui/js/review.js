@@ -1,8 +1,8 @@
 /**
- * ReviewController — GTD Weekly Review
+ * ReviewController — Weekly Review
  *
  * Drives the full-screen, forced-decision review mode. Works through five
- * GTD buckets in order: Inbox (gated) → Next Actions → Waiting For →
+ * sections in order: Inbox (gated) → Next Actions → Waiting For →
  * Someday/Maybe → Projects. Every item requires an explicit decision before
  * the review advances.
  *
@@ -20,7 +20,7 @@ import { STATUS } from "./data.js";
 const REVIEW_SESSION_KEY = "nextflow-review-session";
 const REVIEW_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
-// Sections in GTD review order. Inbox is gated — the review cannot advance
+// Sections in review order. Inbox is gated — the review cannot advance
 // past it until the live inbox list (minus processed IDs) reaches zero.
 const SECTIONS = [
   {

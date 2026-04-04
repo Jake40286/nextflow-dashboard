@@ -1015,6 +1015,26 @@
     </div>
   </div>
 
+  <!-- Area delete / reassign dialog -->
+  <div id="areaDeleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="areaDeleteModalHeading" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm" role="document">
+      <header class="modal-header">
+        <h2 id="areaDeleteModalHeading">Delete area</h2>
+      </header>
+      <div class="modal-body">
+        <p id="areaDeleteModalMessage"></p>
+        <label class="area-delete-modal-label" for="areaDeleteModalSelect">Reassign tasks and projects to:</label>
+        <select id="areaDeleteModalSelect" class="settings-inline-select area-delete-modal-select"></select>
+        <p id="areaDeleteModalNote" class="muted small-text"></p>
+      </div>
+      <footer class="modal-footer">
+        <button id="areaDeleteModalCancel" class="btn btn-light" type="button">Cancel</button>
+        <button id="areaDeleteModalOk" class="btn btn-danger" type="button">Delete</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Shared in-app confirm dialog -->
   <div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalHeading" hidden>
     <div class="modal-backdrop"></div>

@@ -4324,6 +4324,27 @@ export class UIController {
       return;
     }
     if (action === "delete") {
+      if (type === "area") {
+        const otherAreas = this.taskManager.getAreasOfFocus().filter((a) => a !== value);
+        const taskCount = this.taskManager.getTasks({ includeCompleted: false })
+          .filter((t) => t.areaOfFocus === value).length;
+        const projectCount = this.taskManager.getProjects({ includeSomeday: true })
+          .filter((p) => p.areaOfFocus === value).length;
+        const ctxCount = this.taskManager.getContextOptionsWithAreas()
+          .filter((o) => o.areas.includes(value)).length;
+        const pplCount = this.taskManager.getPeopleTagOptionsWithAreas()
+          .filter((o) => o.areas.includes(value)).length;
+        const result = await this.showAreaDeleteDialog(value, otherAreas, {
+          tasks: taskCount, projects: projectCount, contexts: ctxCount, people: pplCount,
+        });
+        if (!result?.confirmed) return;
+        this.taskManager.migrateAreaReferences(value, result.target);
+        if (this.activeArea === value) {
+          this.activeArea = null;
+          storeActiveAreaPreference(null);
+        }
+        return;
+      }
       const confirmed = await this.showConfirm(`Delete "${value}"?`, { title: "Delete option", okLabel: "Delete", danger: true });
       if (!confirmed) return;
       if (type === "context") {
@@ -4333,7 +4354,6 @@ export class UIController {
         }
       }
       if (type === "people") this.taskManager.deletePeopleTag(value);
-      if (type === "area") this.taskManager.deleteAreaOfFocus(value);
     }
   }
 
@@ -8776,6 +8796,71 @@ export class UIController {
     });
   }
 
+  // Shows a dialog to choose how to handle references before deleting an area.
+  // Returns { confirmed: true, target: string|null } or null if cancelled.
+  showAreaDeleteDialog(area, otherAreas, refCounts) {
+    return new Promise((resolve) => {
+      const modal = this.elements.areaDeleteModal;
+      if (!modal) {
+        const ok = window.confirm(`Delete area "${area}"? References will be cleared.`);
+        resolve(ok ? { confirmed: true, target: null } : null);
+        return;
+      }
+      const { areaDeleteModalHeading, areaDeleteModalMessage, areaDeleteModalNote,
+              areaDeleteModalSelect, areaDeleteModalOk, areaDeleteModalCancel } = this.elements;
+      if (areaDeleteModalHeading) areaDeleteModalHeading.textContent = `Delete area "${area}"`;
+      if (areaDeleteModalMessage) {
+        const parts = [];
+        if (refCounts.tasks > 0) parts.push(`${refCounts.tasks} task${refCounts.tasks === 1 ? "" : "s"}`);
+        if (refCounts.projects > 0) parts.push(`${refCounts.projects} project${refCounts.projects === 1 ? "" : "s"}`);
+        areaDeleteModalMessage.textContent = parts.length
+          ? `This area is directly referenced by ${parts.join(" and ")}.`
+          : "No tasks or projects directly reference this area.";
+      }
+      if (areaDeleteModalNote) {
+        const tagCount = refCounts.contexts + refCounts.people;
+        areaDeleteModalNote.textContent = tagCount > 0
+          ? `${tagCount} context/people tag${tagCount === 1 ? "" : "s"} assigned to this area will become universal.`
+          : "No contexts or people tags are assigned to this area.";
+      }
+      if (areaDeleteModalSelect) {
+        areaDeleteModalSelect.innerHTML = "";
+        const clearOpt = document.createElement("option");
+        clearOpt.value = "";
+        clearOpt.textContent = "— Unassign (leave without area) —";
+        areaDeleteModalSelect.append(clearOpt);
+        otherAreas.forEach((a) => {
+          const opt = document.createElement("option");
+          opt.value = a;
+          opt.textContent = a;
+          areaDeleteModalSelect.append(opt);
+        });
+      }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        areaDeleteModalOk?.removeEventListener("click", onOk);
+        areaDeleteModalCancel?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onOk = () => {
+        const target = areaDeleteModalSelect?.value || null;
+        cleanup();
+        resolve({ confirmed: true, target: target || null });
+      };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKeydown = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      };
+      areaDeleteModalOk?.addEventListener("click", onOk);
+      areaDeleteModalCancel?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => areaDeleteModalOk?.focus(), 50);
+    });
+  }
+
   showConflictModal() {
     const modal    = this.elements.conflictModal;
     const body     = this.elements.conflictModalBody;
@@ -9264,6 +9349,13 @@ function mapElements() {
     conflictModalBody: byId("conflictModalBody"),
     conflictModalBackdrop: byId("conflictModalBackdrop"),
     conflictModalDismiss: byId("conflictModalDismiss"),
+    areaDeleteModal: byId("areaDeleteModal"),
+    areaDeleteModalHeading: byId("areaDeleteModalHeading"),
+    areaDeleteModalMessage: byId("areaDeleteModalMessage"),
+    areaDeleteModalSelect: byId("areaDeleteModalSelect"),
+    areaDeleteModalNote: byId("areaDeleteModalNote"),
+    areaDeleteModalOk: byId("areaDeleteModalOk"),
+    areaDeleteModalCancel: byId("areaDeleteModalCancel"),
     confirmModal: byId("confirmModal"),
     confirmModalHeading: byId("confirmModalHeading"),
     confirmModalMessage: byId("confirmModalMessage"),

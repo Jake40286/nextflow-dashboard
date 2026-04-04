@@ -2395,46 +2395,96 @@ export class TaskManager extends EventTarget {
   }
 
   deleteAreaOfFocus(value) {
-    const target = typeof value === "string" ? value.trim() : "";
-    if (!target) return false;
-    const areaOptions = Array.isArray(this.state.settings?.areaOptions)
-      ? this.state.settings.areaOptions.filter((area) => area !== target)
-      : [];
-    const fallback =
-      areaOptions[0] ||
-      this.getAreasOfFocus().find((area) => area !== target) ||
-      PROJECT_AREAS[0];
+    return this.migrateAreaReferences(value, null);
+  }
+
+  // Deletes fromArea and reassigns all references to toArea (or clears them if toArea is null).
+  // Covers: tasks, reference, completionLog, projects, completedProjects,
+  //         contextOptions.areas[], peopleOptions.areas[], and areaOptions.
+  migrateAreaReferences(fromArea, toArea) {
+    const from = typeof fromArea === "string" ? fromArea.trim() : "";
+    if (!from) return false;
+    const to = typeof toArea === "string" && toArea.trim() ? toArea.trim() : null;
     let changed = false;
-    if (!this.state.settings) {
-      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
-    }
-    if (Array.isArray(this.state.settings.areaOptions)) {
-      const before = this.state.settings.areaOptions.length;
-      this.state.settings.areaOptions = this.state.settings.areaOptions.filter((area) => area !== target);
-      if (this.state.settings.areaOptions.length !== before) {
+
+    this.state.tasks.forEach((task) => {
+      if (task.areaOfFocus === from) {
+        task.areaOfFocus = to;
+        task.updatedAt = nowIso();
         changed = true;
       }
-    }
+    });
+    (this.state.reference || []).forEach((entry) => {
+      if (entry.areaOfFocus === from) {
+        entry.areaOfFocus = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
+    (this.state.completionLog || []).forEach((entry) => {
+      if (entry.areaOfFocus === from) {
+        entry.areaOfFocus = to;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    });
     this.state.projects.forEach((project) => {
-      if (project.areaOfFocus === target) {
-        project.areaOfFocus = fallback;
+      if (project.areaOfFocus === from) {
+        project.areaOfFocus = to;
         normalizeProjectTags(project);
         project.updatedAt = nowIso();
         changed = true;
       }
     });
     (this.state.completedProjects || []).forEach((entry) => {
-      if (entry?.snapshot?.areaOfFocus === target) {
-        entry.snapshot.areaOfFocus = fallback;
+      if (entry?.snapshot?.areaOfFocus === from) {
+        entry.snapshot.areaOfFocus = to;
         normalizeProjectTags(entry.snapshot);
         entry.updatedAt = nowIso();
         changed = true;
       }
     });
+
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    // Remove fromArea from contextOptions.areas[]
+    const ctxOptions = Array.isArray(this.state.settings?.contextOptions)
+      ? this.state.settings.contextOptions
+      : [];
+    this.state.settings.contextOptions = ctxOptions.map((opt) => {
+      if (typeof opt === "object" && opt !== null && Array.isArray(opt.areas) && opt.areas.includes(from)) {
+        changed = true;
+        return { ...opt, areas: opt.areas.filter((a) => a !== from) };
+      }
+      return opt;
+    });
+    // Remove fromArea from peopleOptions.areas[]
+    const pplOptions = Array.isArray(this.state.settings?.peopleOptions)
+      ? this.state.settings.peopleOptions
+      : [];
+    this.state.settings.peopleOptions = pplOptions.map((opt) => {
+      if (typeof opt === "object" && opt !== null && Array.isArray(opt.areas) && opt.areas.includes(from)) {
+        changed = true;
+        return { ...opt, areas: opt.areas.filter((a) => a !== from) };
+      }
+      return opt;
+    });
+    // Remove fromArea from areaOptions
+    const areaOptions = Array.isArray(this.state.settings?.areaOptions)
+      ? this.state.settings.areaOptions
+      : [];
+    const filteredAreaOptions = areaOptions.filter((a) => a !== from);
+    if (filteredAreaOptions.length !== areaOptions.length) {
+      this.state.settings.areaOptions = filteredAreaOptions;
+      changed = true;
+    }
+
     if (!changed) return false;
     stampSettingsTimestamp(this.state.settings, "lists");
     this.emitChange();
-    this.notify("info", `Deleted area "${target}". Reassigned to "${fallback}".`);
+    const actionDesc = to ? `Reassigned to "${to}".` : "References cleared.";
+    this.notify("info", `Deleted area "${from}". ${actionDesc}`);
     return true;
   }
 

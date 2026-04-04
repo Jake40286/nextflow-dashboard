@@ -1,5 +1,7 @@
 # NextFlow
 
+![Beta](https://img.shields.io/badge/status-beta-yellow)
+
 A self-hosted personal productivity app. Run it on any machine with Docker — your tasks, projects, and calendar events live in a single JSON file that every browser on your network shares in real time.
 
 ---

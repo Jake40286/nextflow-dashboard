@@ -83,11 +83,12 @@ Each task can carry:
 - **Project** — the parent project it belongs to
 - **Context** — where/how it can be done (`@Home`, `@Office`, `@Phone`, etc.)
 - **Waiting For** — a person, note, or reference to another task
-- **Due date** and **Calendar date/time** — for scheduled work
+- **Due date**, **Follow-up date**, and **Calendar date/time** — for scheduled work
 - **Energy level** — Low / Medium / High
 - **Time required** — `<5min`, `<15min`, `<30min`, `30min+`
 - **Recurrence** — Daily, Weekly, or Monthly
 - **Notes** — free-text journal attached to the task
+- **Area of Focus** — workspace lens that scopes the task (`Work`, `Personal`, `Home`, etc.)
 - **People tags** — `+Name` mentions for collaboration tracking
 - **Short slug** — a compact identifier for cross-referencing tasks in the Waiting For field
 
@@ -99,8 +100,8 @@ The dashboard works fully offline — every change is saved to your browser's lo
 
 When multiple devices make changes while offline, the system:
 
-1. Detects that the server was updated by another device (via a signature check)
-2. Merges the changes using a **last-write-wins** strategy per entity (most recently updated item wins)
+1. Detects that the server was updated by another device (via a revision counter, `_rev`)
+2. Merges the changes using a **last-write-wins** strategy per field group (scheduling, status, due date, follow-up date each merge independently)
 3. Shows a warning toast naming the other device: *"Merged changes from [Device Name]. Review your tasks."*
 4. Updates the **Sync** button tooltip to show *"Last synced: [device] at [time]"*
 
@@ -232,6 +233,7 @@ Tests live in `tests/taskManager.test.js` and cover the core data layer includin
 │       │   ├── analytics.js
 │       │   ├── review.js   # Weekly review workflow
 │       │   └── app.js      # Entry point
+│       ├── sw.js           # Service worker (network-first for JS/CSS, offline shell cache)
 │       └── css/
 ├── data/                   # Persisted state and backups (bind-mounted into container)
 ├── secrets/                # Service account keys (never committed)

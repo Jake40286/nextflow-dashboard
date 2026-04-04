@@ -91,6 +91,8 @@ All DOM element references are looked up once in `cacheElements()` and accessed 
 
 **`analytics.js`** — `AnalyticsController`. Chart rendering only, wrapping `chart.min.js`. Reads from `TaskManager`; no state mutations.
 
+**`review.js`** — `ReviewController`. Drives the full-screen Weekly Review mode. Walks five sections in order: Inbox (gated — must reach zero) → Next Actions → Waiting For → Someday/Maybe → Projects. Session state (current position, processed IDs, stats) is stored in localStorage under `nextflow-review-session` with a 12-hour TTL so reviews can be paused/resumed. Streak data (`settings.review`) is synced across devices via `taskManager.updateReviewData()` on completion.
+
 **`sw.js`** — Service worker. Caches core assets under `nextflow-shell-v1`. Strategy: network-first for `.js`/`.css` (so deploys are picked up immediately), cache-first for navigation and other static assets. `/state` API calls are always bypassed — never cached.
 
 ---

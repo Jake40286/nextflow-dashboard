@@ -3209,8 +3209,9 @@ export class UIController {
       return;
     }
     const bugs = items.filter((i) => i.type === "bug");
+    const improvements = items.filter((i) => i.type === "improvement");
     const features = items.filter((i) => i.type === "feature");
-    [...bugs, ...features].forEach((item) => {
+    [...bugs, ...improvements, ...features].forEach((item) => {
       const li = document.createElement("li");
       li.className = "settings-item" + (item.resolved ? " is-muted" : "");
       const main = document.createElement("div");
@@ -3223,7 +3224,8 @@ export class UIController {
         shortId.className = "feedback-short-id";
         shortId.textContent = "#" + item.id.slice(0, 6);
         const typePill = document.createElement("span");
-        typePill.className = `task-meta-pill ${type === "bug" ? "task-meta-waiting" : "task-meta-my-day"}`;
+        const pillType = type === "bug" ? "task-meta-bug" : type === "improvement" ? "task-meta-improvement" : "task-meta-my-day";
+        typePill.className = `task-meta-pill ${pillType}`;
         typePill.textContent = type;
         const desc = document.createElement("span");
         desc.textContent = " " + description;
@@ -3257,7 +3259,7 @@ export class UIController {
           shortId.textContent = "#" + item.id.slice(0, 6);
           const typeSelect = document.createElement("select");
           typeSelect.className = "settings-inline-select";
-          ["bug", "feature"].forEach((t) => {
+          ["bug", "improvement", "feature"].forEach((t) => {
             const opt = document.createElement("option");
             opt.value = t;
             opt.textContent = t;

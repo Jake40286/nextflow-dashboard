@@ -726,6 +726,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 BACKUP_MANAGER.write_backup(payload)
             except Exception as error:  # noqa: BLE001
                 print(f"Failed to write backup snapshot: {error}", file=sys.stderr)
+            try:
+                with FEEDBACK_LOCK:
+                    if FEEDBACK_FILE.exists():
+                        feedback_data = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8"))
+                        BACKUP_MANAGER.write_feedback_backup(feedback_data)
+            except Exception as error:  # noqa: BLE001
+                print(f"Failed to write feedback backup snapshot: {error}", file=sys.stderr)
 
 
 def start_server():

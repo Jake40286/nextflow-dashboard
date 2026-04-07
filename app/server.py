@@ -50,7 +50,7 @@ def _atomic_write(path, data):
 
 
 STATE_FILE = Path(os.getenv("STATE_FILE", "./data/state.json"))
-COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "./data/completed.json"))
+COMPLETED_FILE = Path(os.getenv("COMPLETED_FILE", "/data/completed.json"))
 CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", "/secrets/google-service-account.json"))
 STATE_LOCK = threading.Lock()
 IMAGES_DIR = Path(os.getenv("IMAGES_DIR", "/data/images"))

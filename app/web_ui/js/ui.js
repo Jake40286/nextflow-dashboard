@@ -2540,11 +2540,16 @@ export class UIController {
     this.renderReportProjectPicker(projects);
     const areas = this.taskManager.getAreasOfFocus();
     this.renderReportAreaPicker(areas);
+    const effectiveReportAreas = this.activeArea
+      ? [this.activeArea]
+      : this.reportFilters.areas;
     const completedTasks = this.taskManager.getCompletedTasks();
     const completedProjects = this.taskManager
       .getCompletedProjects()
       .filter((project) => this.matchesReportProjectSelection(project.id))
-      .filter((project) => this.matchesReportAreaSelection(project.snapshot?.areaOfFocus));
+      .filter((project) => this.matchesReportAreaSelection(project.snapshot?.areaOfFocus))
+      .filter((project) => !this.activeArea ||
+        (project.snapshot?.areaOfFocus || "").toLowerCase() === this.activeArea.toLowerCase());
     const years = this.getReportYears([...completedTasks, ...completedProjects]);
     if (!years.includes(this.reportFilters.year)) {
       this.reportFilters.year = years[0];
@@ -2569,7 +2574,7 @@ export class UIController {
       year: grouping === "year" ? undefined : this.reportFilters.year,
       contexts: this.reportFilters.contexts,
       projectIds: this.reportFilters.projects,
-      areas: this.reportFilters.areas,
+      areas: effectiveReportAreas,
     });
     const summaryByKey = new Map();
     taskSummary.forEach((entry) => {
@@ -2687,11 +2692,20 @@ export class UIController {
     const todayIso = today.toISOString().slice(0, 10);
     const lookbackStart = new Date(today.getTime() - (this.statsLookbackDays - 1) * 86400000);
 
-    const activeTasks = this.taskManager.getTasks({ includeCompleted: false });
-    const completedTasks = this.taskManager.getCompletedTasks();
-    const activeProjects = this.taskManager.getProjects({ includeSomeday: true });
-    const completedProjects = this.taskManager.getCompletedProjects();
-    const summary = this.taskManager.getSummary();
+    const activeTasks = this.taskManager.getTasks({ includeCompleted: false, areaLens: this.activeArea });
+    const completedTasks = this.taskManager.getCompletedTasks(
+      this.activeArea ? { areas: [this.activeArea] } : {}
+    );
+    const activeProjects = this.taskManager.getProjects({ includeSomeday: true })
+      .filter((p) => !this.activeArea || (p.areaOfFocus || "").toLowerCase() === this.activeArea.toLowerCase());
+    const completedProjects = this.taskManager.getCompletedProjects()
+      .filter((p) => !this.activeArea || (p.snapshot?.areaOfFocus || "").toLowerCase() === this.activeArea.toLowerCase());
+    const statsInbox = activeTasks.filter((t) => t.status === STATUS.INBOX).length;
+    const statsNext = activeTasks.filter((t) => t.status === STATUS.NEXT).length;
+    const statsDoing = activeTasks.filter((t) => t.status === STATUS.DOING).length;
+    const statsWaiting = activeTasks.filter((t) => t.status === STATUS.WAITING).length;
+    const statsSomeday = activeTasks.filter((t) => t.status === STATUS.SOMEDAY).length;
+    const statsOverdue = activeTasks.filter((t) => t.dueDate && t.dueDate < todayIso).length;
 
     const completedInWindow = completedTasks.filter((entry) => {
       const completedAt = new Date(entry.completedAt || "");
@@ -2717,14 +2731,14 @@ export class UIController {
     statCompletionRate.textContent = `${completionRate}%`;
     statOpenProjects.textContent = this.formatCount(activeProjects.length);
     statStaleTasks.textContent = this.formatCount(staleTasks);
-    statOverdueTasks.textContent = this.formatCount(summary.overdue);
+    statOverdueTasks.textContent = this.formatCount(statsOverdue);
 
     const statusRows = [
-      { label: "Inbox", value: summary.inbox, meta: `${this.toPercent(summary.inbox, activeTasks.length)}%` },
-      { label: "Next Actions", value: summary.next, meta: `${this.toPercent(summary.next, activeTasks.length)}%` },
-      { label: "Doing", value: summary.doing, meta: `${this.toPercent(summary.doing, activeTasks.length)}%` },
-      { label: "Waiting", value: summary.waiting, meta: `${this.toPercent(summary.waiting, activeTasks.length)}%` },
-      { label: "Someday", value: summary.someday, meta: `${this.toPercent(summary.someday, activeTasks.length)}%` },
+      { label: "Inbox", value: statsInbox, meta: `${this.toPercent(statsInbox, activeTasks.length)}%` },
+      { label: "Next Actions", value: statsNext, meta: `${this.toPercent(statsNext, activeTasks.length)}%` },
+      { label: "Doing", value: statsDoing, meta: `${this.toPercent(statsDoing, activeTasks.length)}%` },
+      { label: "Waiting", value: statsWaiting, meta: `${this.toPercent(statsWaiting, activeTasks.length)}%` },
+      { label: "Someday", value: statsSomeday, meta: `${this.toPercent(statsSomeday, activeTasks.length)}%` },
     ];
     this.renderStatisticsRows(statsStatusBreakdown, statusRows, {
       emptyMessage: "No active tasks available.",
@@ -2946,7 +2960,7 @@ export class UIController {
       { label: "Deleted completion log entries", value: deletedCount, meta: "Completed and removed" },
       { label: "Completed projects", value: completedProjects.length, meta: "Project closure records" },
       { label: "Recurring active tasks", value: recurringActive, meta: "Tasks with recurrence rules" },
-      { label: "Waiting tasks", value: summary.waiting, meta: "Tasks blocked on external response" },
+      { label: "Waiting tasks", value: statsWaiting, meta: "Tasks blocked on external response" },
     ];
     this.renderStatisticsRows(statsArchiveMix, archiveRows, {
       emptyMessage: "No archive data yet.",

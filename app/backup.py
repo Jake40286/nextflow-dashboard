@@ -38,13 +38,18 @@ class StateBackupManager:
         data = json.dumps(feedback, indent=2).encode("utf-8")
         with gzip.open(filename, "wb") as stream:
             stream.write(data)
-        self._trim_feedback_backups()
+        self._trim_prefix("feedback-*.json.gz")
+
+    def write_completed_backup(self, completed: Any) -> None:
+        stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        filename = self.backup_dir / f"completed-{stamp}.json.gz"
+        data = json.dumps(completed, indent=2).encode("utf-8")
+        with gzip.open(filename, "wb") as stream:
+            stream.write(data)
+        self._trim_prefix("completed-*.json.gz")
 
     def _trim_backups(self) -> None:
         self._trim_prefix("state-*.json.gz")
-
-    def _trim_feedback_backups(self) -> None:
-        self._trim_prefix("feedback-*.json.gz")
 
     def _trim_prefix(self, glob: str) -> None:
         files: Iterable[Path] = sorted(self.backup_dir.glob(glob))

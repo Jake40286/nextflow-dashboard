@@ -1841,8 +1841,13 @@ export class UIController {
       taskCountByProject.set(task.projectId, (taskCountByProject.get(task.projectId) || 0) + 1);
     });
     const projects = (this.projectCache || []).filter((project) => {
-      if (!filterArea || filterArea === "all") return true;
-      return (project.areaOfFocus || "").toLowerCase() === filterArea.toLowerCase();
+      if (filterArea && filterArea !== "all") {
+        if ((project.areaOfFocus || "").toLowerCase() !== filterArea.toLowerCase()) return false;
+      }
+      if (this.activeArea) {
+        if ((project.areaOfFocus || "").toLowerCase() !== this.activeArea.toLowerCase()) return false;
+      }
+      return true;
     });
     const visibleProjects = this.showMissingNextOnly
       ? projects.filter((project) => !project.someday && !hasNextAction.get(project.id))

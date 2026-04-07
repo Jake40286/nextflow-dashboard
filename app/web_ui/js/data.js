@@ -2503,9 +2503,16 @@ export class TaskManager extends EventTarget {
   }
 
   getCalendarEntries({ exactDate, filters, includeCompleted = false } = {}) {
-    const activeTasks = this.state.tasks.filter(
-      (task) => !task.completedAt && matchesTaskFilters(task, filters)
-    );
+    const areaLens = filters?.areaLens ?? null;
+    const activeTasks = this.state.tasks.filter((task) => {
+      if (task.completedAt) return false;
+      if (!matchesTaskFilters(task, filters)) return false;
+      if (areaLens) {
+        const area = this._effectiveTaskArea(task);
+        if (area !== null && area !== areaLens) return false;
+      }
+      return true;
+    });
     const entries = [];
 
     // Scheduled (calendarDate) and due (dueDate) entries

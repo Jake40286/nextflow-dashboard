@@ -2503,29 +2503,54 @@ export class TaskManager extends EventTarget {
   }
 
   getCalendarEntries({ exactDate, filters, includeCompleted = false } = {}) {
-    const tasks = this.state.tasks.filter(
-      (task) =>
-        !task.completedAt &&
-        Boolean(task.calendarDate || task.dueDate) &&
-        matchesTaskFilters(task, filters)
+    const activeTasks = this.state.tasks.filter(
+      (task) => !task.completedAt && matchesTaskFilters(task, filters)
     );
-    const entries = tasks.map((task) => {
-      const hasCalendarTime = Boolean(task.calendarDate && task.calendarTime);
-      const date = hasCalendarTime ? `${task.calendarDate}T${task.calendarTime}` : task.calendarDate || task.dueDate;
-      return {
-        date,
-        title: task.title,
-        contexts: task.contexts ?? [],
-        status: task.status,
-        projectId: task.projectId,
-        taskId: task.id,
-        calendarDate: task.calendarDate || null,
-        calendarTime: task.calendarTime || null,
-        isDue: Boolean(task.dueDate && !task.calendarDate),
-        isCompleted: false,
-        raw: task,
-      };
-    });
+    const entries = [];
+
+    // Scheduled (calendarDate) and due (dueDate) entries
+    activeTasks
+      .filter((task) => Boolean(task.calendarDate || task.dueDate))
+      .forEach((task) => {
+        const hasCalendarTime = Boolean(task.calendarDate && task.calendarTime);
+        const date = hasCalendarTime ? `${task.calendarDate}T${task.calendarTime}` : task.calendarDate || task.dueDate;
+        entries.push({
+          date,
+          title: task.title,
+          contexts: task.contexts ?? [],
+          status: task.status,
+          projectId: task.projectId,
+          taskId: task.id,
+          calendarDate: task.calendarDate || null,
+          calendarTime: task.calendarTime || null,
+          isScheduled: Boolean(task.calendarDate),
+          isDue: Boolean(task.dueDate && !task.calendarDate),
+          isFollowUp: false,
+          isCompleted: false,
+          raw: task,
+        });
+      });
+
+    // Follow-up entries — appear on their own day, visually distinct from scheduled/due
+    activeTasks
+      .filter((task) => Boolean(task.followUpDate))
+      .forEach((task) => {
+        entries.push({
+          date: task.followUpDate,
+          title: task.title,
+          contexts: task.contexts ?? [],
+          status: task.status,
+          projectId: task.projectId,
+          taskId: task.id,
+          calendarDate: null,
+          calendarTime: null,
+          isScheduled: false,
+          isDue: false,
+          isFollowUp: true,
+          isCompleted: false,
+          raw: task,
+        });
+      });
 
     if (includeCompleted) {
       const completions = this.getCompletionEntries().filter(

@@ -2167,6 +2167,20 @@ button.meta-item:hover {
   line-height: 1.2;
 }
 
+.calendar-grid-item.is-scheduled,
+.calendar-item.is-scheduled {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: color-mix(in srgb, var(--accent-strong) 80%, var(--text));
+}
+
+.calendar-grid-item.is-follow-up,
+.calendar-item.is-follow-up {
+  border-color: color-mix(in srgb, var(--warning) 52%, var(--line));
+  background: color-mix(in srgb, var(--warning) 16%, var(--surface));
+  color: color-mix(in srgb, var(--warning) 64%, black);
+}
+
 .calendar-grid-item.is-due,
 .calendar-item.is-due {
   border-color: color-mix(in srgb, var(--danger) 52%, var(--line));

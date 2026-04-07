@@ -2456,11 +2456,16 @@ export class UIController {
           item.className = "calendar-grid-item";
           if (entry.isCompleted) {
             item.classList.add("is-completed");
+          } else if (entry.isFollowUp) {
+            item.classList.add("is-follow-up");
           } else if (entry.isDue) {
             item.classList.add("is-due");
+          } else if (entry.isScheduled) {
+            item.classList.add("is-scheduled");
           }
           const timeLabel = this.getCalendarEntryTime(entry);
-          item.textContent = `${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
+          const typePrefix = entry.isFollowUp ? "↩ " : "";
+          item.textContent = `${typePrefix}${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
           item.dataset.taskId = entry.taskId;
           if (!entry.isCompleted) {
             item.draggable = true;

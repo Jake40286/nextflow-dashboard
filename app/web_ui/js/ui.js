@@ -656,6 +656,7 @@ export class UIController {
     this.activePanel = panelName;
     storeActivePanel(panelName);
     this.applyPanelVisibility();
+    window.scrollTo({ top: 0, behavior: "instant" });
     // Backlog always re-fetches on activation (feedback lives outside state)
     if (panelName === "backlog") this._dirtyPanels.add("backlog");
     this._renderPanelIfDirty(panelName);
@@ -6134,6 +6135,8 @@ export class UIController {
         form.reset();
         setOpen(false);
         this.showToast("info", "Feedback received. Thanks!");
+        this._dirtyPanels.add("backlog");
+        if (this.activePanel === "backlog") this._renderPanelIfDirty("backlog");
       } catch {
         this._enqueueFeedback(item);
         form.reset();
@@ -6347,12 +6350,6 @@ export class UIController {
       button.addEventListener("click", () =>
         this.handleClarifyNonAction(button.dataset.clarifyNonaction)
       );
-    });
-
-    // Someday friction: save / cancel buttons
-    this.elements.clarifysomedaySave?.addEventListener("click", () => this.handleClarifySomedaySave());
-    this.elements.clarifysomedayCancel?.addEventListener("click", () => {
-      if (this.elements.clarifysomedayDetails) this.elements.clarifysomedayDetails.hidden = true;
     });
 
     // Actionable Yes — collapse the question, show the form
@@ -6586,8 +6583,7 @@ export class UIController {
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
-    const somedayDetails = document.getElementById("clarifysomedayDetails");
-    if (somedayDetails) somedayDetails.hidden = true;
+
     const actionableQuestion = document.getElementById("clarifyActionableQuestion");
     if (actionableQuestion) actionableQuestion.hidden = false;
     const actionableSummary = document.getElementById("clarifyActionableSummary");
@@ -6834,59 +6830,9 @@ export class UIController {
       this.taskManager.deleteTask(this.clarifyState.taskId);
       this.taskManager.notify("info", "Captured idea deleted.");
     } else if (destination === "someday") {
-      this._showClarifySomedayDetails();
-      return;
+      this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
+      this.taskManager.notify("info", "Moved to Someday / Maybe.");
     }
-    this.closeClarifyModal();
-    this.setActivePanel("inbox");
-  }
-
-  _showClarifySomedayDetails() {
-    const details = this.elements.clarifysomedayDetails;
-    if (!details) return;
-    details.hidden = false;
-    const container = this.elements.clarifysomedayContextList;
-    if (container) {
-      container.innerHTML = "";
-      const contexts = this.taskManager.getContexts();
-      contexts.forEach((context) => {
-        const label = document.createElement("label");
-        label.className = "clarify-context-checkbox";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = context;
-        checkbox.addEventListener("change", () => this._updateClarifySomedaySaveBtn());
-        label.append(checkbox, document.createTextNode(context.replace(/^[@+]/, "")));
-        container.append(label);
-      });
-    }
-    if (this.elements.clarifysomedayEffort) {
-      this.elements.clarifysomedayEffort.value = "";
-      this.elements.clarifysomedayEffort.addEventListener("change", () => this._updateClarifySomedaySaveBtn());
-    }
-    this._updateClarifySomedaySaveBtn();
-  }
-
-  _updateClarifySomedaySaveBtn() {
-    const btn = this.elements.clarifysomedaySave;
-    if (!btn) return;
-    const hasContext = !!this.elements.clarifysomedayContextList?.querySelector("input:checked");
-    const hasEffort = !!this.elements.clarifysomedayEffort?.value;
-    btn.disabled = !hasContext && !hasEffort;
-  }
-
-  handleClarifySomedaySave() {
-    if (!this.clarifyState.taskId) return;
-    const contexts = Array.from(
-      this.elements.clarifysomedayContextList?.querySelectorAll("input:checked") || []
-    ).map((cb) => cb.value);
-    const effort = this.elements.clarifysomedayEffort?.value || null;
-    const updates = {};
-    if (contexts.length) updates.contexts = contexts;
-    if (effort) updates.effortLevel = effort;
-    this.taskManager.updateTask(this.clarifyState.taskId, updates);
-    this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
-    this.taskManager.notify("info", "Moved to Someday / Maybe.");
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -9971,11 +9917,7 @@ function mapElements() {
     clarifyTimeSelect: byId("clarifyTimeSelect"),
     clarifyRecurrenceType: byId("clarifyRecurrenceType"),
     clarifyRecurrenceInterval: byId("clarifyRecurrenceInterval"),
-    clarifysomedayDetails: byId("clarifysomedayDetails"),
-    clarifysomedayContextList: byId("clarifysomedayContextList"),
-    clarifysomedayEffort: byId("clarifysomedayEffort"),
-    clarifysomedaySave: byId("clarifysomedaySave"),
-    clarifysomedayCancel: byId("clarifysomedayCancel"),
+
     clarifyMetadataSave: byId("clarifyMetadataSave"),
     clarifyMetadataSkip: byId("clarifyMetadataSkip"),
     clarifyFinalMessage: byId("clarifyFinalMessage"),

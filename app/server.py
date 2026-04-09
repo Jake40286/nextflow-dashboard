@@ -198,6 +198,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def _is_feedback_endpoint(self):
         return self._parsed_path.rstrip("/") == "/feedback"
 
+    def _is_feedback_merge_endpoint(self):
+        return self._parsed_path.rstrip("/") == "/feedback/merge"
+
     def _is_feedback_item_endpoint(self):
         """Matches /feedback/<id> — a single feedback item by hex id."""
         parts = self._parsed_path.strip("/").split("/")
@@ -270,6 +273,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         if self._is_cleanup_endpoint():
             self._handle_cleanup()
+            return
+        if self._is_feedback_merge_endpoint():
+            self._handle_feedback_merge()
             return
         if self._is_feedback_endpoint():
             self._handle_feedback_post()
@@ -425,6 +431,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
             except json.JSONDecodeError:
                 items = []
+        items.sort(key=lambda i: (i.get("type", ""), i.get("sortOrder") if i.get("sortOrder") is not None else 9999))
         self._send_json(items)
 
     def _handle_feedback_post(self):
@@ -440,21 +447,23 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             return
         feedback_type = str(payload.get("type", "")).strip()
         description = str(payload.get("description", "")).strip()
-        if feedback_type not in ("bug", "feature") or not description:
-            self._send_json({"error": "type (bug|feature) and description are required"}, status=400)
+        if feedback_type not in ("bug", "feature", "improvement") or not description:
+            self._send_json({"error": "type (bug|feature|improvement) and description are required"}, status=400)
             return
-        item = {
-            "id": _uuid.uuid4().hex,
-            "type": feedback_type,
-            "description": description,
-            "createdAt": payload.get("createdAt", ""),
-            "panel": str(payload.get("panel", "")).strip(),
-        }
         with FEEDBACK_LOCK:
             try:
                 items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
             except json.JSONDecodeError:
                 items = []
+            same_type_count = sum(1 for i in items if i.get("type") == feedback_type)
+            item = {
+                "id": _uuid.uuid4().hex,
+                "type": feedback_type,
+                "description": description,
+                "createdAt": payload.get("createdAt", ""),
+                "panel": str(payload.get("panel", "")).strip(),
+                "sortOrder": same_type_count,
+            }
             items.append(item)
             FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
             FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
@@ -490,12 +499,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         except (OSError, json.JSONDecodeError):
             self._send_json({"error": "Invalid JSON"}, status=400)
             return
-        updates = {k: v for k, v in payload.items() if k in ("description", "type", "resolved")}
+        updates = {k: v for k, v in payload.items() if k in ("description", "type", "resolved", "sortOrder")}
         if not updates:
             self._send_json({"error": "No valid fields to update"}, status=400)
             return
-        if "type" in updates and updates["type"] not in ("bug", "feature"):
-            self._send_json({"error": "type must be bug or feature"}, status=400)
+        if "type" in updates and updates["type"] not in ("bug", "feature", "improvement"):
+            self._send_json({"error": "type must be bug, feature, or improvement"}, status=400)
             return
         if "description" in updates:
             updates["description"] = str(updates["description"]).strip()
@@ -536,6 +545,55 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
             FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
         self._send_json({"status": "ok"})
+
+    def _handle_feedback_merge(self):
+        """Merge feedback items into a primary. Body: { primaryId, mergeIds: [...] }
+        Marks each mergeId as resolved with mergedInto pointing to primaryId."""
+        content_length = int(self.headers.get("Content-Length") or 0)
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8")) if content_length > 0 else {}
+        except (OSError, json.JSONDecodeError):
+            self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+        primary_id = str(payload.get("primaryId") or "").strip()
+        merge_ids = set(str(i) for i in (payload.get("mergeIds") or []) if i)
+        if not primary_id or not merge_ids:
+            self._send_json({"error": "primaryId and mergeIds are required"}, status=400)
+            return
+        if primary_id in merge_ids:
+            self._send_json({"error": "primaryId cannot appear in mergeIds"}, status=400)
+            return
+        import datetime as _dt
+        now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with FEEDBACK_LOCK:
+            try:
+                items = json.loads(FEEDBACK_FILE.read_text(encoding="utf-8")) if FEEDBACK_FILE.exists() else []
+            except json.JSONDecodeError:
+                items = []
+            ids_present = {i.get("id") for i in items}
+            if primary_id not in ids_present:
+                self._send_json({"error": "primaryId not found"}, status=404)
+                return
+            merged = 0
+            primary_item = None
+            descriptions_to_append = []
+            for item in items:
+                if item.get("id") == primary_id:
+                    primary_item = item
+                elif item.get("id") in merge_ids:
+                    if item.get("description", "").strip():
+                        descriptions_to_append.append(item["description"].strip())
+                    item["resolved"] = True
+                    item["resolvedAt"] = now
+                    item["mergedInto"] = primary_id
+                    merged += 1
+            if primary_item and descriptions_to_append:
+                base = primary_item.get("description", "").strip()
+                appended = "\n\n---\n\n".join(descriptions_to_append)
+                primary_item["description"] = f"{base}\n\n---\n\n{appended}" if base else appended
+            FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        self._send_json({"status": "ok", "merged": merged, "primary": primary_item})
 
     def _handle_feedback_delete(self):
         """Remove all resolved feedback items (or all if ?all=1)."""

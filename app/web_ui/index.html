@@ -171,6 +171,9 @@
               <span class="summary-label">All Active</span>
               <span class="summary-value" id="summaryAllActive">0</span>
             </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-backlog" data-panel-target="backlog" aria-controls="panel-backlog" aria-selected="false" hidden>
+              <span class="summary-label">Backlog</span>
+            </button>
           </div>
         </section>
 
@@ -388,6 +391,12 @@
       <section class="workspace-view" data-panel="all-active" role="tabpanel" aria-labelledby="summary-tab-all-active" id="panel-all-active" hidden>
         <div class="panel-content">
           <div class="panel-body" id="allActiveList"></div>
+        </div>
+      </section>
+
+      <section class="workspace-view" data-panel="backlog" role="tabpanel" aria-labelledby="summary-tab-backlog" id="panel-backlog" hidden>
+        <div class="panel-content">
+          <div class="feedback-board" id="feedbackBoard"></div>
         </div>
       </section>
 
@@ -639,12 +648,7 @@
               </div>
               <div class="settings-subgroup">
                 <h4 class="settings-subgroup-heading">Feedback</h4>
-                <p class="muted small-text">Review and manage feedback submitted via the feedback widget.</p>
-                <div class="settings-subgroup-actions">
-                  <button id="settingsLoadFeedbackBtn" class="btn btn-light" type="button">Load feedback</button>
-                  <button id="settingsClearFeedbackBtn" class="btn btn-light" type="button">Clear resolved</button>
-                </div>
-                <ul id="settingsFeedbackList" class="settings-list" role="list"></ul>
+                <p class="muted small-text">Manage bugs, features, and improvements in the <a href="#" id="settingsBacklogLink" class="text-link">Backlog panel</a>.</p>
               </div>
             </div>
           </details>
@@ -947,7 +951,7 @@
                   <option value="monthly">Monthly</option>
                   <option value="yearly">Yearly</option>
                 </select>
-                <input id="clarifyRecurrenceInterval" type="number" min="1" step="1" value="1" disabled />
+                <input id="clarifyRecurrenceInterval" class="task-recurrence-interval" type="number" min="1" step="1" value="1" disabled />
               </div>
             </div>
 
@@ -1055,7 +1059,8 @@
     <img id="lightboxImg" src="" alt="" class="lightbox-img" />
   </dialog>
 
-  <div id="feedbackWidget" class="feedback-widget">
+  <!-- ── Feedback widget (admin only — shown via JS when isAdmin) ─────────── -->
+  <div id="feedbackWidget" class="feedback-widget" hidden>
     <button id="feedbackToggle" class="feedback-toggle" type="button" aria-label="Send feedback" aria-expanded="false" aria-controls="feedbackPopover">&#43;</button>
     <div id="feedbackPopover" class="feedback-popover" hidden>
       <header class="feedback-popover-header">
@@ -1074,6 +1079,7 @@
       </form>
     </div>
   </div>
+
   <!-- ── Weekly Review overlay ───────────────────────────────────────────── -->
   <div
     id="reviewMode"

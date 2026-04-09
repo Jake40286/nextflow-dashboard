@@ -474,9 +474,25 @@ button.meta-item:hover {
 }
 
 .alerts {
-  min-height: 26px;
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  z-index: 1000;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.alerts .toast {
+  pointer-events: auto;
+  animation: toast-in 0.2s ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .layout {
@@ -1061,6 +1077,11 @@ button.meta-item:hover {
 
 .my-day-past-note {
   margin: 0;
+}
+
+.my-day-hidden-notice {
+  margin: var(--space-1) 0 0;
+  font-style: italic;
 }
 
 .my-day-past-item {
@@ -2361,6 +2382,11 @@ button.meta-item:hover {
   margin-right: 4px;
 }
 
+.feedback-merge-source {
+  outline: 2px solid var(--accent);
+  border-radius: var(--radius);
+}
+
 .settings-inline-edit {
   width: 100%;
   resize: vertical;
@@ -3134,7 +3160,8 @@ button.meta-item:hover {
 }
 
 .task-recurrence-interval {
-  width: 92px;
+  width: 70px;
+  flex: 0 0 70px;
 }
 
 .task-project-create {
@@ -3806,6 +3833,296 @@ textarea:focus-visible,
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+/* ── Feedback Kanban Board ────────────────────────────────────────────────── */
+
+.feedback-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  min-height: 200px;
+}
+
+.feedback-columns {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.feedback-tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1) 0;
+}
+
+.feedback-tag-filter-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-right: 2px;
+}
+
+.feedback-filter-pill {
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+}
+
+.feedback-filter-pill:hover {
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface));
+  color: var(--accent-strong);
+}
+
+.feedback-filter-pill.is-active {
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.feedback-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--space-2);
+}
+
+.feedback-tag-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
+  color: var(--accent-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  letter-spacing: 0.03em;
+}
+
+.feedback-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.feedback-column-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+}
+
+.feedback-count-badge {
+  font-size: 0.72rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.feedback-card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: grab;
+  user-select: none;
+  font-size: 0.875rem;
+  transition: box-shadow var(--transition-fast), opacity var(--transition-fast);
+}
+
+.feedback-card:active { cursor: grabbing; }
+
+.feedback-card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--accent);
+}
+
+.feedback-card.is-dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+
+.feedback-card.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.feedback-card.is-resolved {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.feedback-card.is-resolved:hover {
+  box-shadow: none;
+  border-color: var(--line);
+}
+
+.feedback-card-desc {
+  margin: 0 0 var(--space-2);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.feedback-card-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.feedback-card-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.feedback-order-group {
+  display: inline-flex;
+  gap: 1px;
+  margin-right: var(--space-1);
+}
+
+.feedback-order-btn {
+  font-size: 0.8rem;
+  padding: 0 4px;
+  line-height: 1.6;
+  min-width: 20px;
+}
+
+.feedback-order-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+.feedback-resolved-divider {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-1);
+}
+
+.feedback-add-btn {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.feedback-add-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.feedback-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.feedback-add-form textarea {
+  resize: vertical;
+  min-height: 64px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+}
+
+.feedback-add-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.feedback-add-form-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.dnd-drop-indicator {
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  margin: 2px 0;
+  pointer-events: none;
+}
+
+.feedback-card-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.feedback-card-edit-form textarea {
+  resize: vertical;
+  min-height: 56px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+}
+
+.feedback-card-edit-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.text-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.text-link:hover { text-decoration: underline; }
+
+/* ── Feedback floating widget (admin only) ───────────────────────────────── */
 
 .feedback-widget {
   position: fixed;

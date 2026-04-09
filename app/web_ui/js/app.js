@@ -3,8 +3,20 @@ import { UIController } from "./ui.js";
 import { AnalyticsController } from "./analytics.js";
 import { ReviewController } from "./review.js";
 
+// Admin mode: visit /#admin to enable, /#user to disable.
+// Persists in localStorage so you only need to do it once per browser.
+const _ADMIN_KEY = "nextflow-admin";
+if (window.location.hash === "#admin") {
+  localStorage.setItem(_ADMIN_KEY, "1");
+  history.replaceState(null, "", "/");
+} else if (window.location.hash === "#user") {
+  localStorage.removeItem(_ADMIN_KEY);
+  history.replaceState(null, "", "/");
+}
+const isAdmin = localStorage.getItem(_ADMIN_KEY) === "1";
+
 const taskManager = new TaskManager();
-const ui = new UIController(taskManager);
+const ui = new UIController(taskManager, { isAdmin });
 const analytics = new AnalyticsController(taskManager);
 const review = new ReviewController(taskManager, ui);
 

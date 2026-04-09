@@ -81,6 +81,15 @@ googleCalendarConfig: { calendarId, timezone, defaultDurationMinutes }
 
 ---
 
+## Design Tenets
+
+1. **Minimize clicks** — every action should require the fewest possible steps. Default to inline editing, single-tap affordances, and smart defaults over wizards or multi-step flows.
+2. **Don't overwhelm with form fields** — surface only what's needed at the moment. Progressive disclosure over exhaustive upfront forms.
+3. **Out of sight, out of mind** — if the user created it, it should be findable and visible. Avoid burying data in deep menus; the app should reflect the user's full context back to them.
+4. **Multiple views of the same data** — the same tasks and projects should be explorable through different lenses (by status, area, person, date, effort, etc.) so the user can build a complete mental model of their work.
+
+---
+
 ## Panels
 
 `inbox · myday · next · kanban · projects · calendar · waitingfor · someday · allactive · reports · statistics · settings`

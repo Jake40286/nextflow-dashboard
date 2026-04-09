@@ -1865,9 +1865,21 @@ export class UIController {
       }
       return true;
     });
-    const visibleProjects = this.showMissingNextOnly
+    const todayIsoProjects = new Date().toISOString().slice(0, 10);
+    const projectRiskScore = (project) => {
+      if (project.someday) return 0;
+      const deadlinePassed = Boolean(project.deadline && project.deadline < todayIsoProjects);
+      const missingNext = !hasNextAction.get(project.id);
+      return (deadlinePassed || missingNext) ? 2 : 1;
+    };
+    const rawVisible = this.showMissingNextOnly
       ? projects.filter((project) => !project.someday && !hasNextAction.get(project.id))
       : projects;
+    const visibleProjects = [...rawVisible].sort((a, b) => {
+      const scoreDiff = projectRiskScore(b) - projectRiskScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.name.localeCompare(b.name);
+    });
 
     const areas = Array.from(new Set(this.taskManager.getAreasOfFocus()));
     if (this.elements.projectAreaFilter) {
@@ -1886,13 +1898,15 @@ export class UIController {
     const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters({ context: "all" }));
 
     visibleProjects.forEach((project) => {
-      const details = document.createElement("details");
-      details.className = "project";
-      details.dataset.projectId = project.id;
-      details.open = project.isExpanded;
-
       const missingNext = !project.someday && !hasNextAction.get(project.id);
       const missingArea = !project.areaOfFocus;
+      const deadlinePassed = Boolean(project.deadline && project.deadline < todayIsoProjects);
+      const isAtRisk = !project.someday && (missingNext || deadlinePassed);
+
+      const details = document.createElement("details");
+      details.className = isAtRisk ? "project project--at-risk" : "project";
+      details.dataset.projectId = project.id;
+      details.open = project.isExpanded;
       const taskCount = taskCountByProject.get(project.id) || 0;
       const summary = document.createElement("summary");
       summary.innerHTML = `

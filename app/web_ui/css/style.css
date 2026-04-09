@@ -1270,6 +1270,10 @@ button.meta-item:hover {
   padding: var(--space-3);
 }
 
+.project--at-risk {
+  border-left: 3px solid var(--warning);
+}
+
 .project summary {
   cursor: pointer;
   list-style: none;

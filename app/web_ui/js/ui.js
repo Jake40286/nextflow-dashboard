@@ -130,6 +130,7 @@ export class UIController {
     this.hideScheduledNextActions = loadNextHideScheduledPreference();
     this.nextGroupBy = loadNextGroupByPreference();
     this.nextGroupLimit = loadNextGroupLimitPreference();
+    this.nextGroupExpansions = new Map();
     this.kanbanGroupBy = loadKanbanGroupByPreference();
     this.activeArea = loadActiveAreaPreference();
     this.summaryCache = null;
@@ -267,6 +268,33 @@ export class UIController {
       this.renderAll();
     });
 
+    const { sortInfoHint, sortInfoPopup } = this.elements;
+    if (sortInfoHint && sortInfoPopup) {
+      sortInfoHint.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const isHidden = sortInfoPopup.hidden;
+        sortInfoPopup.hidden = !isHidden;
+        if (!sortInfoPopup.hidden) {
+          const rect = sortInfoHint.getBoundingClientRect();
+          const popupWidth = 320;
+          const left = Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8));
+          const top = rect.bottom + 6;
+          sortInfoPopup.style.left = `${left}px`;
+          sortInfoPopup.style.top = `${top}px`;
+        }
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!sortInfoPopup.hidden && !sortInfoPopup.contains(event.target) && event.target !== sortInfoHint) {
+          sortInfoPopup.hidden = true;
+        }
+      }, true);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !sortInfoPopup.hidden) {
+          sortInfoPopup.hidden = true;
+        }
+      });
+    }
+
     clearFilters.addEventListener("click", () => {
       this.filters = {
         context: ["all"],
@@ -334,6 +362,7 @@ export class UIController {
       nextGroupLimitInput.addEventListener("change", () => {
         const val = parseInt(nextGroupLimitInput.value, 10);
         this.nextGroupLimit = val > 0 ? val : 0;
+        this.nextGroupExpansions.clear();
         storeNextGroupLimitPreference(this.nextGroupLimit);
         this.renderNextActions();
       });
@@ -652,6 +681,7 @@ export class UIController {
     if (!this.panels?.some((panel) => panel.dataset.panel === panelName)) {
       panelName = "inbox";
     }
+    if (this.activePanel !== panelName) this.nextGroupExpansions.clear();
     this.activePanel = panelName;
     storeActivePanel(panelName);
     this.applyPanelVisibility();
@@ -1392,8 +1422,23 @@ export class UIController {
         });
       case "stale-first":
         return sorted.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
-      default:
-        return sorted;
+      default: {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const taskRiskScore = (task) => {
+          const overdue = (task.dueDate && task.dueDate < todayIso) || (task.followUpDate && task.followUpDate < todayIso);
+          if (overdue) return 3;
+          if (task.dueDate || task.followUpDate) return 2;
+          if (task.updatedAt) return 1;
+          return 0;
+        };
+        return sorted.sort((a, b) => {
+          const sa = taskRiskScore(a), sb = taskRiskScore(b);
+          if (sa !== sb) return sb - sa;
+          // stale tier: oldest-touched first
+          if (sa === 1) return (a.updatedAt || "").localeCompare(b.updatedAt || "");
+          return (a.title || "").localeCompare(b.title || "");
+        });
+      }
     }
   }
 
@@ -1668,12 +1713,20 @@ export class UIController {
 
       header.append(title, count);
       column.append(header);
-      const limit = this.nextGroupLimit > 0 ? this.nextGroupLimit : items.length;
+      const baseLimit = this.nextGroupLimit > 0 ? this.nextGroupLimit : items.length;
+      const expansion = this.nextGroupExpansions.get(group.key) || 0;
+      const limit = Math.min(baseLimit + expansion, items.length);
       items.slice(0, limit).forEach((task) => column.append(this.createTaskCard(task)));
       if (items.length > limit) {
         const more = document.createElement("p");
         more.className = "context-column-overflow muted small-text";
         more.textContent = `…and ${items.length - limit} more`;
+        more.style.cursor = "pointer";
+        more.title = "Click to show 3 more";
+        more.addEventListener("click", () => {
+          this.nextGroupExpansions.set(group.key, expansion + 3);
+          this.renderNextActions();
+        });
         column.append(more);
       }
       column.addEventListener("contextmenu", (event) => {
@@ -4259,6 +4312,60 @@ export class UIController {
       }
       container.append(item);
     });
+
+    // Standalone config item: future due date threshold (no boolean toggle — 0 disables)
+    const futureDueItem = document.createElement("li");
+    futureDueItem.className = "settings-item settings-item--block";
+    const futureDueMain = document.createElement("div");
+    futureDueMain.className = "settings-item-main";
+    const futureDueLabelWrap = document.createElement("div");
+    futureDueLabelWrap.className = "settings-item-label";
+    const futureDueLabel = document.createElement("span");
+    futureDueLabel.textContent = "Hide far-future due dates from Next Actions";
+    const futureDueMeta = document.createElement("span");
+    futureDueMeta.className = "settings-item-meta muted small-text";
+    futureDueMeta.textContent =
+      "Tasks with a due date beyond this many days are hidden when "Hide scheduled items" is on. Set to 0 to disable.";
+    futureDueLabelWrap.append(futureDueLabel, futureDueMeta);
+    futureDueMain.append(futureDueLabelWrap);
+    futureDueItem.append(futureDueMain);
+    const futureDueConfigPanel = document.createElement("div");
+    futureDueConfigPanel.className = "feature-flag-config-panel";
+    futureDueConfigPanel.hidden = false;
+    this.renderFutureDueThresholdConfig(futureDueConfigPanel);
+    futureDueItem.append(futureDueConfigPanel);
+    container.append(futureDueItem);
+  }
+
+  renderFutureDueThresholdConfig(panel) {
+    if (!panel) return;
+    panel.innerHTML = "";
+
+    const thresholds = this.taskManager.getStaleTaskThresholds();
+    const fieldWrap = document.createElement("label");
+    fieldWrap.className = "feature-flag-config-field";
+
+    const lbl = document.createElement("span");
+    lbl.className = "feature-flag-config-label";
+    lbl.textContent = "Days ahead (0 = disabled)";
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.max = "365";
+    input.step = "1";
+    input.value = String(thresholds.futureDueDaysThreshold);
+    input.dataset.staleThresholdKey = "futureDueDaysThreshold";
+
+    input.addEventListener("change", () => {
+      const parsed = Number.parseInt(input.value, 10);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        this.taskManager.updateStaleTaskThresholds({ futureDueDaysThreshold: parsed });
+      }
+    });
+
+    fieldWrap.append(lbl, input);
+    panel.append(fieldWrap);
   }
 
   renderStaleTaskThresholdConfig(panel) {
@@ -6333,6 +6440,7 @@ export class UIController {
       clarifyEffortSelect,
       clarifyTimeSelect,
       clarifyAddContext,
+      clarifyAddPerson,
       clarifyPreviewText,
       clarifyRecurrenceType,
       clarifyRecurrenceInterval,
@@ -6368,6 +6476,7 @@ export class UIController {
     // Actionable Yes — collapse the question, show the form
     clarifyActionableYes?.addEventListener("click", () => {
       this.handleClarifyActionableChoice(true);
+      this.clarifyState.actionableConfirmed = true;
       const fields = document.getElementById("clarifyActionableFields");
       if (fields) fields.hidden = false;
       const question = document.getElementById("clarifyActionableQuestion");
@@ -6417,11 +6526,13 @@ export class UIController {
     // Who section
     clarifyWhoSelf?.addEventListener("click", () => {
       selectChoice(whoChoices, clarifyWhoSelf);
+      this.clarifyState.whoChoice = "self";
       const row = document.getElementById("clarifyDelegateRow");
       if (row) row.hidden = true;
     });
     clarifyWhoDelegate?.addEventListener("click", () => {
       selectChoice(whoChoices, clarifyWhoDelegate);
+      this.clarifyState.whoChoice = "delegate";
       const row = document.getElementById("clarifyDelegateRow");
       if (row) {
         row.hidden = false;
@@ -6431,6 +6542,7 @@ export class UIController {
     });
 
     clarifyDelegateNameInput?.addEventListener("input", () => {
+      this.clarifyState.waitingFor = clarifyDelegateNameInput.value.trim();
       this._showClarifyDelegateSuggestions(clarifyDelegateNameInput);
     });
     clarifyDelegateNameInput?.addEventListener("blur", () => {
@@ -6440,23 +6552,52 @@ export class UIController {
       }, 120);
     });
 
-    // Date radios — show/hide date inputs inline
+    // Date radios — show/hide date inputs inline and sync state
     const updateDateInputs = () => {
       const specificFields = document.getElementById("clarifySpecificDateFields");
       const dueDateFields = document.getElementById("clarifyDueDateFields");
       if (specificFields) specificFields.hidden = !clarifyDateOptionSpecific?.checked;
       if (dueDateFields) dueDateFields.hidden = !clarifyDateOptionDue?.checked;
+      if (clarifyDateOptionSpecific?.checked) {
+        this.clarifyState.dueType = "calendar";
+      } else if (clarifyDateOptionDue?.checked) {
+        this.clarifyState.dueType = "due";
+      } else {
+        this.clarifyState.dueType = "none";
+        this.clarifyState.calendarDate = "";
+        this.clarifyState.calendarTime = "";
+        this.clarifyState.dueDate = "";
+      }
     };
     [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone].forEach((radio) => {
       radio?.addEventListener("change", updateDateInputs);
     });
-
-    // Recurrence — enable/disable interval input based on type selection
-    clarifyRecurrenceType?.addEventListener("change", () => {
-      if (clarifyRecurrenceInterval) {
-        clarifyRecurrenceInterval.disabled = !clarifyRecurrenceType.value;
-      }
+    this.elements.clarifySpecificDateInput?.addEventListener("change", () => {
+      this.clarifyState.calendarDate = this.elements.clarifySpecificDateInput.value;
     });
+    this.elements.clarifySpecificTimeInput?.addEventListener("change", () => {
+      this.clarifyState.calendarTime = this.elements.clarifySpecificTimeInput.value;
+    });
+    this.elements.clarifyDueDateInput?.addEventListener("change", () => {
+      this.clarifyState.dueDate = this.elements.clarifyDueDateInput.value;
+    });
+    clarifyProjectSelect?.addEventListener("change", () => {
+      const id = clarifyProjectSelect.value;
+      this.clarifyState.projectId = id && id !== "none" ? id : null;
+      this.clarifyState.projectName = this.clarifyState.projectId ? (this.getProjectName(this.clarifyState.projectId) || "") : "";
+    });
+
+    // Recurrence — enable/disable interval input and sync state
+    const syncRecurrenceState = () => {
+      const type = clarifyRecurrenceType?.value || "";
+      if (clarifyRecurrenceInterval) clarifyRecurrenceInterval.disabled = !type;
+      const interval = parseInt(clarifyRecurrenceInterval?.value, 10) || 1;
+      this.clarifyState.recurrenceRule = type
+        ? { type, interval: Math.max(1, interval) }
+        : null;
+    };
+    clarifyRecurrenceType?.addEventListener("change", syncRecurrenceState);
+    clarifyRecurrenceInterval?.addEventListener("input", syncRecurrenceState);
 
     // Metadata live updates
     [clarifyEffortSelect, clarifyTimeSelect].forEach((select) => {
@@ -6465,9 +6606,15 @@ export class UIController {
         this.clarifyState.time = clarifyTimeSelect?.value || "";
       });
     });
+    this.elements.clarifyAreaInput?.addEventListener("change", () => {
+      this.clarifyState.areaOfFocus = this.elements.clarifyAreaInput.value.trim() || "";
+    });
 
     // Add context
     clarifyAddContext?.addEventListener("click", () => this.handleClarifyAddContext());
+
+    // Add person
+    clarifyAddPerson?.addEventListener("click", () => this.handleClarifyAddPerson());
 
     // Preview text editing
     if (clarifyPreviewText) {
@@ -6510,6 +6657,7 @@ export class UIController {
       if (!this.readClarifyDateState()) return;
       // Read metadata
       this.clarifyState.contexts = this._readClarifyContextCheckboxes();
+      this.clarifyState.peopleTags = this._readClarifyPeopleCheckboxes();
       this.clarifyState.areaOfFocus = this.elements.clarifyAreaInput?.value.trim() || "";
       this.clarifyState.effort = clarifyEffortSelect?.value || "";
       this.clarifyState.time = clarifyTimeSelect?.value || "";
@@ -6567,14 +6715,30 @@ export class UIController {
       if (this.lastClarifyFocus && typeof this.lastClarifyFocus.focus === "function") {
         this.lastClarifyFocus.focus();
       }
+      if (!this._clarifyCompleting && this.clarifyState.taskId) {
+        this._saveClarifyDraft();
+      }
+      this._clarifyCompleting = false;
       this.resetClarifyState();
     }
+  }
+
+  _saveClarifyDraft() {
+    try {
+      localStorage.setItem(`clarify-draft-${this.clarifyState.taskId}`, JSON.stringify(this.clarifyState));
+    } catch (e) { /* storage full — ignore */ }
+  }
+
+  _clearClarifyDraft(taskId) {
+    if (taskId) localStorage.removeItem(`clarify-draft-${taskId}`);
   }
 
   resetClarifyState() {
     this.clarifyState = {
       taskId: null,
       currentStep: "identify",
+      actionableConfirmed: false,
+      whoChoice: "self",
       projectId: null,
       projectName: "",
       dueType: "none",
@@ -6583,6 +6747,7 @@ export class UIController {
       followUpDate: "",
       calendarTime: "",
       context: "",
+      peopleTags: [],
       effort: "",
       time: "",
       delegateTo: "",
@@ -6635,22 +6800,121 @@ export class UIController {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) return;
     this.resetClarifyState();
-    this.clarifyState.taskId = task.id;
-    this.clarifyState.contexts = task.contexts ? [...task.contexts] : [];
-    this.clarifyState.areaOfFocus = task.areaOfFocus || "";
-    this.clarifyState.effort = task.effortLevel || "";
-    this.clarifyState.time = task.timeRequired || "";
-    this.clarifyState.previewField = "title";
-    this.clarifyState.previewText = task.title || "";
+
+    let restoredDraft = false;
+    const draftKey = `clarify-draft-${taskId}`;
+    const savedDraft = localStorage.getItem(draftKey);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        if (draft.taskId === taskId) {
+          Object.assign(this.clarifyState, draft);
+          restoredDraft = true;
+        }
+      } catch (e) {
+        localStorage.removeItem(draftKey);
+      }
+    }
+
+    if (!restoredDraft) {
+      this.clarifyState.taskId = task.id;
+      this.clarifyState.contexts = task.contexts ? [...task.contexts] : [];
+      this.clarifyState.peopleTags = task.peopleTags ? [...task.peopleTags] : [];
+      this.clarifyState.areaOfFocus = task.areaOfFocus || "";
+      this.clarifyState.effort = task.effortLevel || "";
+      this.clarifyState.time = task.timeRequired || "";
+      this.clarifyState.previewField = "title";
+      this.clarifyState.previewText = task.title || "";
+    }
+
     this.populateClarifyPreview(task);
     this.populateClarifyContexts();
+    this.populateClarifyPeople();
     populateAreaSelect(
       this.elements.clarifyAreaInput,
       this.taskManager.getAreasOfFocus(),
-      task.areaOfFocus || ""
+      this.clarifyState.areaOfFocus || task.areaOfFocus || ""
     );
     this.populateProjectSelect();
+
+    if (restoredDraft) {
+      this._restoreClarifyDraftDOM();
+    }
+
     this.setClarifyModalOpen(true);
+  }
+
+  _restoreClarifyDraftDOM() {
+    const s = this.clarifyState;
+
+    // If the user had confirmed actionable (clicked "Yes"), restore that view
+    const postActionableSteps = new Set(["action-plan", "two-minute", "who", "dates", "metadata", "final"]);
+    if (s.actionableConfirmed || postActionableSteps.has(s.currentStep)) {
+      document.getElementById("clarifyActionableFields")?.removeAttribute("hidden");
+      const q = document.getElementById("clarifyActionableQuestion");
+      if (q) q.hidden = true;
+      const sum = document.getElementById("clarifyActionableSummary");
+      if (sum) sum.hidden = false;
+      // Also populate the editable title shown after Yes is clicked
+      if (this.elements.clarifyTitleSummary && s.previewText) {
+        this.elements.clarifyTitleSummary.textContent = s.previewText;
+      }
+    }
+
+    // Restore date selection
+    if (s.dueType === "calendar" && this.elements.clarifyDateOptionSpecific) {
+      this.elements.clarifyDateOptionSpecific.checked = true;
+      if (this.elements.clarifySpecificDateInput && s.calendarDate) {
+        this.elements.clarifySpecificDateInput.value = s.calendarDate;
+      }
+      if (this.elements.clarifySpecificTimeInput && s.calendarTime) {
+        this.elements.clarifySpecificTimeInput.value = s.calendarTime;
+      }
+      const specificFields = document.getElementById("clarifySpecificDateFields");
+      if (specificFields) specificFields.hidden = false;
+    } else if (s.dueType === "due" && this.elements.clarifyDateOptionDue) {
+      this.elements.clarifyDateOptionDue.checked = true;
+      if (this.elements.clarifyDueDateInput && s.dueDate) {
+        this.elements.clarifyDueDateInput.value = s.dueDate;
+      }
+      const dueDateFields = document.getElementById("clarifyDueDateFields");
+      if (dueDateFields) dueDateFields.hidden = false;
+    }
+
+    // Restore project picker visibility if a project was chosen
+    if (s.projectId && this.elements.clarifyProjectPicker) {
+      this.elements.clarifyProjectPicker.hidden = false;
+      document.getElementById("clarifyActionAddExisting")?.classList.add("is-selected");
+      document.getElementById("clarifyActionSingle")?.classList.remove("is-selected");
+    }
+
+    // Restore delegate/waiting state
+    if (s.whoChoice === "delegate") {
+      const delegateRow = document.getElementById("clarifyDelegateRow");
+      if (delegateRow) delegateRow.hidden = false;
+      if (this.elements.clarifyDelegateNameInput && s.waitingFor) {
+        this.elements.clarifyDelegateNameInput.value = s.waitingFor;
+      }
+      document.getElementById("clarifyWhoDelegate")?.classList.add("is-selected");
+      document.getElementById("clarifyWhoSelf")?.classList.remove("is-selected");
+      const normalFields = document.getElementById("clarifyNormalActionFields");
+      if (normalFields) normalFields.hidden = true;
+    }
+
+    // Restore recurrence (populateClarifyPreview always resets it to empty)
+    if (s.recurrenceRule?.type && this.elements.clarifyRecurrenceType) {
+      this.elements.clarifyRecurrenceType.value = s.recurrenceRule.type;
+      if (this.elements.clarifyRecurrenceInterval) {
+        this.elements.clarifyRecurrenceInterval.value = String(s.recurrenceRule.interval || 1);
+        this.elements.clarifyRecurrenceInterval.disabled = false;
+      }
+    }
+
+    // Navigate to the saved step
+    const validSteps = ["actionable", "action-plan", "two-minute", "who", "dates", "metadata", "final"];
+    if (validSteps.includes(s.currentStep)) {
+      this.showClarifyStep(s.currentStep);
+    }
   }
 
   closeClarifyModal() {
@@ -6726,6 +6990,7 @@ export class UIController {
       this.elements.clarifyDateOptionNone.checked = true;
     }
     this.populateClarifyContexts();
+    this.populateClarifyPeople();
     if (this.elements.clarifyEffortSelect) {
       this.elements.clarifyEffortSelect.value = this.clarifyState.effort || "";
     }
@@ -6766,6 +7031,59 @@ export class UIController {
     const container = this.elements.clarifyContextList;
     if (!container) return [];
     return Array.from(container.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+  }
+
+  populateClarifyPeople() {
+    const container = this.elements.clarifyPeopleList;
+    if (!container) return;
+    container.innerHTML = "";
+    const selected = new Set(this.clarifyState.peopleTags || []);
+    const people = this.taskManager.getPeopleTags({ includeNoteMentions: false });
+    people.forEach((tag) => {
+      const label = document.createElement("label");
+      label.className = "clarify-context-checkbox";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = tag;
+      checkbox.checked = selected.has(tag);
+      checkbox.addEventListener("change", () => {
+        this.clarifyState.peopleTags = this._readClarifyPeopleCheckboxes();
+      });
+      label.append(checkbox, document.createTextNode(stripTagPrefix(tag)));
+      container.append(label);
+    });
+  }
+
+  _readClarifyPeopleCheckboxes() {
+    const container = this.elements.clarifyPeopleList;
+    if (!container) return [];
+    return Array.from(container.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+  }
+
+  async handleClarifyAddPerson() {
+    const input = await this.showPrompt("New person tag (+ prefix optional):");
+    if (!input || !input.trim()) return;
+    const container = this.elements.clarifyPeopleList;
+    if (!container) return;
+    let normalized = input.trim();
+    if (!normalized.startsWith("+")) normalized = "+" + normalized;
+    if (normalized.length < 2) {
+      this.taskManager.notify("warn", "Person tag must have a name after +.");
+      return;
+    }
+    const label = document.createElement("label");
+    label.className = "clarify-context-checkbox";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = normalized;
+    checkbox.checked = true;
+    checkbox.addEventListener("change", () => {
+      this.clarifyState.peopleTags = this._readClarifyPeopleCheckboxes();
+    });
+    label.append(checkbox, document.createTextNode(stripTagPrefix(normalized)));
+    container.append(label);
+    if (!Array.isArray(this.clarifyState.peopleTags)) this.clarifyState.peopleTags = [];
+    if (!this.clarifyState.peopleTags.includes(normalized)) this.clarifyState.peopleTags.push(normalized);
   }
 
   _populateDelegateSuggestions() {
@@ -6846,6 +7164,8 @@ export class UIController {
       this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
       this.taskManager.notify("info", "Moved to Someday / Maybe.");
     }
+    this._clarifyCompleting = true;
+    this._clearClarifyDraft(this.clarifyState.taskId);
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -7076,6 +7396,8 @@ export class UIController {
     const closureNotes = this.elements.clarifyTwoMinuteClosureNotes?.value?.trim() || task.closureNotes;
     this.taskManager.completeTask(task.id, { archive: "reference", closureNotes });
     this.taskManager.notify("info", "Completed in under two minutes.");
+    this._clarifyCompleting = true;
+    this._clearClarifyDraft(this.clarifyState.taskId);
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -7141,6 +7463,7 @@ export class UIController {
       title: nextActionTitle,
       description: task.description,
       contexts: this.clarifyState.contexts?.length ? this.clarifyState.contexts : (task.contexts || []),
+      peopleTags: this.clarifyState.peopleTags?.length ? this.clarifyState.peopleTags : (task.peopleTags || []),
       areaOfFocus: this.clarifyState.areaOfFocus || null,
       effortLevel: this.clarifyState.effort || null,
       timeRequired: this.clarifyState.time || null,
@@ -7175,6 +7498,8 @@ export class UIController {
       ? `Routed to ${destinations.join(" + ")}.`
       : `Routed to ${destinations[0] || "Next Actions"}.`;
     this.taskManager.notify("info", routeMessage);
+    this._clarifyCompleting = true;
+    this._clearClarifyDraft(this.clarifyState.taskId);
     this.closeClarifyModal();
     this.setActivePanel("inbox");
   }
@@ -9733,6 +10058,8 @@ function mapElements() {
     searchTasks: byId("searchTasks"),
     clearFilters: byId("clearFilters"),
     taskSortSelect: byId("taskSortSelect"),
+    sortInfoHint: byId("sortInfoHint"),
+    sortInfoPopup: byId("sortInfoPopup"),
     expandProjects: byId("expandProjects"),
     calendarDate: byId("calendarDate"),
     calendarShowCompleted: byId("calendarShowCompleted"),
@@ -9928,6 +10255,8 @@ function mapElements() {
     clarifyDescSummary: byId("clarifyDescSummary"),
     clarifyContextList: byId("clarifyContextList"),
     clarifyAddContext: byId("clarifyAddContext"),
+    clarifyPeopleList: byId("clarifyPeopleList"),
+    clarifyAddPerson: byId("clarifyAddPerson"),
     clarifyEffortSelect: byId("clarifyEffortSelect"),
     clarifyTimeSelect: byId("clarifyTimeSelect"),
     clarifyRecurrenceType: byId("clarifyRecurrenceType"),

@@ -122,6 +122,7 @@ const DEFAULT_STALE_TASK_THRESHOLDS = Object.freeze({
   stale: 14,
   old: 30,
   ancient: 90,
+  futureDueDaysThreshold: 30,
 });
 
 const DEFAULT_GOOGLE_CALENDAR_CONFIG = Object.freeze({
@@ -836,15 +837,27 @@ export class TaskManager extends EventTarget {
         const area = this._effectiveTaskArea(task);
         if (area !== null && area !== areaLens) return false;
       }
-      if (!includeFutureScheduled && task.calendarDate) {
+      if (!includeFutureScheduled) {
         const today = new Date();
         const y = today.getUTCFullYear();
         const m = today.getUTCMonth();
         const d = today.getUTCDate();
-        const cutoff = new Date(Date.UTC(y, m, d));
-        const when = new Date(task.calendarDate);
-        if (!Number.isNaN(when.getTime()) && when > cutoff) {
-          return false;
+        const todayCutoff = new Date(Date.UTC(y, m, d));
+        if (task.calendarDate) {
+          const when = new Date(task.calendarDate);
+          if (!Number.isNaN(when.getTime()) && when > todayCutoff) {
+            return false;
+          }
+        }
+        if (task.dueDate) {
+          const threshold = this.getStaleTaskThresholds().futureDueDaysThreshold;
+          if (threshold > 0) {
+            const dueCutoff = new Date(Date.UTC(y, m, d + threshold));
+            const when = new Date(task.dueDate);
+            if (!Number.isNaN(when.getTime()) && when > dueCutoff) {
+              return false;
+            }
+          }
         }
       }
       return true;
@@ -3107,6 +3120,7 @@ function normalizeStaleTaskThresholds(thresholds, fallback = DEFAULT_STALE_TASK_
     stale: fallback.stale,
     old: fallback.old,
     ancient: fallback.ancient,
+    futureDueDaysThreshold: fallback.futureDueDaysThreshold,
   };
 
   if (typeof thresholds?.warn === "number" && thresholds.warn > 0) {
@@ -3120,6 +3134,10 @@ function normalizeStaleTaskThresholds(thresholds, fallback = DEFAULT_STALE_TASK_
   }
   if (typeof thresholds?.ancient === "number" && thresholds.ancient > 0) {
     normalized.ancient = Math.max(1, Math.floor(thresholds.ancient));
+  }
+  // 0 means disabled; positive values cap at 365
+  if (typeof thresholds?.futureDueDaysThreshold === "number" && thresholds.futureDueDaysThreshold >= 0) {
+    normalized.futureDueDaysThreshold = Math.min(365, Math.floor(thresholds.futureDueDaysThreshold));
   }
 
   return normalized;

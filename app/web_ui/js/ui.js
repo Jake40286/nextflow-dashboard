@@ -4325,7 +4325,7 @@ export class UIController {
     const futureDueMeta = document.createElement("span");
     futureDueMeta.className = "settings-item-meta muted small-text";
     futureDueMeta.textContent =
-      "Tasks with a due date beyond this many days are hidden when "Hide scheduled items" is on. Set to 0 to disable.";
+      'Tasks with a due date beyond this many days are hidden when "Hide scheduled items" is on. Set to 0 to disable.';
     futureDueLabelWrap.append(futureDueLabel, futureDueMeta);
     futureDueMain.append(futureDueLabelWrap);
     futureDueItem.append(futureDueMain);

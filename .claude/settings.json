@@ -9,7 +9,17 @@
       "Bash(curl -s -X PATCH http://localhost:8002/feedback/0ce2c9fc62864712a2312be916047bae -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
       "Bash(python3 -c 'import json,sys; [print\\(json.dumps\\(i,indent=2\\)\\) for i in json.load\\(sys.stdin\\) if i['\\\\''id'\\\\''].startswith\\('\\\\''81801cdee52243168d88c87ab91b492e'\\\\''\\)]')",
       "Bash(curl -s -X PATCH http://localhost:8002/feedback/81801cdee52243168d88c87ab91b492e -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/315e6f38b7e64e68bf9263af054ba0d1 -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/531f928770674c069520b1d655f979ce -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(python3 -c \"import json; data=json.load\\(open\\('/home/jssmith/docker/nextflow/data/feedback.json'\\)\\); item=next\\(i for i in data if i['id']=='8ac04bf5f83a4dbba4dbba8f3bb8b9d6e737c' or i['id'].startswith\\('8ac04bf5'\\)\\); print\\(json.dumps\\(item, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json; data=json.load\\(open\\('/home/jssmith/docker/nextflow/data/feedback.json'\\)\\); resolved=[i for i in data if i.get\\('resolved'\\) or i.get\\('status'\\)]; [print\\(json.dumps\\(i, indent=2\\)\\) for i in resolved]\")",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/6ab11a7c3fd94f8db0cf679bc5f56735 -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/380fed1f8d724885949a92325b283d4b -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/7c91ae6e25394e53b4875fc536015515 -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('resolved:', d.get\\('resolved'\\)\\)\")",
+      "Bash(node --check app/web_ui/js/data.js)",
+      "Bash(curl -s -X PATCH http://localhost:8002/feedback/bd8335cb301847cab198f6166189cae8 -H 'Content-Type: application/json' -d '{\"resolved\": true}')"
     ]
   },
   "enabledPlugins": {

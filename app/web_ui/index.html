@@ -252,7 +252,7 @@
               </label>
               <label id="nextHideScheduledControl" class="toolbar-toggle" for="toggleHideScheduledNext">
                 <input id="toggleHideScheduledNext" type="checkbox" />
-                <span>Hide scheduled items</span>
+                <span>Hide future scheduled tasks</span>
               </label>
               <label id="nextGroupByLabel" class="filter-control" for="nextGroupBySelect">Group by</label>
               <select id="nextGroupBySelect">
@@ -272,7 +272,7 @@
               </select>
               <label id="nextGroupLimitLabel" class="filter-control" for="nextGroupLimitInput">Max per group</label>
               <input id="nextGroupLimitInput" type="number" min="1" step="1" placeholder="No limit" style="width:6rem" />
-              <label class="filter-control" for="taskSortSelect">Sort by</label>
+              <label class="filter-control" for="taskSortSelect">Sort by <span id="sortInfoHint" class="sort-info-hint" style="cursor:pointer;font-size:0.8em;opacity:0.6;">ⓘ</span></label>
               <select id="taskSortSelect">
                 <option value="default">Default order</option>
                 <option value="updated-asc">Least recently updated</option>
@@ -658,6 +658,14 @@
     </section>
   </main>
 
+  <div id="sortInfoPopup" class="sort-info-popup" hidden>
+    <p class="sort-info-popup-row"><strong>Default order</strong> — overdue tasks first (past due date or follow-up date), then tasks with upcoming dates, then tasks that have been untouched the longest, then the rest. Alphabetical within each tier.</p>
+    <p class="sort-info-popup-row"><strong>Least / Most recently updated</strong> — ordered by when the task was last changed.</p>
+    <p class="sort-info-popup-row"><strong>Title A→Z / Z→A</strong> — alphabetical by title.</p>
+    <p class="sort-info-popup-row"><strong>Due date (soonest)</strong> — tasks with the nearest due or calendar date first.</p>
+    <p class="sort-info-popup-row"><strong>Longest untouched</strong> — tasks that haven't been modified in the longest time appear first.</p>
+  </div>
+
   <div id="taskContextMenu" class="task-context-menu" role="menu" aria-label="Task actions" aria-hidden="true" hidden>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open">Open details</button>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open-project" hidden>Open project</button>
@@ -899,10 +907,17 @@
                 </div>
               </div>
               <div class="clarify-project-option">
-                <label>Context</label>
+                <label>Physical Context</label>
                 <div class="clarify-context-control">
                   <div id="clarifyContextList" class="clarify-context-list"></div>
                   <button id="clarifyAddContext" class="btn btn-light" type="button">+ Add context</button>
+                </div>
+              </div>
+              <div class="clarify-project-option">
+                <label>People</label>
+                <div class="clarify-context-control">
+                  <div id="clarifyPeopleList" class="clarify-context-list"></div>
+                  <button id="clarifyAddPerson" class="btn btn-light" type="button">+ Add person</button>
                 </div>
               </div>
               <div class="clarify-project-option">

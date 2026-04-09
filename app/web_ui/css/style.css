@@ -1765,6 +1765,31 @@ button.meta-item:hover {
   border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
 }
 
+.sort-info-popup {
+  position: fixed;
+  z-index: 2800;
+  max-width: 320px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 85%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 92%, var(--surface));
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sort-info-popup-row {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.sort-info-popup-row strong {
+  color: var(--text);
+}
+
 .report-controls {
   display: flex;
   flex-wrap: wrap;

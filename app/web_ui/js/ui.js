@@ -7753,16 +7753,17 @@ export class UIController {
       completeButton.className = "btn btn-primary";
       completeButton.textContent = "Complete";
       completeButton.addEventListener("click", () => {
+        this.taskManager.completeTask(task.id, { archive: "log" });
+        this.closeTaskFlyout();
+      });
+      const completeArchiveButton = document.createElement("button");
+      completeArchiveButton.type = "button";
+      completeArchiveButton.className = "btn btn-light";
+      completeArchiveButton.textContent = "Complete & Archive";
+      completeArchiveButton.addEventListener("click", () => {
         this.openClosureNotes(task.id, "reference");
       });
-      const completeDeleteButton = document.createElement("button");
-      completeDeleteButton.type = "button";
-      completeDeleteButton.className = "btn btn-danger";
-      completeDeleteButton.textContent = "Complete & Delete";
-      completeDeleteButton.addEventListener("click", () => {
-        this.openClosureNotes(task.id, "log");
-      });
-      actionToolbar.append(convertButton, completeButton, completeDeleteButton);
+      actionToolbar.append(convertButton, completeButton, completeArchiveButton);
     }
 
     if (!isCompleted) {

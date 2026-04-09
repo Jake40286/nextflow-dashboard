@@ -63,7 +63,6 @@ const TRANSITIONS = {
     { label: "Return to Inbox", target: STATUS.INBOX },
   ],
   [STATUS.SOMEDAY]: [
-    { label: "Activate → Next", target: STATUS.NEXT },
     { label: "Back to Inbox", target: STATUS.INBOX },
   ],
 };
@@ -7387,12 +7386,14 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      const myDayButton = document.createElement("button");
-      myDayButton.type = "button";
-      myDayButton.className = "btn btn-light";
-      myDayButton.textContent = this.isTaskInMyDay(task) ? "Remove from My Day" : "Add to My Day";
-      myDayButton.addEventListener("click", () => this.toggleTaskMyDay(task));
-      actionToolbar.append(myDayButton);
+      if (task.status !== STATUS.SOMEDAY) {
+        const myDayButton = document.createElement("button");
+        myDayButton.type = "button";
+        myDayButton.className = "btn btn-light";
+        myDayButton.textContent = this.isTaskInMyDay(task) ? "Remove from My Day" : "Add to My Day";
+        myDayButton.addEventListener("click", () => this.toggleTaskMyDay(task));
+        actionToolbar.append(myDayButton);
+      }
       transitions.forEach((transition) => {
         const button = document.createElement("button");
         button.type = "button";

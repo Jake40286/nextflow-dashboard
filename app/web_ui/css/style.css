@@ -2877,6 +2877,45 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
+.task-flyout-complete {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-flyout-complete-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.task-flyout-complete-secondary {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.task-flyout-complete-secondary:hover {
+  color: var(--text);
+}
+
+.task-flyout-workflow-label {
+  margin: 0 0 2px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  width: 100%;
+}
+
+.task-edit-convert {
+  margin-top: calc(var(--space-1) * -1);
+}
+
 .task-notes {
   display: grid;
   gap: var(--space-2);

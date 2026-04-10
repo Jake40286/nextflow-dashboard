@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import datetime
 import gzip
+import io
 import json
 import mimetypes
 import os
@@ -175,6 +176,32 @@ def get_server_address():
 
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     """Serve static assets and expose a simple JSON state API."""
+
+    # Files that must never be HTTP-cached so browsers always revalidate them.
+    _NO_CACHE_PATHS = {"/sw.js", "/site.webmanifest"}
+
+    def send_head(self):
+        """Inject Cache-Control: no-cache for the service worker and manifest."""
+        clean_path = self.path.split("?")[0].split("#")[0]
+        if clean_path in self._NO_CACHE_PATHS:
+            file_path = self.translate_path(self.path)
+            p = Path(file_path)
+            if not p.exists():
+                self.send_error(404)
+                return None
+            try:
+                data = p.read_bytes()
+            except OSError:
+                self.send_error(500)
+                return None
+            ctype = "application/javascript" if clean_path.endswith(".js") else "application/manifest+json"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            return io.BytesIO(data)
+        return super().send_head()
 
     @property
     def _parsed_path(self):

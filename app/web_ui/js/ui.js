@@ -147,6 +147,7 @@ export class UIController {
     this.isFlyoutOpen = false;
     this.flyoutContext = { readOnly: false, entry: null };
     this.handleFlyoutKeydown = null;
+    this._historyNavPending = false;
     this.calendarCursor = new Date();
     this.projectCache = null;
     this.projectLookup = new Map();
@@ -206,6 +207,7 @@ export class UIController {
     this.setupCalendarDayContextMenu();
     this.setupContextColumnContextMenu();
     this.setupFlyout();
+    this.setupBackNavigation();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
     this.setupLightbox();
@@ -1171,7 +1173,33 @@ export class UIController {
     this.applyAssociationFlyoutState();
   }
 
-  applyAssociationFlyoutState() {
+  setupBackNavigation() {
+    // Replace any stale layer state from a previous session with a clean base marker
+    // so hardware-back works correctly from the first interaction.
+    if (history.state?.nextflowLayer) {
+      history.replaceState({ nextflowBase: true }, "");
+    }
+
+    window.addEventListener("popstate", () => {
+      // If we triggered this pop ourselves (closing a layer via UI), skip.
+      if (this._historyNavPending) {
+        this._historyNavPending = false;
+        return;
+      }
+      // Hardware back button: close the topmost visible layer.
+      const clarifyModal = this.elements.clarifyModal;
+      if (clarifyModal?.classList.contains("is-open")) {
+        this.closeClarifyModal({ fromPopstate: true });
+      } else if (this.isFlyoutOpen) {
+        this.closeTaskFlyout({ fromPopstate: true });
+      } else if (this.associationFlyoutOpen) {
+        this.associationFlyoutOpen = false;
+        this.applyAssociationFlyoutState({ fromPopstate: true });
+      }
+    });
+  }
+
+  applyAssociationFlyoutState({ fromPopstate = false } = {}) {
     const wrapper = this.elements.associationFlyout;
     const toggle = this.elements.associationFlyoutToggle;
     const glyph = this.elements.associationFlyoutToggleGlyph;
@@ -1184,6 +1212,14 @@ export class UIController {
     );
     if (glyph) {
       glyph.textContent = this.associationFlyoutOpen ? "◂" : "▸";
+    }
+    if (!fromPopstate) {
+      if (this.associationFlyoutOpen) {
+        history.pushState({ nextflowLayer: "association" }, "");
+      } else if (history.state?.nextflowLayer === "association") {
+        this._historyNavPending = true;
+        history.back();
+      }
     }
   }
 
@@ -6703,6 +6739,7 @@ export class UIController {
       this.lastClarifyFocus = document.activeElement;
       modal.classList.add("is-open");
       modal.removeAttribute("hidden");
+      history.pushState({ nextflowLayer: "clarify" }, "");
       if (this.handleClarifyKeydown) {
         document.addEventListener("keydown", this.handleClarifyKeydown);
       }
@@ -6917,8 +6954,13 @@ export class UIController {
     }
   }
 
-  closeClarifyModal() {
+  closeClarifyModal({ fromPopstate = false } = {}) {
+    const wasOpen = this.elements.clarifyModal?.classList.contains("is-open");
     this.setClarifyModalOpen(false);
+    if (wasOpen && !fromPopstate && history.state?.nextflowLayer === "clarify") {
+      this._historyNavPending = true;
+      history.back();
+    }
   }
 
   showClarifyStep(step) {
@@ -7547,6 +7589,9 @@ export class UIController {
     flyout.setAttribute("aria-hidden", "false");
     document.body.classList.add("flyout-open");
     this.isFlyoutOpen = true;
+    if (!wasOpen) {
+      history.pushState({ nextflowLayer: "flyout" }, "");
+    }
     if (!wasOpen && this.handleFlyoutKeydown) {
       document.addEventListener("keydown", this.handleFlyoutKeydown);
     }
@@ -7555,9 +7600,10 @@ export class UIController {
     }
   }
 
-  closeTaskFlyout() {
+  closeTaskFlyout({ fromPopstate = false } = {}) {
     const flyout = this.elements.taskFlyout;
     if (!flyout) return;
+    const wasOpen = this.isFlyoutOpen;
     this.closeTaskNoteContextMenu();
     this.closeTaskListItemContextMenu();
     flyout.classList.remove("is-open");
@@ -7573,6 +7619,10 @@ export class UIController {
     if (infoToggle) {
       infoToggle.setAttribute("aria-pressed", "false");
       infoToggle.classList.remove("is-active");
+    }
+    if (wasOpen && !fromPopstate && history.state?.nextflowLayer === "flyout") {
+      this._historyNavPending = true;
+      history.back();
     }
   }
 
@@ -7724,6 +7774,7 @@ export class UIController {
       return;
     }
 
+    let completeSection = null;
     if (!isCompleted) {
       if (task.status !== STATUS.SOMEDAY) {
         const myDayButton = document.createElement("button");
@@ -7743,14 +7794,18 @@ export class UIController {
         });
         actionToolbar.append(button);
       });
-      const convertButton = document.createElement("button");
-      convertButton.type = "button";
-      convertButton.className = "btn btn-light";
-      convertButton.textContent = "Convert to project";
-      convertButton.addEventListener("click", () => this.convertTaskToProject(task));
+      if (actionToolbar.childElementCount > 0) {
+        const workflowLabel = document.createElement("p");
+        workflowLabel.className = "task-flyout-workflow-label";
+        workflowLabel.textContent = "Move to";
+        actionToolbar.prepend(workflowLabel);
+      }
+
+      completeSection = document.createElement("div");
+      completeSection.className = "task-flyout-complete";
       const completeButton = document.createElement("button");
       completeButton.type = "button";
-      completeButton.className = "btn btn-primary";
+      completeButton.className = "btn btn-primary task-flyout-complete-btn";
       completeButton.textContent = "Complete";
       completeButton.addEventListener("click", () => {
         this.taskManager.completeTask(task.id, { archive: "log" });
@@ -7758,16 +7813,16 @@ export class UIController {
       });
       const completeArchiveButton = document.createElement("button");
       completeArchiveButton.type = "button";
-      completeArchiveButton.className = "btn btn-light";
-      completeArchiveButton.textContent = "Complete & Archive";
+      completeArchiveButton.className = "task-flyout-complete-secondary";
+      completeArchiveButton.textContent = "Archive on completion \u2192";
       completeArchiveButton.addEventListener("click", () => {
         this.openClosureNotes(task.id, "reference");
       });
-      actionToolbar.append(convertButton, completeButton, completeArchiveButton);
+      completeSection.append(completeButton, completeArchiveButton);
     }
 
     if (!isCompleted) {
-      content.append(...[description, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
+      content.append(...[description, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
     } else {
       content.append(...[description, actionToolbar, listSection, notesSection, meta].filter(Boolean));
     }
@@ -8282,6 +8337,18 @@ export class UIController {
     projectControls.append(projectSelect, createProjectButton);
     projectGroup.append(projectControls);
 
+    let convertRow = null;
+    if (!isArchivedEntry && !task.completedAt) {
+      convertRow = document.createElement("div");
+      convertRow.className = "task-edit-convert";
+      const convertBtn = document.createElement("button");
+      convertBtn.type = "button";
+      convertBtn.className = "btn btn-link";
+      convertBtn.textContent = "Convert task to project \u2192";
+      convertBtn.addEventListener("click", () => this.convertTaskToProject(task));
+      convertRow.append(convertBtn);
+    }
+
     const areaGroup = document.createElement("div");
     areaGroup.className = "task-edit-field";
     const areaLabel = document.createElement("span");
@@ -8544,6 +8611,7 @@ export class UIController {
       timeGroup,
       statusGroup,
       projectGroup,
+      ...(convertRow ? [convertRow] : []),
       dueGroup,
       followUpGroup,
       calendarGroup,
@@ -9864,6 +9932,17 @@ export class UIController {
     }
     root.dataset.theme = theme;
     document.body.dataset.theme = theme;
+
+    // Keep the PWA status bar colour in sync with the active theme background.
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (metaThemeColor) {
+      const activeThemeOption = THEME_OPTIONS.find((o) => o.id === theme);
+      const bgColor = theme === "custom"
+        ? (this.taskManager.getCustomTheme()?.canvas || "#f5efe2")
+        : (activeThemeOption?.swatches?.[0] || "#f5efe2");
+      metaThemeColor.setAttribute("content", bgColor);
+    }
+
     const toggle = this.elements.themeToggle;
     if (!toggle) return;
     const activeTheme = THEME_OPTIONS.find((option) => option.id === theme) || THEME_OPTIONS[0];

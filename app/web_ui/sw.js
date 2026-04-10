@@ -1,4 +1,4 @@
-const CACHE_NAME = "nextflow-shell-v2";
+const CACHE_NAME = "nextflow-shell-v3";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -8,6 +8,7 @@ const CORE_ASSETS = [
   "/js/ui.js",
   "/js/data.js",
   "/js/analytics.js",
+  "/js/review.js",
   "/lib/chart.min.js",
   "/lib/dragdrop.js",
   "/favicon-16x16.png",
@@ -21,9 +22,7 @@ const CORE_ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch((error) => {
-      console.warn("SW install cache error", error);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
   self.skipWaiting();
 });
@@ -47,7 +46,11 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   // Always bypass API calls — never cache dynamic data endpoints.
-  if (isSameOrigin && (url.pathname.startsWith("/state") || url.pathname.startsWith("/feedback"))) {
+  if (isSameOrigin && (
+    url.pathname.startsWith("/state") ||
+    url.pathname.startsWith("/completed") ||
+    url.pathname.startsWith("/feedback")
+  )) {
     return;
   }
 
@@ -80,7 +83,14 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match("/index.html")))
+        .catch(() =>
+          caches.match(request)
+            .then((cached) => cached || caches.match("/index.html"))
+            .then((response) => response || new Response(
+              "<html><body><p style='font-family:sans-serif;padding:2rem'>NextFlow is offline. Please reconnect and reload.</p></body></html>",
+              { headers: { "Content-Type": "text/html" } }
+            ))
+        )
     );
     return;
   }

@@ -772,8 +772,41 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch((error) => {
+        // Snapshot the current controller before registration. Used below to
+        // distinguish a first-time SW install (controller was null) from an
+        // update (controller changed from one SW to another).
+        const initialController = navigator.serviceWorker.controller;
+
+        navigator.serviceWorker.register("/sw.js").then((registration) => {
+          // Proactively check for a new SW whenever the user brings the app
+          // back into focus after it has been backgrounded.
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              registration.update().catch(() => {});
+            }
+          });
+        }).catch((error) => {
           console.warn("Service worker registration failed:", error);
+        });
+
+        // When a new SW activates via skipWaiting() and claims this page,
+        // reload automatically so the app runs the updated code.
+        // Guard with initialController so we don't reload on the very first
+        // SW install (when there was no prior controller).
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!initialController) return;
+          // Clear stale version so the post-reload _checkServerVersion treats
+          // this as a fresh first-launch and silently records the new version,
+          // rather than showing the "update available" banner unnecessarily.
+          localStorage.removeItem("nextflow-server-version");
+          // Brief user-visible notice before the reload.
+          const notice = document.createElement("div");
+          notice.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;" +
+            "background:var(--accent,#0f766e);color:#fff;text-align:center;" +
+            "padding:12px 16px;font:500 14px/1.4 sans-serif;";
+          notice.textContent = "Updating to new version\u2026";
+          document.body.appendChild(notice);
+          setTimeout(() => window.location.reload(), 1200);
         });
       });
     }

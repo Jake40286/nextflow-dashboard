@@ -2630,6 +2630,7 @@ export class UIController {
       grid.append(cell);
     });
 
+    const todayKey = this.getTodayDateKey();
     const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
     for (let cellIndex = 0; cellIndex < totalCells; cellIndex += 1) {
       const dayContainer = document.createElement("div");
@@ -2642,13 +2643,17 @@ export class UIController {
         continue;
       }
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNumber).padStart(2, "0")}`;
+      const isToday = dateKey === todayKey;
+      if (isToday) {
+        dayContainer.classList.add("calendar-grid-cell--today");
+      }
       dayContainer.dataset.date = dateKey;
       dayContainer.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         this.openCalendarDayContextMenu(dateKey, event.clientX, event.clientY);
       });
       const header = document.createElement("div");
-      header.className = "calendar-grid-day";
+      header.className = isToday ? "calendar-grid-day calendar-grid-day--today" : "calendar-grid-day";
       header.textContent = dayNumber;
       dayContainer.append(header);
       const dayEntries = entryMap.get(dateKey) || [];

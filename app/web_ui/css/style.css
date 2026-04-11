@@ -2195,9 +2195,25 @@ button.meta-item:hover {
   opacity: 0.55;
 }
 
+.calendar-grid-cell--today {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
+}
+
 .calendar-grid-day {
   font-weight: 700;
   font-size: 0.85rem;
+}
+
+.calendar-grid-day--today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .calendar-grid-list {

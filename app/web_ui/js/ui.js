@@ -4812,7 +4812,10 @@ export class UIController {
       deleteButton.dataset.settingsValue = value;
 
       // Area assignment chips — rendered inline between label and actions
-      if (areasData && areasData.all.length && areasData.byItem.has(value)) {
+      // Show chips for all contexts/people items when areas exist, even if the
+      // item was added via a task (not yet in settings.contextOptions) and thus
+      // absent from byItem. In that case assignedAreas defaults to [].
+      if (areasData && areasData.all.length) {
         const assignedAreas = areasData.byItem.get(value) || [];
         const chipGroup = document.createElement("div");
         chipGroup.className = "settings-item-areas";
@@ -4996,19 +4999,19 @@ export class UIController {
       if (type === "context") {
         const opts = this.taskManager.getContextOptionsWithAreas();
         const opt = opts.find((o) => o.name === value);
-        if (!opt) return;
-        const newAreas = opt.areas.includes(areaValue)
-          ? opt.areas.filter((a) => a !== areaValue)
-          : [...opt.areas, areaValue];
+        const currentAreas = opt?.areas || [];
+        const newAreas = currentAreas.includes(areaValue)
+          ? currentAreas.filter((a) => a !== areaValue)
+          : [...currentAreas, areaValue];
         this.taskManager.setContextAreas(value, newAreas);
       }
       if (type === "people") {
         const opts = this.taskManager.getPeopleTagOptionsWithAreas();
         const opt = opts.find((o) => o.name === value);
-        if (!opt) return;
-        const newAreas = opt.areas.includes(areaValue)
-          ? opt.areas.filter((a) => a !== areaValue)
-          : [...opt.areas, areaValue];
+        const currentAreas = opt?.areas || [];
+        const newAreas = currentAreas.includes(areaValue)
+          ? currentAreas.filter((a) => a !== areaValue)
+          : [...currentAreas, areaValue];
         this.taskManager.setPeopleTagAreas(value, newAreas);
       }
       return;

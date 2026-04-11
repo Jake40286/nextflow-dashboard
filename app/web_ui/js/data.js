@@ -2115,11 +2115,15 @@ export class TaskManager extends EventTarget {
     const currentOptions = Array.isArray(this.state.settings?.contextOptions)
       ? this.state.settings.contextOptions
       : [];
-    if (!currentOptions.some((opt) => {
+    const existsInOptions = currentOptions.some((opt) => {
       const n = typeof opt === "object" && opt !== null ? opt.name : opt;
       return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
-    })) return false;
-    this.state.settings.contextOptions = currentOptions.map((opt) => {
+    });
+    // Upsert: if the context was added via a task (not Settings UI) it may be
+    // absent from contextOptions even though it appears in getContexts(). Add it
+    // now so area assignments can be persisted.
+    const baseOptions = existsInOptions ? currentOptions : [...currentOptions, { name, areas: [] }];
+    this.state.settings.contextOptions = baseOptions.map((opt) => {
       const n = typeof opt === "object" && opt !== null ? opt.name : opt;
       if (typeof n === "string" && n.toLowerCase() === name.toLowerCase()) {
         return { name: n, areas: validAreas };
@@ -2140,11 +2144,12 @@ export class TaskManager extends EventTarget {
     const currentOptions = Array.isArray(this.state.settings?.peopleOptions)
       ? this.state.settings.peopleOptions
       : [];
-    if (!currentOptions.some((opt) => {
+    const existsInOptions = currentOptions.some((opt) => {
       const n = typeof opt === "object" && opt !== null ? opt.name : opt;
       return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
-    })) return false;
-    this.state.settings.peopleOptions = currentOptions.map((opt) => {
+    });
+    const baseOptions = existsInOptions ? currentOptions : [...currentOptions, { name, areas: [] }];
+    this.state.settings.peopleOptions = baseOptions.map((opt) => {
       const n = typeof opt === "object" && opt !== null ? opt.name : opt;
       if (typeof n === "string" && n.toLowerCase() === name.toLowerCase()) {
         return { name: n, areas: validAreas };

@@ -3587,11 +3587,29 @@ export class UIController {
         });
       }
 
-      const { tags: itemTags, text: itemText } = extractTags(item.description);
+      const raw = item.description || "";
+      const hasTitle = raw.startsWith("# ");
+      const firstNewline = raw.indexOf("\n");
+      const rawTitle = hasTitle ? raw.slice(2, firstNewline === -1 ? undefined : firstNewline) : null;
+      const rawBody = hasTitle && firstNewline !== -1 ? raw.slice(firstNewline + 1) : hasTitle ? "" : raw;
+      const { tags: itemTags, text: itemText } = extractTags(rawBody);
 
-      const desc = document.createElement("p");
+      const desc = document.createElement("div");
       desc.className = "feedback-card-desc";
-      desc.textContent = itemText;
+      if (rawTitle !== null) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "feedback-card-title";
+        titleEl.textContent = rawTitle.trim();
+        desc.append(titleEl);
+        if (itemText) {
+          const bodyEl = document.createElement("p");
+          bodyEl.className = "feedback-card-body";
+          bodyEl.textContent = itemText;
+          desc.append(bodyEl);
+        }
+      } else {
+        desc.textContent = itemText;
+      }
       card.append(desc);
 
       let tagsEl = null;
@@ -3761,8 +3779,26 @@ export class UIController {
             });
             if (!res.ok) throw new Error();
             item.description = newDesc;
-            const { tags: updatedTags, text: updatedText } = extractTags(newDesc);
-            desc.textContent = updatedText;
+            const hasUpdatedTitle = newDesc.startsWith("# ");
+            const updatedFirstNewline = newDesc.indexOf("\n");
+            const updatedRawBody = hasUpdatedTitle && updatedFirstNewline !== -1 ? newDesc.slice(updatedFirstNewline + 1) : hasUpdatedTitle ? "" : newDesc;
+            const { tags: updatedTags, text: updatedText } = extractTags(updatedRawBody);
+            desc.innerHTML = "";
+            if (hasUpdatedTitle) {
+              const updatedRawTitle = newDesc.slice(2, updatedFirstNewline === -1 ? undefined : updatedFirstNewline).trim();
+              const titleEl = document.createElement("div");
+              titleEl.className = "feedback-card-title";
+              titleEl.textContent = updatedRawTitle;
+              desc.append(titleEl);
+              if (updatedText) {
+                const bodyEl = document.createElement("p");
+                bodyEl.className = "feedback-card-body";
+                bodyEl.textContent = updatedText;
+                desc.append(bodyEl);
+              }
+            } else {
+              desc.textContent = updatedText;
+            }
             renderCardTags(updatedTags);
             form.remove();
             desc.hidden = false;

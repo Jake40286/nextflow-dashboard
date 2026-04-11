@@ -4069,6 +4069,17 @@ textarea:focus-visible,
   word-break: break-word;
 }
 
+.feedback-card-title {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.feedback-card-body {
+  margin: 0;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .feedback-card-meta {
   font-size: 0.75rem;
   color: var(--text-muted);

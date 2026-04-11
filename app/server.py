@@ -662,7 +662,20 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._send_json(payload)
 
     def _handle_export_get(self):
-        """Return a full state snapshot (state + completed) as a downloadable JSON file."""
+        """Return a clean state snapshot (state + completed) as a downloadable JSON file.
+
+        Internal sync/plumbing fields are stripped so the file is readable and
+        useful to the user.  The result is still a valid NextFlow import file.
+        """
+        _STATE_STRIP = {"_rev", "_tombstones", "deviceLog", "syncMeta", "_serverVersion"}
+        _TASK_STRIP = {"_fieldTimestamps", "slug", "originDevice", "originDeviceId"}
+
+        def _clean_task(task):
+            return {k: v for k, v in task.items() if k not in _TASK_STRIP}
+
+        def _clean_settings(settings):
+            return {k: v for k, v in settings.items() if k != "_fieldTimestamps"}
+
         self._ensure_state_dir()
         with STATE_LOCK:
             try:
@@ -673,8 +686,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 completed = json.loads(COMPLETED_FILE.read_text(encoding="utf-8")) if COMPLETED_FILE.exists() else {}
             except json.JSONDecodeError:
                 completed = {}
-        payload = {**state, **completed}
-        encoded = json.dumps(payload).encode("utf-8")
+        raw = {**state, **completed}
+        payload = {k: v for k, v in raw.items() if k not in _STATE_STRIP}
+        if isinstance(payload.get("tasks"), list):
+            payload["tasks"] = [_clean_task(t) for t in payload["tasks"]]
+        if isinstance(payload.get("settings"), dict):
+            payload["settings"] = _clean_settings(payload["settings"])
+        encoded = json.dumps(payload, indent=2).encode("utf-8")
         date_str = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         filename = f"nextflow-export-{date_str}.json"
         self.send_response(200)

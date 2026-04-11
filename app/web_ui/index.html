@@ -200,21 +200,6 @@
           </ul>
         </section>
 
-        <section class="card markdown-card" aria-labelledby="exportHeading">
-          <header class="card-header">
-            <h2 id="exportHeading">Export &amp; Import</h2>
-          </header>
-          <p class="muted small-text">Export a full backup or import a previous export. JSON preserves all data including history and settings.</p>
-          <div class="markdown-actions">
-            <button id="exportJSON" class="btn btn-light" type="button">Export JSON</button>
-            <button id="importJSON" class="btn btn-light" type="button">Import JSON</button>
-          </div>
-          <p class="muted small-text" style="margin-top: 0.75rem;">Export active tasks as a readable Markdown list (Obsidian-friendly).</p>
-          <div class="markdown-actions">
-            <button id="exportMarkdown" class="btn btn-light" type="button">Export .md</button>
-          </div>
-          <input id="jsonFileInput" type="file" accept=".json" hidden />
-        </section>
       </aside>
 
     <section class="workspace" aria-label="Workflow">
@@ -651,6 +636,19 @@
                 <div class="settings-subgroup-actions">
                   <button id="settingsCleanupBtn" class="btn btn-light" type="button">Clean up now</button>
                 </div>
+              </div>
+              <div class="settings-subgroup">
+                <h4 class="settings-subgroup-heading">Export &amp; Import</h4>
+                <p class="muted small-text">Export a full backup or import a previous export. JSON preserves all data including history and settings.</p>
+                <div class="settings-subgroup-actions">
+                  <button id="exportJSON" class="btn btn-light" type="button">Export JSON</button>
+                  <button id="importJSON" class="btn btn-light" type="button">Import JSON</button>
+                </div>
+                <p class="muted small-text" style="margin-top: 0.75rem;">Export active tasks as a readable Markdown list (Obsidian-friendly).</p>
+                <div class="settings-subgroup-actions">
+                  <button id="exportMarkdown" class="btn btn-light" type="button">Export .md</button>
+                </div>
+                <input id="jsonFileInput" type="file" accept=".json" hidden />
               </div>
               <div class="settings-subgroup">
                 <h4 class="settings-subgroup-heading">Feedback</h4>

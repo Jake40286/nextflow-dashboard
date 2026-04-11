@@ -89,6 +89,53 @@ test("restoreCompletedTask rehydrates task and reattaches to project", () => {
   assert.deepEqual(manager.state.projects[0].tasks, ["task-sample"], "project relinked");
 });
 
+test("_completionsDirty starts false and is set by completeTask", () => {
+  const manager = createManager();
+  assert.equal(manager._completionsDirty, false, "starts clean");
+  const task = manager.addTask({ title: "Done task" });
+  manager.completeTask(task.id);
+  assert.equal(manager._completionsDirty, true, "dirty after completeTask");
+});
+
+test("_completionsDirty is set by completeTask with archive=deleted", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Deleted task" });
+  manager.completeTask(task.id, { archive: "deleted" });
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("_completionsDirty is set by deleteTask", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "To delete" });
+  manager.deleteTask(task.id);
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("_completionsDirty is set by restoreCompletedTask", () => {
+  const archived = {
+    id: "task-r1",
+    title: "Restore me",
+    status: STATUS.NEXT,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    completedAt: "2024-01-02T00:00:00.000Z",
+    archivedAt: "2024-01-02T00:00:00.000Z",
+    archiveType: "reference",
+  };
+  const manager = createManager({ reference: [archived] });
+  assert.equal(manager._completionsDirty, false, "starts clean");
+  manager.restoreCompletedTask("task-r1");
+  assert.equal(manager._completionsDirty, true, "dirty after restore");
+});
+
+test("_completionsDirty is set by completeProject", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Finish me", tasks: [], status: "Active" }],
+  });
+  assert.equal(manager._completionsDirty, false, "starts clean");
+  manager.completeProject("p-1");
+  assert.equal(manager._completionsDirty, true, "dirty after completeProject");
+});
+
 const { mergeStates, mergeTasks, _buildConflictSummary, _mergeTombstones } = __testing;
 
 test("mergeTasks suppresses a task when the tombstone is newer than both sides' updatedAt", () => {
@@ -125,10 +172,10 @@ test("feature flags include highlightStaleTasks and can be toggled", () => {
 
 test("stale task thresholds can be read and updated", () => {
   const manager = createManager();
-  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 7, stale: 14, old: 30, ancient: 90 });
+  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 7, stale: 14, old: 30, ancient: 90, futureDueDaysThreshold: 30 });
   const result = manager.updateStaleTaskThresholds({ warn: 5, stale: 12, old: 28, ancient: 60 });
   assert.equal(result, true);
-  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 5, stale: 12, old: 28, ancient: 60 });
+  assert.deepEqual(manager.getStaleTaskThresholds(), { warn: 5, stale: 12, old: 28, ancient: 60, futureDueDaysThreshold: 30 });
 });
 
 test("mergeStates keeps restored tasks that are newer than their removal markers", () => {

@@ -304,7 +304,9 @@ async function writeServerState(state, { ifMatch } = {}) {
   if (typeof fetch === "undefined") {
     throw new Error("Fetch API is unavailable");
   }
-  const { completionLog: _cl, reference: _ref, completedProjects: _cp, ...slim } = state;
+  // Completion fields are included when the caller opts in (completionsDirty flag).
+  // The server merges them into completed.json rather than replacing it.
+  const slim = { ...state };
   // Strip device-local theme fields so they are never overwritten on another device.
   if (slim.settings) {
     const { theme: _t, customTheme: _ct, customThemePalettes: _ctp, ...settingsSlim } = slim.settings;
@@ -487,6 +489,7 @@ export class TaskManager extends EventTarget {
     this.serverVersion = null;
     this._localPersistTimer = null;
     this._completedDataLoaded = false;
+    this._completionsDirty = false;
     this._flushInProgress = false;
     this._flushPending = false;
     migrateStorageKeys(this.storage);
@@ -531,13 +534,20 @@ export class TaskManager extends EventTarget {
       this._completedDataLoaded = true;
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
-      // Write-back: if the merge produced more active tasks than the server reported,
-      // local had offline-created tasks the server doesn't know about. Upload now.
+      // Write-back: if the merge produced more data than the server reported,
+      // local had offline-created content the server doesn't know about. Upload now.
       // Skipped when the caller is manualSync() and when replaceLocal is set.
       if (!options.replaceLocal && !options.skipWriteBack) {
         const remoteActiveTasks = (remoteStateFull.tasks || []).filter((t) => t && !t._deleted).length;
         const mergedActiveTasks = (nextState.tasks || []).filter((t) => t && !t._deleted).length;
-        if (mergedActiveTasks > remoteActiveTasks) {
+        const remoteCompletions = (remoteStateFull.completionLog || []).length +
+          (remoteStateFull.reference || []).length +
+          (remoteStateFull.completedProjects || []).length;
+        const mergedCompletions = (nextState.completionLog || []).length +
+          (nextState.reference || []).length +
+          (nextState.completedProjects || []).length;
+        if (mergedActiveTasks > remoteActiveTasks || mergedCompletions > remoteCompletions) {
+          this._completionsDirty = mergedCompletions > remoteCompletions;
           this.persistRemotely();
         }
       }
@@ -610,18 +620,19 @@ export class TaskManager extends EventTarget {
     if (this._completedDataLoaded || !this.remoteSyncEnabled) return;
     try {
       const completed = await readCompletedState();
-      const hasData =
-        completed.completionLog?.length ||
-        completed.reference?.length ||
-        completed.completedProjects?.length;
-      if (hasData) {
-        this.state = {
-          ...this.state,
-          completionLog: completed.completionLog || this.state.completionLog || [],
-          reference: completed.reference || this.state.reference || [],
-          completedProjects: completed.completedProjects || this.state.completedProjects || [],
-        };
-      }
+      // Merge server data with local state rather than replacing — local entries
+      // (not yet synced to the server) must survive this load.
+      const mergeById = (localArr, remoteArr) => {
+        const map = new Map((remoteArr || []).filter((e) => e?.id).map((e) => [e.id, e]));
+        (localArr || []).forEach((e) => { if (e?.id) map.set(e.id, e); });
+        return Array.from(map.values());
+      };
+      this.state = {
+        ...this.state,
+        completionLog: mergeById(this.state.completionLog, completed.completionLog),
+        reference: mergeById(this.state.reference, completed.reference),
+        completedProjects: mergeById(this.state.completedProjects, completed.completedProjects),
+      };
       this._completedDataLoaded = true;
     } catch (error) {
       console.error("Failed to load completed state", error);
@@ -654,6 +665,13 @@ export class TaskManager extends EventTarget {
         syncMeta,
         deviceLog: readOpLogEntries(this.storage, OP_LOG_SHARED_MAX),
       };
+      // Strip completion collections from the PUT payload when unchanged — they can be
+      // large and only need to reach the server when they've been modified locally.
+      if (!this._completionsDirty) {
+        delete sendPayload.completionLog;
+        delete sendPayload.reference;
+        delete sendPayload.completedProjects;
+      }
       let rev = this.lastKnownRev;
       const MAX_RETRIES = 3;
       let succeeded = false;
@@ -665,6 +683,7 @@ export class TaskManager extends EventTarget {
             this._saveLastKnownRev(newRev);
           }
           this.lastSyncInfo = syncMeta;
+          this._completionsDirty = false;
           this.setConnectionStatus("online");
           if (this.remoteRetryTimer) {
             clearTimeout(this.remoteRetryTimer);
@@ -1448,6 +1467,7 @@ export class TaskManager extends EventTarget {
     } else {
       this.state.completionLog.unshift(snapshot);
     }
+    this._completionsDirty = true;
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
@@ -1514,6 +1534,7 @@ export class TaskManager extends EventTarget {
       [entry] = this.state.completionLog.splice(logIndex, 1);
       archiveType = "deleted";
     }
+    if (entry) this._completionsDirty = true;
     if (!entry) {
       this.notify("error", "Completed task not found.");
       return null;
@@ -1644,6 +1665,7 @@ export class TaskManager extends EventTarget {
     this.state.reference = [];
     this.state.completionLog = [];
     this.state.completedProjects = [];
+    this._completionsDirty = true;
     this.emitChange();
     this.notify("info", "Restored starter sample data.");
   }
@@ -1665,6 +1687,7 @@ export class TaskManager extends EventTarget {
     const snapshot = createCompletionSnapshot(task, deletedAt, "deleted");
     this.state.completionLog = this.state.completionLog || [];
     this.state.completionLog.unshift(snapshot);
+    this._completionsDirty = true;
     this.emitChange();
     this.notify("info", `"${task.title}" deleted.`);
   }
@@ -1812,6 +1835,7 @@ export class TaskManager extends EventTarget {
     });
     this.state.completedProjects = this.state.completedProjects || [];
     this.state.completedProjects.unshift(entry);
+    this._completionsDirty = true;
     this.emitChange();
     this.notify("info", `Marked project "${project.name}" as complete.`);
     return entry;
@@ -1851,6 +1875,7 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Completed project not found.");
       return false;
     }
+    this._completionsDirty = true;
     this.emitChange();
     this.notify("info", "Removed project from Completed Projects.");
     return true;
@@ -2750,6 +2775,7 @@ export class TaskManager extends EventTarget {
       this.state.reference = [];
       this.state.completionLog = [];
       this.state.completedProjects = [];
+      this._completionsDirty = true;
 
       this.emitChange();
       this.notify("info", `Imported ${parsed.tasks.length} tasks from Markdown.`);

@@ -834,17 +834,42 @@ export class ReviewController {
     this._advanceAfterDecision();
   }
 
-  // Re-render the review card once the task flyout closes
+  // Re-render the review card once the task flyout closes.
+  // If the flyout's "Process" button was clicked it closes the flyout and
+  // immediately opens the clarify modal — in that case defer the re-render
+  // until the clarify modal also closes so the review reflects the final
+  // processed status rather than the mid-flight inbox state.
   _watchFlyoutClose() {
     const flyout = document.getElementById("taskFlyout");
     if (!flyout) return;
     const observer = new MutationObserver(() => {
       if (!flyout.classList.contains("is-open")) {
         observer.disconnect();
-        this._renderCurrentItem();
+        const clarifyModal = document.getElementById("clarifyModal");
+        if (clarifyModal?.classList.contains("is-open")) {
+          this._watchClarifyClose();
+        } else {
+          this._renderCurrentItem();
+        }
       }
     });
     observer.observe(flyout, { attributes: true, attributeFilter: ["class"] });
+  }
+
+  // Re-render the review card once the clarify modal closes.
+  _watchClarifyClose() {
+    const clarifyModal = document.getElementById("clarifyModal");
+    if (!clarifyModal) {
+      this._renderCurrentItem();
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (!clarifyModal.classList.contains("is-open")) {
+        observer.disconnect();
+        this._renderCurrentItem();
+      }
+    });
+    observer.observe(clarifyModal, { attributes: true, attributeFilter: ["class"] });
   }
 
   // ─── Topbar indicator ──────────────────────────────────────────────────────

@@ -2056,6 +2056,13 @@ export class UIController {
         activate.textContent = "Activate project";
         activate.addEventListener("click", () => this.taskManager.activateProject(project.id));
         actions.append(activate);
+      } else {
+        const somedayButton = document.createElement("button");
+        somedayButton.type = "button";
+        somedayButton.className = "btn btn-light";
+        somedayButton.textContent = "Move to Someday";
+        somedayButton.addEventListener("click", () => this.taskManager.moveProjectToSomeday(project.id));
+        actions.append(somedayButton);
       }
 
       const completeButton = document.createElement("button");

@@ -1696,6 +1696,18 @@ export class TaskManager extends EventTarget {
     this.notify("info", `Activated project "${project.name}".`);
   }
 
+  moveProjectToSomeday(projectId) {
+    const project = this.state.projects.find((p) => p.id === projectId);
+    if (!project) {
+      this.notify("error", "Project not found.");
+      return;
+    }
+    project.someday = true;
+    project.updatedAt = nowIso();
+    this.emitChange();
+    this.notify("info", `Moved project "${project.name}" to Someday.`);
+  }
+
   addProject(name, vision = "", metadata = {}) {
     const trimmed = name.trim();
     if (!trimmed) {

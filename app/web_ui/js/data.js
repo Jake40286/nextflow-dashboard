@@ -1047,7 +1047,21 @@ export class TaskManager extends EventTarget {
     const ops = [];
     const hasSchedulingUpdate = hasCalendarDateUpdate || hasMyDayDateUpdate;
     if (hasSchedulingUpdate) ft.scheduling = now;
-    if ("status" in nextUpdates) ft.status = now;
+    if ("status" in nextUpdates) {
+      ft.status = now;
+      const wasAlreadyDoing = originalFields.status === STATUS.DOING;
+      if (nextUpdates.status === STATUS.DOING && !wasAlreadyDoing) {
+        task.doingStartedAt = now;
+      } else if (nextUpdates.status !== STATUS.DOING && wasAlreadyDoing) {
+        if (task.doingStartedAt) {
+          const sessionSecs = Math.max(0, Math.floor((new Date(now) - new Date(task.doingStartedAt)) / 1000));
+          task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
+        }
+        task.doingStartedAt = null;
+      } else if (nextUpdates.status !== STATUS.DOING) {
+        task.doingStartedAt = null;
+      }
+    }
     if ("dueDate" in nextUpdates) ft.dueDate = now;
     if ("followUpDate" in nextUpdates) ft.followUpDate = now;
     task._fieldTimestamps = ft;
@@ -1393,8 +1407,20 @@ export class TaskManager extends EventTarget {
       return;
     }
 
+    const wasAlreadyDoing = task.status === STATUS.DOING;
     task.status = nextStatus;
     task.completedAt = null;
+    if (nextStatus === STATUS.DOING && !wasAlreadyDoing) {
+      task.doingStartedAt = nowIso();
+    } else if (nextStatus !== STATUS.DOING && wasAlreadyDoing) {
+      if (task.doingStartedAt) {
+        const sessionSecs = Math.max(0, Math.floor((Date.now() - new Date(task.doingStartedAt).getTime()) / 1000));
+        task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
+      }
+      task.doingStartedAt = null;
+    } else if (nextStatus !== STATUS.DOING) {
+      task.doingStartedAt = null;
+    }
     if (nextStatus === STATUS.WAITING && !task.waitingFor) {
       task.waitingFor = "Pending response";
     }
@@ -1454,6 +1480,12 @@ export class TaskManager extends EventTarget {
     // Record a tombstone so other devices don't resurrect this task during merge.
     this.state._tombstones = this.state._tombstones || {};
     this.state._tombstones[task.id] = completedAt;
+    // Flush any in-progress doing session into the total before snapshotting.
+    if (task.doingStartedAt) {
+      const sessionSecs = Math.max(0, Math.floor((new Date(completedAt) - new Date(task.doingStartedAt)) / 1000));
+      task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
+      task.doingStartedAt = null;
+    }
     normalizeTaskTags(task);
     if (typeof closureNotes === "string") {
       const trimmed = closureNotes.trim();
@@ -3240,6 +3272,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     slug: task.slug || normalizeSlug(null, task.id),
     originDevice: task.originDevice || null,
     originDeviceId: task.originDeviceId || null,
+    totalDoingSeconds: task.totalDoingSeconds || null,
   };
 }
 

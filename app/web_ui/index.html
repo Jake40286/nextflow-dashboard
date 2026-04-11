@@ -72,6 +72,8 @@
 
     <div class="alerts" role="status" aria-live="assertive"></div>
 
+    <div id="doingBar" class="doing-bar" hidden aria-label="Active tasks" aria-live="polite"></div>
+
     <div id="associationFlyout" class="association-flyout" aria-label="Association filters">
       <button
         id="associationFlyoutToggle"
@@ -1034,8 +1036,10 @@
       </header>
       <div class="modal-body">
         <input id="promptModalInput" type="text" class="prompt-modal-input" autocomplete="off" />
+        <textarea id="promptModalTextarea" class="prompt-modal-textarea" hidden></textarea>
       </div>
       <footer class="modal-footer">
+        <span id="promptModalHint" class="prompt-modal-hint" hidden>Ctrl+Enter to save</span>
         <button id="promptModalCancel" class="btn btn-light" type="button">Cancel</button>
         <button id="promptModalOk" class="btn btn-primary" type="button">OK</button>
       </footer>

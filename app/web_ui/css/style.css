@@ -3476,6 +3476,19 @@ button.meta-item:hover {
   box-sizing: border-box;
 }
 
+.prompt-modal-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 140px;
+  resize: vertical;
+}
+
+.prompt-modal-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -5002,5 +5015,87 @@ body.review-mode-active {
   .review-action-btn {
     min-width: 0;
     flex: 1 1 calc(50% - var(--space-2));
+  }
+}
+
+/* ── Doing Bar ──────────────────────────────────────────────── */
+
+body.doing-bar-visible .app {
+  padding-bottom: 48px;
+}
+
+.doing-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.doing-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.doing-bar-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.doing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  max-width: 280px;
+}
+
+.doing-chip:hover {
+  background: color-mix(in srgb, var(--accent-soft) 160%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.doing-chip-title {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doing-chip-timer {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .doing-bar {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .doing-chip {
+    max-width: 200px;
   }
 }

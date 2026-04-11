@@ -223,6 +223,7 @@ export class UIController {
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
     this.startConnectionChecks();
+    this.startDoingBarTimer();
   }
 
   bindListeners() {
@@ -939,6 +940,7 @@ export class UIController {
     this.updateSuggestionLists();
     this.renderAreaScopeRow();
     this.renderSummary();
+    this.renderDoingBar();
     this.renderAssociationFlyout();
     this.applySearchVisibility();
     this.updateCounts();
@@ -1042,6 +1044,77 @@ export class UIController {
     fillDatalist(projectAreaSuggestions, Array.from(areas));
     fillDatalist(projectThemeSuggestions, Array.from(themes));
     fillDatalist(projectStatusSuggestions, Array.from(statuses));
+  }
+
+  renderDoingBar() {
+    const { doingBar } = this.elements;
+    if (!doingBar) return;
+    const doingTasks = this.taskManager.getTasks({ status: STATUS.DOING });
+    if (!doingTasks.length) {
+      doingBar.hidden = true;
+      doingBar.innerHTML = "";
+      document.body.classList.remove("doing-bar-visible");
+      return;
+    }
+    doingBar.hidden = false;
+    document.body.classList.add("doing-bar-visible");
+    const label = document.createElement("span");
+    label.className = "doing-bar-label";
+    label.textContent = "Doing";
+    const fragment = document.createDocumentFragment();
+    fragment.append(label);
+    for (const task of doingTasks) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "doing-chip";
+      chip.dataset.taskId = task.id;
+      chip.dataset.startedAt = task.doingStartedAt || "";
+      chip.dataset.baseSecs = String(task.totalDoingSeconds || 0);
+      chip.addEventListener("click", () => this.openTaskFlyout(task.id));
+      const titleEl = document.createElement("span");
+      titleEl.className = "doing-chip-title";
+      titleEl.textContent = task.title;
+      const timerEl = document.createElement("span");
+      timerEl.className = "doing-chip-timer";
+      timerEl.textContent = this._formatDoingElapsed(task.doingStartedAt, task.totalDoingSeconds || 0);
+      chip.append(titleEl, timerEl);
+      fragment.append(chip);
+    }
+    doingBar.innerHTML = "";
+    doingBar.append(fragment);
+  }
+
+  _formatDoingElapsed(startedAt, baseSecs = 0) {
+    const sessionSecs = startedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+      : 0;
+    const total = baseSecs + sessionSecs;
+    if (total === 0 && !startedAt) return "—";
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  _tickDoingTimers() {
+    const { doingBar } = this.elements;
+    if (!doingBar || doingBar.hidden) return;
+    doingBar.querySelectorAll(".doing-chip").forEach((chip) => {
+      const timerEl = chip.querySelector(".doing-chip-timer");
+      if (timerEl) {
+        timerEl.textContent = this._formatDoingElapsed(
+          chip.dataset.startedAt || "",
+          parseInt(chip.dataset.baseSecs, 10) || 0,
+        );
+      }
+    });
+  }
+
+  startDoingBarTimer() {
+    window.setInterval(() => this._tickDoingTimers(), 1000);
   }
 
   renderSummary() {
@@ -3587,23 +3660,18 @@ export class UIController {
           const idx = getIdx();
           if (idx > 0) { const [m] = openItems.splice(idx, 1); openItems.unshift(m); }
         });
-        const moveUpBtn = makeOrderBtn("↑", "Move up", () => {
+        const moveBottomBtn = makeOrderBtn("⇓", "Bury to bottom", () => {
           const idx = getIdx();
-          if (idx > 0) { const tmp = openItems[idx - 1]; openItems[idx - 1] = openItems[idx]; openItems[idx] = tmp; }
-        });
-        const moveDownBtn = makeOrderBtn("↓", "Move down", () => {
-          const idx = getIdx();
-          if (idx < openItems.length - 1) { const tmp = openItems[idx + 1]; openItems[idx + 1] = openItems[idx]; openItems[idx] = tmp; }
+          if (idx < openItems.length - 1) { const [m] = openItems.splice(idx, 1); openItems.push(m); }
         });
 
         const currentIdx = getIdx();
         moveTopBtn.disabled = currentIdx === 0;
-        moveUpBtn.disabled = currentIdx === 0;
-        moveDownBtn.disabled = currentIdx === openItems.length - 1;
+        moveBottomBtn.disabled = currentIdx === openItems.length - 1;
 
         const orderGroup = document.createElement("span");
         orderGroup.className = "feedback-order-group";
-        orderGroup.append(moveTopBtn, moveUpBtn, moveDownBtn);
+        orderGroup.append(moveTopBtn, moveBottomBtn);
         actions.append(orderGroup);
       }
 
@@ -5635,7 +5703,7 @@ export class UIController {
       this.closeTaskNoteContextMenu();
       if (!context) return;
       if (action === "edit") {
-        const nextText = await this.showPrompt("Edit note", context.note.text || "");
+        const nextText = await this.showPrompt("Edit note", context.note.text || "", { multiline: true });
         if (nextText === null) return;
         const trimmed = nextText.trim();
         if (!trimmed) {
@@ -9563,16 +9631,22 @@ export class UIController {
     this.taskManager.updateTask(taskId, updates);
   }
 
-  showPrompt(title, defaultValue = "") {
+  showPrompt(title, defaultValue = "", { multiline = false } = {}) {
     return new Promise((resolve) => {
       const modal = this.elements.promptModal;
       if (!modal) { resolve(window.prompt(title, defaultValue)); return; }
       const input = this.elements.promptModalInput;
+      const textarea = this.elements.promptModalTextarea;
+      const activeField = multiline ? textarea : input;
       const titleEl = this.elements.promptModalTitle;
+      const hint = this.elements.promptModalHint;
       const okBtn = this.elements.promptModalOk;
       const cancelBtn = this.elements.promptModalCancel;
       if (titleEl) titleEl.textContent = title;
-      if (input) { input.value = defaultValue; }
+      if (input) input.hidden = multiline;
+      if (textarea) textarea.hidden = !multiline;
+      if (hint) hint.hidden = !multiline;
+      if (activeField) { activeField.value = defaultValue; }
       const cleanup = () => {
         modal.classList.remove("is-open");
         modal.setAttribute("hidden", "");
@@ -9581,13 +9655,13 @@ export class UIController {
         document.removeEventListener("keydown", onKeydown);
       };
       const onOk = () => {
-        const val = input?.value?.trim() || "";
+        const val = activeField?.value?.trim() || "";
         cleanup();
         resolve(val || null);
       };
       const onCancel = () => { cleanup(); resolve(null); };
       const onKeydown = (e) => {
-        if (e.key === "Enter") { e.preventDefault(); onOk(); }
+        if (e.key === "Enter" && (!multiline || e.ctrlKey || e.metaKey)) { e.preventDefault(); onOk(); }
         if (e.key === "Escape") { e.preventDefault(); onCancel(); }
       };
       okBtn?.addEventListener("click", onOk);
@@ -9595,7 +9669,7 @@ export class UIController {
       document.addEventListener("keydown", onKeydown);
       modal.classList.add("is-open");
       modal.removeAttribute("hidden");
-      setTimeout(() => { input?.focus(); input?.select(); }, 50);
+      setTimeout(() => { activeField?.focus(); if (!multiline) activeField?.select(); }, 50);
     });
   }
 
@@ -10194,6 +10268,8 @@ function mapElements() {
     promptModal: byId("promptModal"),
     promptModalTitle: byId("promptModalTitle"),
     promptModalInput: byId("promptModalInput"),
+    promptModalTextarea: byId("promptModalTextarea"),
+    promptModalHint: byId("promptModalHint"),
     promptModalOk: byId("promptModalOk"),
     promptModalCancel: byId("promptModalCancel"),
     conflictModal: byId("conflictModal"),
@@ -10369,6 +10445,7 @@ function mapElements() {
     projectCompleteLessons: byId("projectCompleteLessons"),
     projectCompleteFollowUp: byId("projectCompleteFollowUp"),
     projectCompleteCancel: byId("projectCompleteCancel"),
+    doingBar: byId("doingBar"),
   };
 }
 

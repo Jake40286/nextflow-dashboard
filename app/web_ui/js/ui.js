@@ -2165,9 +2165,9 @@ export class UIController {
       addNextForm.className = "project-next-action-form";
       const addNextInput = document.createElement("input");
       addNextInput.type = "text";
-      addNextInput.placeholder = "Add next action";
+      addNextInput.placeholder = "Add task";
       addNextInput.autocomplete = "off";
-      addNextInput.setAttribute("aria-label", `Add next action for ${project.name}`);
+      addNextInput.setAttribute("aria-label", `Add task for ${project.name}`);
       const addNextButton = document.createElement("button");
       addNextButton.type = "submit";
       addNextButton.className = "btn btn-primary";
@@ -2177,16 +2177,14 @@ export class UIController {
         event.preventDefault();
         const title = addNextInput.value.trim();
         if (!title) {
-          this.taskManager.notify("warn", "Enter a next action title.");
+          this.taskManager.notify("warn", "Enter a task title.");
           addNextInput.focus();
           return;
         }
-        const projectNext = projectTasks.find((task) => task.status === STATUS.NEXT);
         const created = this.taskManager.addTask({
           title,
-          status: STATUS.NEXT,
+          status: STATUS.INBOX,
           projectId: project.id,
-          contexts: projectNext?.contexts?.length ? projectNext.contexts : [],
         });
         if (created) {
           addNextInput.value = "";
@@ -2208,6 +2206,7 @@ export class UIController {
       }
 
       const grouped = {
+        [STATUS.INBOX]: [],
         [STATUS.NEXT]: [],
         [STATUS.DOING]: [],
         [STATUS.WAITING]: [],
@@ -2220,6 +2219,7 @@ export class UIController {
       });
 
       const groups = [
+        { status: STATUS.INBOX, label: "Inbox", empty: "", hideEmpty: true },
         { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
         { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
         { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
@@ -2239,6 +2239,7 @@ export class UIController {
 
         const items = grouped[group.status] || [];
         if (!items.length) {
+          if (group.hideEmpty) return;
           const empty = document.createElement("p");
           empty.className = "muted small-text";
           empty.textContent = group.empty;

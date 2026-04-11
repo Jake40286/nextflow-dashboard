@@ -4496,7 +4496,20 @@ body.flyout-open .feedback-widget {
   }
 
   .sidebar {
+    display: contents;
+  }
+
+  .summary-card {
+    order: 1;
+  }
+
+  .workspace {
     order: 2;
+  }
+
+  .integrations-card,
+  .markdown-card {
+    order: 3;
   }
 
   .workspace-toolbar-grid {

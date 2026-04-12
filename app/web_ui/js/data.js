@@ -1845,6 +1845,32 @@ export class TaskManager extends EventTarget {
     this.notify("info", `Deleted project "${project.name}". Tasks remain available in their current lists.`);
   }
 
+  mergeProjects(sourceId, targetId) {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      this.notify("error", "Invalid merge: source and target must be different projects.");
+      return 0;
+    }
+    const source = this.state.projects.find((p) => p.id === sourceId);
+    const target = this.state.projects.find((p) => p.id === targetId);
+    if (!source || !target) {
+      this.notify("error", "Merge failed: project not found.");
+      return 0;
+    }
+    const now = nowIso();
+    let moved = 0;
+    this.state.tasks.forEach((task) => {
+      if (task.projectId === sourceId) {
+        task.projectId = targetId;
+        task.updatedAt = now;
+        moved += 1;
+      }
+    });
+    const sourceIndex = this.state.projects.findIndex((p) => p.id === sourceId);
+    this.state.projects.splice(sourceIndex, 1);
+    this.emitChange();
+    return moved;
+  }
+
   completeProject(projectId, closureNotes = {}) {
     const projectIndex = this.state.projects.findIndex((p) => p.id === projectId);
     if (projectIndex === -1) {

@@ -214,6 +214,7 @@ export class UIController {
     this.setupBackNavigation();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
+    this.bindProjectMergeModal();
     this.setupLightbox();
     this.setupAreaScope();
     if (this.isAdmin) {
@@ -2554,6 +2555,19 @@ export class UIController {
     editButton.addEventListener("click", () => this.renderProjectEditor(project));
     footer.append(editButton);
 
+    const activeProjects = (this.projectCache || []).filter((p) => p.id !== project.id && p.status !== "Completed");
+    if (activeProjects.length > 0) {
+      const mergeBtn = document.createElement("button");
+      mergeBtn.type = "button";
+      mergeBtn.className = "btn btn-light";
+      mergeBtn.textContent = "Merge into\u2026";
+      mergeBtn.addEventListener("click", () => {
+        this.closeProjectFlyout();
+        this.openProjectMergeModal(project);
+      });
+      footer.append(mergeBtn);
+    }
+
     if (project.someday) {
       const activateBtn = document.createElement("button");
       activateBtn.type = "button";
@@ -2759,6 +2773,103 @@ export class UIController {
     modal.setAttribute("hidden", "");
     this.projectCompletionState = { projectId: null };
     this.elements.projectCompleteForm?.reset();
+  }
+
+  bindProjectMergeModal() {
+    const { projectMergeModal, projectMergeBackdrop, closeProjectMergeModal, projectMergeCancelBtn, projectMergeTargetSelect, projectMergeConfirmBtn, projectMergeSummary } = this.elements;
+    if (!projectMergeModal) return;
+    const close = () => this.closeProjectMergeModal();
+    closeProjectMergeModal?.addEventListener("click", close);
+    projectMergeBackdrop?.addEventListener("click", close);
+    projectMergeCancelBtn?.addEventListener("click", close);
+
+    projectMergeTargetSelect?.addEventListener("change", () => {
+      const targetId = projectMergeTargetSelect.value;
+      const hasTarget = Boolean(targetId);
+      if (projectMergeConfirmBtn) projectMergeConfirmBtn.disabled = !hasTarget;
+      if (projectMergeSummary) {
+        if (hasTarget) {
+          const target = (this.projectCache || []).find((p) => p.id === targetId);
+          const sourceName = this.elements.projectMergeSourceName?.textContent || "this project";
+          const taskCount = parseInt(this.elements.projectMergeSourceCount?.textContent || "0", 10);
+          const taskWord = taskCount === 1 ? "task" : "tasks";
+          projectMergeSummary.textContent = `${taskCount} ${taskWord} will move to "${target?.name ?? targetId}". "${sourceName}" will be deleted.`;
+          projectMergeSummary.hidden = false;
+        } else {
+          projectMergeSummary.hidden = true;
+        }
+      }
+    });
+
+    projectMergeConfirmBtn?.addEventListener("click", () => {
+      const sourceId = this._projectMergeSourceId;
+      const targetId = projectMergeTargetSelect?.value;
+      if (!sourceId || !targetId) return;
+      const moved = this.taskManager.mergeProjects(sourceId, targetId);
+      const target = (this.projectCache || []).find((p) => p.id === targetId);
+      this.closeProjectMergeModal();
+      const taskWord = moved === 1 ? "task" : "tasks";
+      this.taskManager.notify("info", `Merged into "${target?.name ?? targetId}". ${moved} ${taskWord} moved.`);
+    });
+
+    projectMergeModal.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+    });
+  }
+
+  openProjectMergeModal(project) {
+    const { projectMergeModal, projectMergeSourceName, projectMergeSourceCount, projectMergeTargetSelect, projectMergeSummary, projectMergeConfirmBtn } = this.elements;
+    if (!projectMergeModal || !project) return;
+
+    this._projectMergeSourceId = project.id;
+
+    if (projectMergeSourceName) projectMergeSourceName.textContent = project.name;
+
+    const allTasks = this.taskManager.getTasks({ includeCompleted: false });
+    const sourceTaskCount = allTasks.filter((t) => t.projectId === project.id).length;
+    if (projectMergeSourceCount) projectMergeSourceCount.textContent = String(sourceTaskCount);
+
+    if (projectMergeTargetSelect) {
+      projectMergeTargetSelect.innerHTML = "";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— select a project —";
+      projectMergeTargetSelect.append(placeholder);
+
+      const targets = (this.projectCache || [])
+        .filter((p) => p.id !== project.id && p.status !== "Completed")
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const taskCountByProject = new Map();
+      allTasks.forEach((t) => {
+        if (t.projectId) taskCountByProject.set(t.projectId, (taskCountByProject.get(t.projectId) || 0) + 1);
+      });
+
+      targets.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        const count = taskCountByProject.get(p.id) || 0;
+        opt.textContent = `${p.name} (${count} task${count !== 1 ? "s" : ""})`;
+        projectMergeTargetSelect.append(opt);
+      });
+
+      projectMergeTargetSelect.value = "";
+    }
+
+    if (projectMergeSummary) projectMergeSummary.hidden = true;
+    if (projectMergeConfirmBtn) projectMergeConfirmBtn.disabled = true;
+
+    projectMergeModal.removeAttribute("hidden");
+    projectMergeModal.classList.add("is-open");
+    projectMergeTargetSelect?.focus();
+  }
+
+  closeProjectMergeModal() {
+    const { projectMergeModal } = this.elements;
+    if (!projectMergeModal) return;
+    projectMergeModal.classList.remove("is-open");
+    projectMergeModal.setAttribute("hidden", "");
+    this._projectMergeSourceId = null;
   }
 
   handleProjectCompletionSubmit() {
@@ -10625,6 +10736,15 @@ function mapElements() {
     projectCompleteFollowUp: byId("projectCompleteFollowUp"),
     projectCompleteCancel: byId("projectCompleteCancel"),
     doingBar: byId("doingBar"),
+    projectMergeModal: byId("projectMergeModal"),
+    projectMergeBackdrop: byId("projectMergeBackdrop"),
+    closeProjectMergeModal: byId("closeProjectMergeModal"),
+    projectMergeSourceName: byId("projectMergeSourceName"),
+    projectMergeSourceCount: byId("projectMergeSourceCount"),
+    projectMergeTargetSelect: byId("projectMergeTargetSelect"),
+    projectMergeSummary: byId("projectMergeSummary"),
+    projectMergeConfirmBtn: byId("projectMergeConfirmBtn"),
+    projectMergeCancelBtn: byId("projectMergeCancelBtn"),
   };
 }
 

@@ -775,6 +775,35 @@
     </div>
   </div>
 
+  <div id="projectMergeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="projectMergeTitle" hidden>
+    <div class="modal-backdrop" id="projectMergeBackdrop"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="projectMergeTitle">Merge project</h2>
+        <button id="closeProjectMergeModal" class="btn btn-light" type="button" aria-label="Cancel merge">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small-text">All tasks from this project will be moved to another project, then this project will be deleted.</p>
+        <div class="project-complete-field">
+          <span class="project-complete-label">Source (will be deleted)</span>
+          <div class="project-merge-source">
+            <strong id="projectMergeSourceName"></strong>
+            <span id="projectMergeSourceCount" class="badge project-task-count"></span>
+          </div>
+        </div>
+        <label class="project-complete-field" for="projectMergeTargetSelect">
+          <span class="project-complete-label">Merge into</span>
+          <select id="projectMergeTargetSelect"></select>
+        </label>
+        <p id="projectMergeSummary" class="muted small-text" hidden></p>
+      </div>
+      <footer class="modal-footer">
+        <button id="projectMergeCancelBtn" class="btn btn-light" type="button">Cancel</button>
+        <button id="projectMergeConfirmBtn" class="btn btn-danger" type="button" disabled>Merge projects</button>
+      </footer>
+    </div>
+  </div>
+
     <footer class="app-footer">
       <small>&copy; <span id="footerYear"></span> NextFlow. Built for rapid capture, clarify, organize, reflect, and engage.</small>
     </footer>

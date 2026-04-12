@@ -147,6 +147,9 @@ export class UIController {
     this.isFlyoutOpen = false;
     this.flyoutContext = { readOnly: false, entry: null };
     this.handleFlyoutKeydown = null;
+    this.currentProjectFlyoutId = null;
+    this.isProjectFlyoutOpen = false;
+    this._handleProjectFlyoutKeydown = null;
     this._historyNavPending = false;
     this.calendarCursor = new Date();
     this.projectCache = null;
@@ -207,6 +210,7 @@ export class UIController {
     this.setupCalendarDayContextMenu();
     this.setupContextColumnContextMenu();
     this.setupFlyout();
+    this.setupProjectFlyout();
     this.setupBackNavigation();
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
@@ -230,7 +234,6 @@ export class UIController {
     const {
       searchTasks,
       clearFilters,
-      expandProjects,
       calendarDate,
       integrationsCard,
       reportGrouping,
@@ -316,11 +319,6 @@ export class UIController {
       this.renderAll();
     });
 
-    expandProjects.addEventListener("click", () => {
-      const projects = this.getProjectCache();
-      const nextExpandedState = projects.some((project) => !project.isExpanded);
-      projects.forEach((project) => this.taskManager.toggleProjectExpansion(project.id, nextExpandedState));
-    });
 
     if (toggleNextProjectFanout) {
       toggleNextProjectFanout.checked = this.allowMultipleNextPerProject;
@@ -600,6 +598,17 @@ export class UIController {
 
     this.taskManager.addEventListener("statechange", () => {
       this.renderAll();
+
+      // Refresh project flyout if open
+      if (this.isProjectFlyoutOpen && this.currentProjectFlyoutId) {
+        const latestProject = this.getProjectCache().find((p) => p.id === this.currentProjectFlyoutId);
+        if (latestProject) {
+          this.renderProjectFlyout(latestProject);
+        } else {
+          this.closeProjectFlyout();
+        }
+      }
+
       if (!this.isFlyoutOpen || !this.currentFlyoutTaskId) return;
       if (this.flyoutContext?.readOnly) {
         const latestArchived = this.taskManager.getCompletedTaskById(this.currentFlyoutTaskId, { includeDeleted: true });
@@ -747,7 +756,6 @@ export class UIController {
       nextGroupLimitInput,
       nextGroupLimitLabel,
       clearFilters,
-      expandProjects,
       projectCompletedTasksControl,
       kanbanGroupBySelect,
       kanbanGroupByLabel,
@@ -790,9 +798,6 @@ export class UIController {
     }
     if (kanbanGroupByLabel) {
       kanbanGroupByLabel.hidden = !supportsKanbanGroupBy;
-    }
-    if (expandProjects) {
-      expandProjects.hidden = !supportsExpandProjects;
     }
     if (projectCompletedTasksControl) {
       projectCompletedTasksControl.hidden = !supportsExpandProjects;
@@ -1263,6 +1268,8 @@ export class UIController {
       const clarifyModal = this.elements.clarifyModal;
       if (clarifyModal?.classList.contains("is-open")) {
         this.closeClarifyModal({ fromPopstate: true });
+      } else if (this.isProjectFlyoutOpen) {
+        this.closeProjectFlyout({ fromPopstate: true });
       } else if (this.isFlyoutOpen) {
         this.closeTaskFlyout({ fromPopstate: true });
       } else if (this.associationFlyoutOpen) {
@@ -2057,334 +2064,89 @@ export class UIController {
     }
     populateAreaSelect(this.elements.projectAreaSelect, areas, this.elements.projectAreaSelect?.value || "");
 
-    const filteredTasks = this.taskManager.getTasks(this.buildTaskFilters({ context: "all" }));
-
     visibleProjects.forEach((project) => {
       const missingNext = !project.someday && !hasNextAction.get(project.id);
       const missingArea = !project.areaOfFocus;
       const deadlinePassed = Boolean(project.deadline && project.deadline < todayIsoProjects);
       const isAtRisk = !project.someday && (missingNext || deadlinePassed);
-
-      const details = document.createElement("details");
-      details.className = isAtRisk ? "project project--at-risk" : "project";
-      details.dataset.projectId = project.id;
-      details.open = project.isExpanded;
       const taskCount = taskCountByProject.get(project.id) || 0;
-      const summary = document.createElement("summary");
-      summary.innerHTML = `
-        <strong>${project.name}</strong>
-        <span class="muted small-text">${project.tags.join(", ") || "No tags"}</span>
-        ${missingNext ? '<span class="badge badge-warning">No next action</span>' : ""}
-        ${missingArea ? '<span class="badge badge-warning">No area</span>' : ""}
-        <span class="badge project-task-count" title="${taskCount} active task${taskCount !== 1 ? "s" : ""}">${taskCount}</span>
-      `;
 
-      summary.addEventListener("click", () => {
-        const willOpen = !details.open;
-        requestAnimationFrame(() => {
-          this.taskManager.toggleProjectExpansion(project.id, willOpen);
-        });
+      const row = document.createElement("div");
+      row.className = isAtRisk ? "project-row project-row--at-risk" : "project-row";
+      row.dataset.projectId = project.id;
+      row.setAttribute("role", "button");
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("aria-label", `Open project: ${project.name}`);
+
+      const main = document.createElement("div");
+      main.className = "project-row-main";
+
+      const name = document.createElement("strong");
+      name.className = "project-row-name";
+      name.textContent = project.name;
+      main.append(name);
+
+      const chips = document.createElement("div");
+      chips.className = "project-row-chips";
+      [project.areaOfFocus, project.themeTag].forEach((label) => {
+        if (!label) return;
+        const chip = document.createElement("span");
+        chip.className = "project-row-chip";
+        chip.textContent = label;
+        chips.append(chip);
       });
+      if (chips.children.length) main.append(chips);
+      row.append(main);
 
-      const body = document.createElement("div");
-      body.className = "project-body";
-      const tagsRow = document.createElement("div");
-      tagsRow.className = "project-tags";
-      [
-        ["Area", project.areaOfFocus],
-        ["Theme", project.themeTag],
-        ["Status", project.statusTag],
-        ["Deadline", project.deadline ? formatFriendlyDate(project.deadline) : null],
-      ].forEach(([label, value]) => {
-        if (!value) return;
-        const tag = document.createElement("span");
-        tag.className = "project-tag";
-        tag.textContent = `${label}: ${value}`;
-        tagsRow.append(tag);
-      });
-      const outcome = document.createElement("div");
-      outcome.className = "project-outcome";
-      const outcomeLabel = document.createElement("span");
-      outcomeLabel.className = "muted small-text project-outcome-label";
-      outcomeLabel.textContent = "Desired outcome";
-      const outcomeText = document.createElement("p");
-      outcomeText.className = "project-outcome-text";
-      outcomeText.textContent = project.vision || "Define what “done” looks like for this project.";
-      outcome.append(outcomeLabel, outcomeText);
+      const meta = document.createElement("div");
+      meta.className = "project-row-meta";
 
-      const actions = document.createElement("div");
-      actions.className = "project-actions";
-
-      const editButton = document.createElement("button");
-      editButton.type = "button";
-      editButton.className = "btn btn-light";
-      editButton.textContent = "Edit project";
-      editButton.addEventListener("click", () => this.openProjectEditor(details, project));
-      actions.append(editButton);
-
-      if (project.someday) {
-        const activate = document.createElement("button");
-        activate.type = "button";
-        activate.className = "btn btn-primary";
-        activate.textContent = "Activate project";
-        activate.addEventListener("click", () => this.taskManager.activateProject(project.id));
-        actions.append(activate);
-      } else {
-        const somedayButton = document.createElement("button");
-        somedayButton.type = "button";
-        somedayButton.className = "btn btn-light";
-        somedayButton.textContent = "Move to Someday";
-        somedayButton.addEventListener("click", () => this.taskManager.moveProjectToSomeday(project.id));
-        actions.append(somedayButton);
+      if (project.deadline) {
+        const dl = document.createElement("span");
+        dl.className = deadlinePassed
+          ? "project-row-deadline project-row-deadline--overdue"
+          : "project-row-deadline";
+        dl.textContent = formatFriendlyDate(project.deadline);
+        meta.append(dl);
       }
 
-      const completeButton = document.createElement("button");
-      completeButton.type = "button";
-      completeButton.className = "btn btn-primary";
-      completeButton.textContent = "Mark complete";
-      completeButton.addEventListener("click", () => this.openProjectCompleteModal(project));
-      actions.append(completeButton);
+      if (missingNext) {
+        const badge = document.createElement("span");
+        badge.className = "badge badge-warning";
+        badge.textContent = "No next action";
+        meta.append(badge);
+      }
+      if (missingArea) {
+        const badge = document.createElement("span");
+        badge.className = "badge badge-warning";
+        badge.textContent = "No area";
+        meta.append(badge);
+      }
 
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.className = "btn btn-danger";
-      deleteButton.textContent = "Delete project";
-      deleteButton.addEventListener("click", async () => {
-        const confirmed = await this.showConfirm(`Delete project "${project.name}"? Tasks will remain but lose their project link.`, { title: "Delete project", okLabel: "Delete", danger: true });
-        if (confirmed) {
-          this.taskManager.deleteProject(project.id);
-        }
-      });
-      actions.append(deleteButton);
+      const countBadge = document.createElement("span");
+      countBadge.className = "badge project-task-count";
+      countBadge.title = `${taskCount} active task${taskCount !== 1 ? "s" : ""}`;
+      countBadge.textContent = String(taskCount);
+      meta.append(countBadge);
 
-      let projectTasks = filteredTasks
-        .filter((task) => task.projectId === project.id)
-        .filter((task) => (project.someday ? task.status !== STATUS.SOMEDAY : true));
+      row.append(meta);
 
-      const addNextForm = document.createElement("form");
-      addNextForm.className = "project-next-action-form";
-      const addNextInput = document.createElement("input");
-      addNextInput.type = "text";
-      addNextInput.placeholder = "Add task";
-      addNextInput.autocomplete = "off";
-      addNextInput.setAttribute("aria-label", `Add task for ${project.name}`);
-      const addNextButton = document.createElement("button");
-      addNextButton.type = "submit";
-      addNextButton.className = "btn btn-primary";
-      addNextButton.textContent = "Add";
-      addNextForm.append(addNextInput, addNextButton);
-      addNextForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const title = addNextInput.value.trim();
-        if (!title) {
-          this.taskManager.notify("warn", "Enter a task title.");
-          addNextInput.focus();
-          return;
-        }
-        const created = this.taskManager.addTask({
-          title,
-          status: STATUS.INBOX,
-          projectId: project.id,
-        });
-        if (created) {
-          addNextInput.value = "";
-          addNextInput.focus();
+      const chevron = document.createElement("span");
+      chevron.className = "project-row-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      chevron.textContent = "›";
+      row.append(chevron);
+
+      const openFlyout = () => this.openProjectFlyout(project.id);
+      row.addEventListener("click", openFlyout);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openFlyout();
         }
       });
 
-      if (!projectTasks.length) {
-        const empty = document.createElement("p");
-        empty.className = "muted small-text";
-        empty.textContent = "No tasks linked to this project yet.";
-        if (tagsRow.children.length) {
-          body.append(tagsRow);
-        }
-        body.append(outcome, addNextForm, actions, empty);
-        details.append(summary, body);
-        container.append(details);
-        return;
-      }
-
-      const grouped = {
-        [STATUS.INBOX]: [],
-        [STATUS.NEXT]: [],
-        [STATUS.DOING]: [],
-        [STATUS.WAITING]: [],
-        [STATUS.SOMEDAY]: [],
-      };
-      projectTasks.forEach((task) => {
-        if (grouped[task.status]) {
-          grouped[task.status].push(task);
-        }
-      });
-
-      const groups = [
-        { status: STATUS.INBOX, label: "Inbox", empty: "", hideEmpty: true },
-        { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
-        { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
-        { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
-        { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
-      ];
-
-      const sectionsWrapper = document.createElement("div");
-      sectionsWrapper.className = "project-task-groups";
-
-      groups.forEach((group) => {
-        const section = document.createElement("section");
-        section.className = "project-task-group";
-        section.dataset.projectId = project.id;
-        const heading = document.createElement("h4");
-        heading.textContent = group.label;
-        section.append(heading);
-
-        const items = grouped[group.status] || [];
-        if (!items.length) {
-          if (group.hideEmpty) return;
-          const empty = document.createElement("p");
-          empty.className = "muted small-text";
-          empty.textContent = group.empty;
-          section.append(empty);
-        } else {
-          items.forEach((task, index) => {
-            const card = this.createTaskCard(task);
-            if (group.status === STATUS.NEXT) {
-              if (index === 0) {
-                card.classList.add("task-card-primary");
-              }
-              card.addEventListener("dragover", (event) => {
-                const sourceId = this.draggingTaskId
-                  || event.dataTransfer?.getData("text/task-id")
-                  || event.dataTransfer?.getData("text/plain");
-                if (!sourceId || sourceId === task.id) {
-                  return;
-                }
-                const sourceTask = this.taskManager.getTaskById(sourceId);
-                if (
-                  !sourceTask ||
-                  sourceTask.status !== STATUS.NEXT ||
-                  sourceTask.projectId !== project.id ||
-                  task.projectId !== project.id
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                const bounds = card.getBoundingClientRect();
-                const dropBefore = this.resolveProjectNextDropBefore({
-                  sourceId,
-                  targetId: task.id,
-                  projectId: project.id,
-                  clientY: event.clientY,
-                  bounds,
-                });
-                card.classList.toggle("is-drop-before", dropBefore);
-                card.classList.toggle("is-drop-after", !dropBefore);
-              });
-              card.addEventListener("dragleave", () => {
-                card.classList.remove("is-drop-before", "is-drop-after");
-              });
-              card.addEventListener("drop", (event) => {
-                const sourceId = this.draggingTaskId
-                  || event.dataTransfer?.getData("text/task-id")
-                  || event.dataTransfer?.getData("text/plain");
-                if (!sourceId || sourceId === task.id) {
-                  return;
-                }
-                const sourceTask = this.taskManager.getTaskById(sourceId);
-                if (
-                  !sourceTask ||
-                  sourceTask.status !== STATUS.NEXT ||
-                  sourceTask.projectId !== project.id ||
-                  task.projectId !== project.id
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                const bounds = card.getBoundingClientRect();
-                const dropBefore = this.resolveProjectNextDropBefore({
-                  sourceId,
-                  targetId: task.id,
-                  projectId: project.id,
-                  clientY: event.clientY,
-                  bounds,
-                });
-                this.handleProjectNextReorderDrop({
-                  sourceId,
-                  targetId: task.id,
-                  projectId: project.id,
-                  before: dropBefore,
-                });
-                card.classList.remove("is-drop-before", "is-drop-after");
-              });
-            }
-            section.append(card);
-          });
-        }
-
-        sectionsWrapper.append(section);
-        this.attachDropzone(section, group.status, undefined, project.id);
-      });
-
-      if (this.showProjectCompletedTasks) {
-        const completedTasks = this.taskManager.getCompletedTasks({ projectId: project.id });
-        const completedSection = document.createElement("section");
-        completedSection.className = "project-task-group";
-        const completedHeading = document.createElement("h4");
-        completedHeading.textContent = "Completed";
-        completedSection.append(completedHeading);
-        if (!completedTasks.length) {
-          const empty = document.createElement("p");
-          empty.className = "muted small-text";
-          empty.textContent = "Drop a task here to complete it, or complete tasks from their flyout.";
-          completedSection.append(empty);
-        } else {
-          completedTasks.forEach((task) => {
-            const card = this.createTaskCard(task);
-            card.classList.add("task-card-completed");
-            completedSection.append(card);
-          });
-        }
-        sectionsWrapper.append(completedSection);
-        this.attachDropzone(completedSection, "complete", undefined, project.id);
-      }
-
-      if (tagsRow.children.length) {
-        body.append(tagsRow);
-      }
-
-      const allProjectTasks = this.taskManager.getTasks({ projectId: project.id });
-      const allNotes = allProjectTasks.flatMap((t) =>
-        (Array.isArray(t.notes) ? t.notes : []).map((note) => ({ ...note, taskTitle: t.title }))
-      ).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
-      if (allNotes.length) {
-        const notesDetails = document.createElement("details");
-        notesDetails.className = "project-notes-section";
-        const notesSummary = document.createElement("summary");
-        notesSummary.textContent = `Notes (${allNotes.length})`;
-        notesDetails.append(notesSummary);
-        const notesList = document.createElement("ul");
-        notesList.className = "project-notes-list";
-        allNotes.forEach((note) => {
-          const li = document.createElement("li");
-          li.className = "project-note-item";
-          const noteMeta = document.createElement("span");
-          noteMeta.className = "project-note-meta";
-          const noteDate = note.createdAt ? new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
-          noteMeta.textContent = [note.taskTitle, noteDate].filter(Boolean).join(" • ");
-          const noteText = document.createElement("p");
-          noteText.className = "project-note-text";
-          noteText.textContent = note.text;
-          li.append(noteMeta, noteText);
-          notesList.append(li);
-        });
-        notesDetails.append(notesList);
-        body.append(outcome, addNextForm, actions, sectionsWrapper, notesDetails);
-      } else {
-        body.append(outcome, addNextForm, actions, sectionsWrapper);
-      }
-      details.append(summary, body);
-      container.append(details);
+      container.append(row);
     });
   }
 
@@ -2495,6 +2257,468 @@ export class UIController {
       container.append(section);
     });
   }
+
+  // ─── Project Flyout ─────────────────────────────���─────────────────────────
+
+  openProjectFlyout(projectId) {
+    const flyout = this.elements.projectFlyout;
+    if (!flyout) return;
+    const project = this.getProjectCache().find((p) => p.id === projectId);
+    if (!project) return;
+    const wasOpen = this.isProjectFlyoutOpen;
+    this.currentProjectFlyoutId = projectId;
+    this.renderProjectFlyout(project);
+    flyout.classList.add("is-open");
+    flyout.setAttribute("aria-hidden", "false");
+    this.isProjectFlyoutOpen = true;
+    if (!wasOpen) {
+      history.pushState({ nextflowLayer: "projectFlyout" }, "");
+      this._handleProjectFlyoutKeydown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.closeProjectFlyout();
+        }
+      };
+      document.addEventListener("keydown", this._handleProjectFlyoutKeydown);
+      this.elements.closeProjectFlyout?.focus();
+    }
+  }
+
+  closeProjectFlyout({ fromPopstate = false } = {}) {
+    const flyout = this.elements.projectFlyout;
+    if (!flyout) return;
+    const wasOpen = this.isProjectFlyoutOpen;
+    flyout.classList.remove("is-open");
+    flyout.setAttribute("aria-hidden", "true");
+    this.isProjectFlyoutOpen = false;
+    this.currentProjectFlyoutId = null;
+    if (this._handleProjectFlyoutKeydown) {
+      document.removeEventListener("keydown", this._handleProjectFlyoutKeydown);
+      this._handleProjectFlyoutKeydown = null;
+    }
+    if (wasOpen && !fromPopstate && history.state?.nextflowLayer === "projectFlyout") {
+      this._historyNavPending = true;
+      history.back();
+    }
+  }
+
+  renderProjectFlyout(project) {
+    const titleEl = this.elements.projectFlyoutTitle;
+    const chipsEl = this.elements.projectFlyoutChips;
+    const content = this.elements.projectFlyoutContent;
+    if (!content) return;
+
+    if (titleEl) titleEl.textContent = project.name;
+
+    // Header chips
+    if (chipsEl) {
+      chipsEl.innerHTML = "";
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const deadlineOverdue = Boolean(project.deadline && project.deadline < todayIso);
+      [
+        project.areaOfFocus && `Area: ${project.areaOfFocus}`,
+        project.themeTag && `Theme: ${project.themeTag}`,
+        project.statusTag && `Status: ${project.statusTag}`,
+        project.deadline && `Deadline: ${formatFriendlyDate(project.deadline)}`,
+      ].forEach((text, idx) => {
+        if (!text) return;
+        const chip = document.createElement("span");
+        const isDeadlineChip = idx === 3;
+        if (isDeadlineChip && deadlineOverdue) {
+          chip.className = "project-flyout-chip project-flyout-chip--overdue";
+        } else if (isDeadlineChip) {
+          chip.className = "project-flyout-chip project-flyout-chip--deadline";
+        } else {
+          chip.className = "project-flyout-chip";
+        }
+        chip.textContent = text;
+        chipsEl.append(chip);
+      });
+    }
+
+    content.innerHTML = "";
+
+    const allTasks = this.taskManager.getTasks({ includeCompleted: false });
+    const filteredTasks = allTasks.filter((t) => t.projectId === project.id);
+    const projectTasks = filteredTasks.filter((t) =>
+      project.someday ? t.status !== STATUS.SOMEDAY : true
+    );
+
+    // Desired outcome
+    const outcome = document.createElement("div");
+    outcome.className = "project-outcome";
+    const outcomeLabel = document.createElement("span");
+    outcomeLabel.className = "muted small-text project-outcome-label";
+    outcomeLabel.textContent = "Desired outcome";
+    const outcomeText = document.createElement("p");
+    outcomeText.className = "project-outcome-text";
+    outcomeText.textContent = project.vision || "Define what \u201cdone\u201d looks like for this project.";
+    outcome.append(outcomeLabel, outcomeText);
+    content.append(outcome);
+
+    // Next action highlight
+    const nextActions = projectTasks.filter((t) => t.status === STATUS.NEXT);
+    if (nextActions.length) {
+      const highlight = document.createElement("div");
+      highlight.className = "project-flyout-next-highlight";
+      const hlLabel = document.createElement("div");
+      hlLabel.className = "project-flyout-next-label";
+      hlLabel.textContent = "Next action";
+      highlight.append(hlLabel);
+      const card = this.createTaskCard(nextActions[0]);
+      card.classList.add("task-card-primary");
+      highlight.append(card);
+      content.append(highlight);
+    }
+
+    // Add task form
+    const addForm = document.createElement("form");
+    addForm.className = "project-next-action-form";
+    const addInput = document.createElement("input");
+    addInput.type = "text";
+    addInput.placeholder = "Add task";
+    addInput.autocomplete = "off";
+    addInput.setAttribute("aria-label", `Add task for ${project.name}`);
+    const addBtn = document.createElement("button");
+    addBtn.type = "submit";
+    addBtn.className = "btn btn-primary";
+    addBtn.textContent = "Add";
+    addForm.append(addInput, addBtn);
+    addForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const title = addInput.value.trim();
+      if (!title) {
+        this.taskManager.notify("warn", "Enter a task title.");
+        addInput.focus();
+        return;
+      }
+      const created = this.taskManager.addTask({ title, status: STATUS.INBOX, projectId: project.id });
+      if (created) {
+        addInput.value = "";
+        addInput.focus();
+      }
+    });
+    content.append(addForm);
+
+    // Task groups
+    if (projectTasks.length) {
+      const grouped = {
+        [STATUS.INBOX]: [],
+        [STATUS.NEXT]: [],
+        [STATUS.DOING]: [],
+        [STATUS.WAITING]: [],
+        [STATUS.SOMEDAY]: [],
+      };
+      projectTasks.forEach((task) => {
+        if (grouped[task.status]) grouped[task.status].push(task);
+      });
+
+      const groups = [
+        { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
+        { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
+        { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
+        { status: STATUS.INBOX, label: "Inbox", empty: "", hideEmpty: true },
+        { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
+      ];
+
+      const sectionsWrapper = document.createElement("div");
+      sectionsWrapper.className = "project-task-groups";
+
+      groups.forEach((group) => {
+        const items = grouped[group.status] || [];
+        if (!items.length && group.hideEmpty) return;
+
+        const section = document.createElement("section");
+        section.className = "project-task-group";
+        section.dataset.projectId = project.id;
+        const heading = document.createElement("h4");
+        heading.textContent = group.label;
+        section.append(heading);
+
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted small-text";
+          empty.textContent = group.empty;
+          section.append(empty);
+        } else {
+          items.forEach((task, index) => {
+            const card = this.createTaskCard(task);
+            if (group.status === STATUS.NEXT) {
+              if (index === 0) card.classList.add("task-card-primary");
+              card.addEventListener("dragover", (event) => {
+                const sourceId = this.draggingTaskId
+                  || event.dataTransfer?.getData("text/task-id")
+                  || event.dataTransfer?.getData("text/plain");
+                if (!sourceId || sourceId === task.id) return;
+                const sourceTask = this.taskManager.getTaskById(sourceId);
+                if (!sourceTask || sourceTask.status !== STATUS.NEXT || sourceTask.projectId !== project.id || task.projectId !== project.id) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = card.getBoundingClientRect();
+                const dropBefore = this.resolveProjectNextDropBefore({ sourceId, targetId: task.id, projectId: project.id, clientY: event.clientY, bounds });
+                card.classList.toggle("is-drop-before", dropBefore);
+                card.classList.toggle("is-drop-after", !dropBefore);
+              });
+              card.addEventListener("dragleave", () => card.classList.remove("is-drop-before", "is-drop-after"));
+              card.addEventListener("drop", (event) => {
+                const sourceId = this.draggingTaskId
+                  || event.dataTransfer?.getData("text/task-id")
+                  || event.dataTransfer?.getData("text/plain");
+                if (!sourceId || sourceId === task.id) return;
+                const sourceTask = this.taskManager.getTaskById(sourceId);
+                if (!sourceTask || sourceTask.status !== STATUS.NEXT || sourceTask.projectId !== project.id || task.projectId !== project.id) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = card.getBoundingClientRect();
+                const dropBefore = this.resolveProjectNextDropBefore({ sourceId, targetId: task.id, projectId: project.id, clientY: event.clientY, bounds });
+                this.handleProjectNextReorderDrop({ sourceId, targetId: task.id, projectId: project.id, before: dropBefore });
+                card.classList.remove("is-drop-before", "is-drop-after");
+              });
+            }
+            section.append(card);
+          });
+        }
+        sectionsWrapper.append(section);
+        this.attachDropzone(section, group.status, undefined, project.id);
+      });
+
+      if (this.showProjectCompletedTasks) {
+        const completedTasks = this.taskManager.getCompletedTasks({ projectId: project.id });
+        const completedSection = document.createElement("section");
+        completedSection.className = "project-task-group";
+        const completedHeading = document.createElement("h4");
+        completedHeading.textContent = "Completed";
+        completedSection.append(completedHeading);
+        if (!completedTasks.length) {
+          const empty = document.createElement("p");
+          empty.className = "muted small-text";
+          empty.textContent = "Drop a task here to complete it, or complete tasks from their flyout.";
+          completedSection.append(empty);
+        } else {
+          completedTasks.forEach((task) => {
+            const card = this.createTaskCard(task);
+            card.classList.add("task-card-completed");
+            completedSection.append(card);
+          });
+        }
+        sectionsWrapper.append(completedSection);
+        this.attachDropzone(completedSection, "complete", undefined, project.id);
+      }
+
+      content.append(sectionsWrapper);
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text";
+      empty.textContent = "No tasks linked to this project yet.";
+      content.append(empty);
+    }
+
+    // Notes section (collapsible)
+    const allProjectTasks = this.taskManager.getTasks({ projectId: project.id });
+    const allNotes = allProjectTasks
+      .flatMap((t) => (Array.isArray(t.notes) ? t.notes : []).map((note) => ({ ...note, taskTitle: t.title })))
+      .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    if (allNotes.length) {
+      const notesDetails = document.createElement("details");
+      notesDetails.className = "project-notes-section";
+      const notesSummary = document.createElement("summary");
+      notesSummary.textContent = `Notes (${allNotes.length})`;
+      notesDetails.append(notesSummary);
+      const notesList = document.createElement("ul");
+      notesList.className = "project-notes-list";
+      allNotes.forEach((note) => {
+        const li = document.createElement("li");
+        li.className = "project-note-item";
+        const noteMeta = document.createElement("span");
+        noteMeta.className = "project-note-meta";
+        const noteDate = note.createdAt ? new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+        noteMeta.textContent = [note.taskTitle, noteDate].filter(Boolean).join(" \u2022 ");
+        const noteText = document.createElement("p");
+        noteText.className = "project-note-text";
+        noteText.textContent = note.text;
+        li.append(noteMeta, noteText);
+        notesList.append(li);
+      });
+      notesDetails.append(notesList);
+      content.append(notesDetails);
+    }
+
+    // Footer actions
+    const footer = document.createElement("div");
+    footer.className = "project-flyout-footer";
+
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "btn btn-light";
+    editButton.textContent = "Edit project";
+    editButton.addEventListener("click", () => this.renderProjectEditor(project));
+    footer.append(editButton);
+
+    if (project.someday) {
+      const activateBtn = document.createElement("button");
+      activateBtn.type = "button";
+      activateBtn.className = "btn btn-primary";
+      activateBtn.textContent = "Activate project";
+      activateBtn.addEventListener("click", () => this.taskManager.activateProject(project.id));
+      footer.append(activateBtn);
+    } else {
+      const somedayBtn = document.createElement("button");
+      somedayBtn.type = "button";
+      somedayBtn.className = "btn btn-light";
+      somedayBtn.textContent = "Move to Someday";
+      somedayBtn.addEventListener("click", () => this.taskManager.moveProjectToSomeday(project.id));
+      footer.append(somedayBtn);
+    }
+
+    const completeBtn = document.createElement("button");
+    completeBtn.type = "button";
+    completeBtn.className = "btn btn-primary";
+    completeBtn.textContent = "Mark complete";
+    completeBtn.addEventListener("click", () => {
+      this.closeProjectFlyout();
+      this.openProjectCompleteModal(project);
+    });
+    footer.append(completeBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn btn-danger";
+    deleteBtn.textContent = "Delete project";
+    deleteBtn.addEventListener("click", async () => {
+      const confirmed = await this.showConfirm(
+        `Delete project "${project.name}"? Tasks will remain but lose their project link.`,
+        { title: "Delete project", okLabel: "Delete", danger: true }
+      );
+      if (confirmed) {
+        this.closeProjectFlyout();
+        this.taskManager.deleteProject(project.id);
+      }
+    });
+    footer.append(deleteBtn);
+
+    content.append(footer);
+  }
+
+  renderProjectEditor(project) {
+    const content = this.elements.projectFlyoutContent;
+    const titleEl = this.elements.projectFlyoutTitle;
+    if (!content) return;
+    if (titleEl) titleEl.textContent = "Edit project";
+
+    content.innerHTML = "";
+
+    const form = document.createElement("form");
+    form.className = "project-edit";
+    form.setAttribute("aria-label", "Edit project");
+
+    const nameField = document.createElement("label");
+    nameField.className = "project-edit-field";
+    nameField.textContent = "Project name";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = project.name;
+    nameInput.required = true;
+    nameField.append(nameInput);
+
+    const visionField = document.createElement("label");
+    visionField.className = "project-edit-field";
+    visionField.textContent = "Desired outcome";
+    const visionInput = document.createElement("textarea");
+    visionInput.rows = 3;
+    visionInput.value = project.vision || "";
+    visionField.append(visionInput);
+
+    const areaField = document.createElement("div");
+    areaField.className = "project-edit-field";
+    const areaLabel = document.createElement("span");
+    areaLabel.textContent = "Area of focus";
+    const areaSelect = document.createElement("select");
+    populateAreaSelect(areaSelect, this.taskManager.getAreasOfFocus(), project.areaOfFocus || "");
+    const areaNewBtn = document.createElement("button");
+    areaNewBtn.type = "button";
+    areaNewBtn.className = "btn btn-light btn-small";
+    areaNewBtn.textContent = "+ New";
+    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaSelect, this.taskManager));
+    const areaWrapper = document.createElement("div");
+    areaWrapper.className = "area-select-group";
+    areaWrapper.append(areaSelect, areaNewBtn);
+    areaField.append(areaLabel, areaWrapper);
+
+    const themeField = document.createElement("label");
+    themeField.className = "project-edit-field";
+    themeField.textContent = "Theme";
+    const themeInput = document.createElement("input");
+    themeInput.type = "text";
+    themeInput.setAttribute("list", "projectThemeSuggestions");
+    themeInput.placeholder = "Theme (optional)";
+    themeInput.value = project.themeTag || "";
+    themeField.append(themeInput);
+
+    const statusField = document.createElement("label");
+    statusField.className = "project-edit-field";
+    statusField.textContent = "Status tag";
+    const statusInput = document.createElement("input");
+    statusInput.type = "text";
+    statusInput.setAttribute("list", "projectStatusSuggestions");
+    statusInput.placeholder = "Status";
+    statusInput.value = project.statusTag || "";
+    statusField.append(statusInput);
+
+    const deadlineField = document.createElement("label");
+    deadlineField.className = "project-edit-field";
+    deadlineField.textContent = "Deadline";
+    const deadlineInput = document.createElement("input");
+    deadlineInput.type = "date";
+    deadlineInput.value = project.deadline || "";
+    deadlineField.append(deadlineInput);
+
+    const actions = document.createElement("div");
+    actions.className = "project-edit-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "btn btn-light";
+    cancelButton.textContent = "Cancel";
+    cancelButton.addEventListener("click", () => {
+      const latest = this.getProjectCache().find((p) => p.id === project.id);
+      if (latest) this.renderProjectFlyout(latest);
+    });
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "submit";
+    saveButton.className = "btn btn-primary";
+    saveButton.textContent = "Save";
+
+    actions.append(cancelButton, saveButton);
+    form.append(nameField, visionField, areaField, themeField, statusField, deadlineField, actions);
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const trimmedName = nameInput.value.trim();
+      if (!trimmedName) {
+        this.taskManager.notify("warn", "Project name cannot be empty.");
+        return;
+      }
+      this.taskManager.updateProject(project.id, {
+        name: trimmedName,
+        vision: visionInput.value.trim(),
+        areaOfFocus: areaSelect.value || null,
+        themeTag: themeInput.value.trim() || null,
+        statusTag: statusInput.value.trim() || null,
+        deadline: deadlineInput.value || null,
+      });
+    });
+
+    content.append(form);
+  }
+
+  setupProjectFlyout() {
+    const { closeProjectFlyout, projectFlyoutBackdrop } = this.elements;
+    closeProjectFlyout?.addEventListener("click", () => this.closeProjectFlyout());
+    projectFlyoutBackdrop?.addEventListener("click", () => this.closeProjectFlyout());
+  }
+
+  // ─── End Project Flyout ───────────────────────────────��───────────────────
 
   bindProjectCompletionModal() {
     const {
@@ -3033,12 +3257,8 @@ export class UIController {
       includeBars: true,
       onItemClick: (row) => {
         if (!row.projectId) return;
-        const project = this.getProjectCache().find((p) => p.id === row.projectId);
         this.setActivePanel("projects");
-        if (project && !project.isExpanded) {
-          this.taskManager.toggleProjectExpansion(row.projectId, true);
-        }
-        this.focusProjectCard(row.projectId);
+        this.openProjectFlyout(row.projectId);
       },
     });
 
@@ -6301,22 +6521,16 @@ export class UIController {
       return;
     }
     this.setActivePanel("projects");
-    if (!project.isExpanded) {
-      this.taskManager.toggleProjectExpansion(projectId, true);
-    }
-    this.focusProjectCard(projectId);
+    this.openProjectFlyout(projectId);
   }
 
   focusProjectCard(projectId) {
     if (!projectId) return;
     requestAnimationFrame(() => {
-      const card = document.querySelector(`.project[data-project-id="${projectId}"]`);
-      if (!card) return;
-      card.scrollIntoView({ block: "center", behavior: "smooth" });
-      const summary = card.querySelector("summary");
-      if (summary && typeof summary.focus === "function") {
-        summary.focus({ preventScroll: true });
-      }
+      const row = document.querySelector(`.project-row[data-project-id="${projectId}"]`);
+      if (!row) return;
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      row.focus({ preventScroll: true });
     });
   }
 
@@ -9304,10 +9518,7 @@ export class UIController {
         return;
       }
       this.setActivePanel("projects");
-      if (!project.isExpanded) {
-        this.taskManager.toggleProjectExpansion(project.id, true);
-      }
-      this.focusProjectCard(project.id);
+      this.openProjectFlyout(project.id);
     }
   }
 
@@ -9450,118 +9661,6 @@ export class UIController {
     return this.projectCache;
   }
 
-  openProjectEditor(details, project) {
-    const body = details.querySelector(".project-body");
-    if (!body) return;
-    body.innerHTML = "";
-
-    details.open = true;
-
-    const form = document.createElement("form");
-    form.className = "project-edit";
-    form.setAttribute("aria-label", "Edit project");
-
-    const nameField = document.createElement("label");
-    nameField.className = "project-edit-field";
-    nameField.textContent = "Project name";
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.value = project.name;
-    nameInput.required = true;
-    nameField.append(nameInput);
-
-    const visionField = document.createElement("label");
-    visionField.className = "project-edit-field";
-    visionField.textContent = "Desired outcome";
-    const visionInput = document.createElement("textarea");
-    visionInput.rows = 3;
-    visionInput.value = project.vision || "";
-    visionField.append(visionInput);
-
-    const areaField = document.createElement("div");
-    areaField.className = "project-edit-field";
-    const areaLabel = document.createElement("span");
-    areaLabel.textContent = "Area of focus";
-    const areaSelect = document.createElement("select");
-    populateAreaSelect(areaSelect, this.taskManager.getAreasOfFocus(), project.areaOfFocus || "");
-    const areaNewBtn = document.createElement("button");
-    areaNewBtn.type = "button";
-    areaNewBtn.className = "btn btn-light btn-small";
-    areaNewBtn.textContent = "+ New";
-    areaNewBtn.addEventListener("click", () => addNewAreaOption(areaSelect, this.taskManager));
-    const areaWrapper = document.createElement("div");
-    areaWrapper.className = "area-select-group";
-    areaWrapper.append(areaSelect, areaNewBtn);
-    areaField.append(areaLabel, areaWrapper);
-
-    const themeField = document.createElement("label");
-    themeField.className = "project-edit-field";
-    themeField.textContent = "Theme";
-    const themeInput = document.createElement("input");
-    themeInput.type = "text";
-    themeInput.setAttribute("list", "projectThemeSuggestions");
-    themeInput.placeholder = "Theme (optional)";
-    themeInput.value = project.themeTag || "";
-    themeField.append(themeInput);
-
-    const statusField = document.createElement("label");
-    statusField.className = "project-edit-field";
-    statusField.textContent = "Status tag";
-    const statusInput = document.createElement("input");
-    statusInput.type = "text";
-    statusInput.setAttribute("list", "projectStatusSuggestions");
-    statusInput.placeholder = "Status";
-    statusInput.value = project.statusTag || "";
-    statusField.append(statusInput);
-
-    const deadlineField = document.createElement("label");
-    deadlineField.className = "project-edit-field";
-    deadlineField.textContent = "Deadline";
-    const deadlineInput = document.createElement("input");
-    deadlineInput.type = "date";
-    deadlineInput.value = project.deadline || "";
-    deadlineField.append(deadlineInput);
-
-    const actions = document.createElement("div");
-    actions.className = "project-edit-actions";
-
-    const cancelButton = document.createElement("button");
-    cancelButton.type = "button";
-    cancelButton.className = "btn btn-light";
-    cancelButton.textContent = "Cancel";
-    cancelButton.addEventListener("click", () => {
-      this.renderProjects();
-    });
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "submit";
-    saveButton.className = "btn btn-primary";
-    saveButton.textContent = "Save";
-
-    actions.append(cancelButton, saveButton);
-    form.append(nameField, visionField, areaField, themeField, statusField, deadlineField, actions);
-
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const trimmedName = nameInput.value.trim();
-      if (!trimmedName) {
-        this.taskManager.notify("warn", "Project name cannot be empty.");
-        return;
-      }
-      this.taskManager.updateProject(project.id, {
-        name: trimmedName,
-        vision: visionInput.value.trim(),
-        areaOfFocus: areaSelect.value || null,
-        themeTag: themeInput.value.trim() || null,
-        statusTag: statusInput.value.trim() || null,
-        deadline: deadlineInput.value || null,
-      });
-      this.updateCounts();
-    });
-
-    body.append(form);
-    nameInput.focus();
-  }
 
   attachDropzone(element, status, context, projectId) {
     if (!element) return;
@@ -10379,6 +10478,12 @@ function mapElements() {
     taskFlyoutPrev: byId("taskFlyoutPrev"),
     taskFlyoutNext: byId("taskFlyoutNext"),
     taskFlyoutBackdrop: document.querySelector(".task-flyout-backdrop"),
+    projectFlyout: byId("projectFlyout"),
+    projectFlyoutContent: byId("projectFlyoutContent"),
+    projectFlyoutTitle: byId("projectFlyoutTitle"),
+    projectFlyoutChips: byId("projectFlyoutChips"),
+    closeProjectFlyout: byId("closeProjectFlyout"),
+    projectFlyoutBackdrop: byId("projectFlyoutBackdrop"),
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),

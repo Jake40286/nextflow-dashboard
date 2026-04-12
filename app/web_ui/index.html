@@ -274,7 +274,7 @@
                 <option value="stale-first">Longest untouched</option>
               </select>
               <button id="clearFilters" class="btn btn-light" type="button">Clear filters</button>
-              <button id="expandProjects" class="btn btn-light" type="button">Expand active projects</button>
+              <button id="expandProjects" class="btn btn-light" type="button" hidden>Expand active projects</button>
               <label id="projectCompletedTasksControl" class="toolbar-toggle" for="toggleProjectCompletedTasks">
                 <input id="toggleProjectCompletedTasks" type="checkbox" />
                 <span>Show completed tasks</span>
@@ -708,6 +708,20 @@
         </div>
       </header>
       <div id="taskFlyoutContent" class="task-flyout-content"></div>
+    </aside>
+  </div>
+
+  <div id="projectFlyout" class="project-flyout" aria-hidden="true">
+    <div class="project-flyout-backdrop" id="projectFlyoutBackdrop"></div>
+    <aside class="project-flyout-panel" role="dialog" aria-modal="true" aria-labelledby="projectFlyoutTitle">
+      <header class="project-flyout-header">
+        <div class="project-flyout-header-top">
+          <button id="closeProjectFlyout" class="btn btn-light" type="button" aria-label="Close project details">Close</button>
+        </div>
+        <h2 id="projectFlyoutTitle" class="project-flyout-title">Project</h2>
+        <div id="projectFlyoutChips" class="project-flyout-chips"></div>
+      </header>
+      <div id="projectFlyoutContent" class="project-flyout-content"></div>
     </aside>
   </div>
 

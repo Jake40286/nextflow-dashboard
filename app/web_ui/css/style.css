@@ -1263,6 +1263,222 @@ button.meta-item:hover {
   flex: 0 0 auto;
 }
 
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.project-row:hover {
+  background: var(--surface-3, var(--surface));
+  border-color: var(--line-strong, var(--line));
+}
+
+.project-row:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-color: var(--accent);
+}
+
+.project-row--at-risk {
+  border-left: 3px solid var(--warning);
+}
+
+.project-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.project-row-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.project-row-chip {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.project-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.project-row-deadline {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.project-row-deadline--overdue {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+
+.project-row-chevron {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Project flyout */
+.project-flyout {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2600;
+}
+
+.project-flyout.is-open {
+  pointer-events: auto;
+}
+
+.project-flyout-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 12, 7, 0.52);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.project-flyout.is-open .project-flyout-backdrop {
+  opacity: 1;
+}
+
+.project-flyout-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(560px, 100%);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(104%);
+  transition: transform var(--transition-base);
+  display: flex;
+  flex-direction: column;
+}
+
+.project-flyout.is-open .project-flyout-panel {
+  transform: translateX(0);
+}
+
+.project-flyout-header {
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.project-flyout-header-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.project-flyout-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+.project-flyout-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--space-1);
+}
+
+.project-flyout-chip {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.project-flyout-chip--deadline {
+  color: var(--text-muted);
+}
+
+.project-flyout-chip--overdue {
+  color: var(--danger, #c0392b);
+  border-color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+
+.project-flyout-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+
+.project-flyout-next-highlight {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  padding: var(--space-2) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.project-flyout-next-label {
+  font-size: 0.77rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.project-flyout-footer {
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .project-flyout-panel {
+    width: 100%;
+  }
+}
+
+/* Legacy accordion selectors kept for backwards compat during transition */
 .project {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -1272,39 +1488,6 @@ button.meta-item:hover {
 
 .project--at-risk {
   border-left: 3px solid var(--warning);
-}
-
-.project summary {
-  cursor: pointer;
-  list-style: none;
-  display: grid;
-  gap: 4px;
-  font-weight: 600;
-  color: var(--text);
-  position: relative;
-  padding-right: 16px;
-}
-
-.project summary::-webkit-details-marker {
-  display: none;
-}
-
-.project summary::after {
-  content: "▸";
-  position: absolute;
-  right: 0;
-  top: 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  transition: transform var(--transition-fast);
-}
-
-.project[open] summary::after {
-  transform: rotate(90deg);
-}
-
-.project[open] summary {
-  margin-bottom: var(--space-2);
 }
 
 .project-body {

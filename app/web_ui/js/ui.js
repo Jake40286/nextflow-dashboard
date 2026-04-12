@@ -7832,6 +7832,21 @@ export class UIController {
     meta.append(this.buildMetaRow("Recurs", this.describeRecurrence(task.recurrenceRule) || "—"));
     meta.append(this.buildMetaRow("Created on", task.originDevice || "Unknown device"));
 
+    let projectChip = null;
+    if (task.projectId && !readOnly) {
+      const projectName = this.getProjectName(task.projectId);
+      if (projectName) {
+        projectChip = document.createElement("button");
+        projectChip.type = "button";
+        projectChip.className = "btn btn-pill btn-small";
+        projectChip.textContent = `${projectName} ↗`;
+        projectChip.addEventListener("click", () => {
+          this.openProjectFromTask(task);
+          this.closeTaskFlyout();
+        });
+      }
+    }
+
     if (task.status === STATUS.INBOX) {
       const inboxPanel = document.createElement("div");
       inboxPanel.className = "inbox-process-panel";
@@ -7857,7 +7872,7 @@ export class UIController {
       reminder.className = "muted small-text";
       reminder.textContent = "Processing will walk through Clarify → Organize.";
       inboxPanel.append(instructions, inboxActions, reminder);
-      content.append(...[description, inboxPanel, listSection, notesSection, meta].filter(Boolean));
+      content.append(...[description, projectChip, inboxPanel, listSection, notesSection, meta].filter(Boolean));
       return;
     }
 
@@ -7942,9 +7957,9 @@ export class UIController {
     }
 
     if (!isCompleted) {
-      content.append(...[description, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
+      content.append(...[description, projectChip, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
     } else {
-      content.append(...[description, actionToolbar, listSection, notesSection, meta].filter(Boolean));
+      content.append(...[description, projectChip, actionToolbar, listSection, notesSection, meta].filter(Boolean));
     }
     content.append(this.createTaskForm(task));
   }
@@ -8454,7 +8469,21 @@ export class UIController {
     createProjectButton.className = "btn btn-link task-project-create";
     createProjectButton.textContent = "New project";
     createProjectButton.addEventListener("click", () => this.createProjectForTask(task, { archiveEntryId }));
-    projectControls.append(projectSelect, createProjectButton);
+    const viewProjectBtn = document.createElement("button");
+    viewProjectBtn.type = "button";
+    viewProjectBtn.className = "btn btn-link task-project-create";
+    viewProjectBtn.textContent = "→ View";
+    viewProjectBtn.hidden = !projectSelect.value;
+    viewProjectBtn.addEventListener("click", () => {
+      const pid = projectSelect.value;
+      if (!pid) return;
+      this.openProjectFromTask({ projectId: pid });
+      this.closeTaskFlyout();
+    });
+    projectSelect.addEventListener("change", () => {
+      viewProjectBtn.hidden = !projectSelect.value;
+    });
+    projectControls.append(projectSelect, createProjectButton, viewProjectBtn);
     projectGroup.append(projectControls);
 
     let convertRow = null;

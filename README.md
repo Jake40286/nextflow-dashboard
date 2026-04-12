@@ -12,7 +12,7 @@ NextFlow is built around a structured workflow for capturing and processing ever
 
 1. **Capture** — write down anything that has your attention (the "Inbox")
 2. **Clarify** — decide what each item is and what, if anything, you should do about it
-3. **Organise** — sort it into the right bucket (Next Actions, Projects, Waiting For, Someday/Maybe, Reference)
+3. **Organise** — sort it into the right bucket (Pending Tasks, Projects, Delegated, Backburner, Reference)
 4. **Reflect** — review your lists regularly so you trust what's in them
 5. **Engage** — pick your next action with confidence
 
@@ -23,9 +23,9 @@ NextFlow is built around a structured workflow for capturing and processing ever
 - **Guided Clarification flow** — a nine-step modal walks you through every inbox item and routes it correctly without guesswork
 - **Project tracking** — group related tasks under projects; see active and completed task lists per project
 - **Calendar view** — grid and list views of tasks with due dates or scheduled times
-- **Kanban board** — drag tasks between status columns (Inbox → Next → Doing → Waiting → Someday)
+- **Kanban board** — drag tasks between status columns (Inbox → Next → Doing → Delegated → Backburner)
 - **My Day** — a focused daily view to plan your immediate work
-- **Waiting For tracking** — tag tasks by person or reference another task so nothing falls through the cracks
+- **Delegated tracking** — tag tasks by person or reference another task so nothing falls through the cracks
 - **Rich filtering** — filter any view by context, project, person, energy level, time required, or waiting-for
 - **Reports & Statistics** — completion trends, task-by-context breakdown, and weekly history charts
 - **Area of Focus** — a workspace lens (Work, Personal, Home, etc.) that scopes all views, filters, contexts, and people tags app-wide
@@ -43,12 +43,12 @@ NextFlow is built around a structured workflow for capturing and processing ever
 |---|---|
 | **Inbox** | Unprocessed captures — your starting point each day |
 | **My Day** | Tasks you've scheduled for today |
-| **Next Actions** | Everything ready to work on, grouped by context |
+| **Pending Tasks** | Everything ready to work on, grouped by context |
 | **Kanban** | All tasks on a drag-and-drop board by status |
 | **Projects** | Active projects with their task lists and completion history |
 | **Calendar** | Tasks by date; grid or list layout |
-| **Waiting For** | Tasks delegated or blocked, with who/what they're waiting on |
-| **Someday / Maybe** | Ideas and tasks parked for later review |
+| **Delegated** | Tasks delegated or blocked, with who/what they're waiting on |
+| **Backburner** | Ideas and tasks parked for later review |
 | **All Active** | Every non-completed task in one scrollable list |
 | **Weekly Review** | Guided review flow to process open loops and keep the system current |
 | **Reports** | Completion rate charts, context breakdowns, weekly trends |
@@ -69,7 +69,7 @@ When you click **Clarify** on an inbox item, the dashboard walks you through nin
 6. Does it have a date?
 7. Which project does it belong to?
 8. Set energy level, time required, and context
-9. Final route — sends it to Next Actions, Waiting For, Someday/Maybe, Reference, or Trash
+9. Final route — sends it to Pending Tasks, Delegated, Backburner, Reference, or Trash
 
 Nothing leaves the Inbox unless this process is complete. Quick-add skips clarification intentionally; context is only ever assigned during this guided flow.
 
@@ -79,10 +79,10 @@ Nothing leaves the Inbox unless this process is complete. Quick-add skips clarif
 
 Each task can carry:
 
-- **Status** — Inbox, Next, Doing, Waiting, Someday
+- **Status** — Inbox, Pending Tasks, Doing, Delegated, Backburner
 - **Project** — the parent project it belongs to
 - **Context** — where/how it can be done (`@Home`, `@Office`, `@Phone`, etc.)
-- **Waiting For** — a person, note, or reference to another task
+- **Delegated** — a person, note, or reference to another task
 - **Due date**, **Follow-up date**, and **Calendar date/time** — for scheduled work
 - **Energy level** — Low / Medium / High
 - **Time required** — `<5min`, `<15min`, `<30min`, `30min+`
@@ -90,7 +90,7 @@ Each task can carry:
 - **Notes** — free-text journal attached to the task
 - **Area of Focus** — workspace lens that scopes the task (`Work`, `Personal`, `Home`, etc.)
 - **People tags** — `+Name` mentions for collaboration tracking
-- **Short slug** — a compact identifier for cross-referencing tasks in the Waiting For field
+- **Short slug** — a compact identifier for cross-referencing tasks in the Delegated field
 
 ---
 

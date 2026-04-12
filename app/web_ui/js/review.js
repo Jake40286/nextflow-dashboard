@@ -2,8 +2,8 @@
  * ReviewController — Weekly Review
  *
  * Drives the full-screen, forced-decision review mode. Works through five
- * sections in order: Inbox (gated) → Next Actions → Waiting For →
- * Someday/Maybe → Projects. Every item requires an explicit decision before
+ * sections in order: Inbox (gated) → Pending Tasks → Delegated →
+ * Backburner → Projects. Every item requires an explicit decision before
  * the review advances.
  *
  * Session state (current position, processed IDs, running stats) is persisted
@@ -32,19 +32,19 @@ const SECTIONS = [
   },
   {
     id: "next",
-    label: "Next Actions",
+    label: "Pending Tasks",
     description: "Confirm each is still relevant and actionable.",
     statuses: [STATUS.NEXT, STATUS.DOING],
   },
   {
     id: "waiting",
-    label: "Waiting For",
+    label: "Delegated",
     description: "Check on each item. Has anything come in?",
     status: STATUS.WAITING,
   },
   {
     id: "someday",
-    label: "Someday / Maybe",
+    label: "Backburner",
     description: "Activate what you're ready to commit to. Release the rest.",
     status: STATUS.SOMEDAY,
   },
@@ -370,8 +370,8 @@ export class ReviewController {
     const statsEl = document.getElementById("reviewCompleteStats");
     if (statsEl) {
       const rows = [
-        stats.promoted  && `${stats.promoted} promoted to Next Actions`,
-        stats.deferred  && `${stats.deferred} deferred to Someday`,
+        stats.promoted  && `${stats.promoted} promoted to Pending Tasks`,
+        stats.deferred  && `${stats.deferred} deferred to Backburner`,
         stats.completed && `${stats.completed} waiting items completed`,
         stats.deleted   && `${stats.deleted} deleted`,
         stats.confirmed && `${stats.confirmed} confirmed in place`,
@@ -535,8 +535,8 @@ export class ReviewController {
       `;
     } else {
       const STATUS_LABELS = {
-        inbox: "Inbox", next: "Next Actions", doing: "Doing",
-        waiting: "Waiting For", someday: "Someday / Maybe",
+        inbox: "Inbox", next: "Pending Tasks", doing: "Doing",
+        waiting: "Delegated", someday: "Backburner",
       };
       const currentStatusLabel = STATUS_LABELS[item.status] ?? item.status;
       const origSectionLabel = origSection?.label ?? "—";
@@ -604,14 +604,14 @@ export class ReviewController {
     let btns = "";
     if (section.id === "inbox") {
       btns = `
-        <button class="btn btn-primary review-action-btn" data-action="promote">→ Next Actions</button>
-        <button class="btn btn-light review-action-btn" data-action="defer">→ Someday</button>
+        <button class="btn btn-primary review-action-btn" data-action="promote">→ Pending Tasks</button>
+        <button class="btn btn-light review-action-btn" data-action="defer">→ Backburner</button>
         <button class="btn btn-light review-action-btn" data-action="delete">Delete</button>
         <button class="btn btn-light review-action-btn" data-action="edit">Edit first</button>
       `;
     } else if (section.id === "next") {
       btns = `
-        <button class="btn btn-light review-action-btn" data-action="defer">→ Someday</button>
+        <button class="btn btn-light review-action-btn" data-action="defer">→ Backburner</button>
         <button class="btn btn-light review-action-btn" data-action="delete">Delete</button>
         <button class="btn btn-light review-action-btn" data-action="edit">Edit</button>
         <button class="btn btn-primary review-action-btn" data-action="confirm">Mark Reviewed →</button>
@@ -663,7 +663,7 @@ export class ReviewController {
             <input type="text" class="review-add-next-input" placeholder="Describe the next action…" autocomplete="off" required />
             <button type="submit" class="btn btn-primary btn-small">Add</button>
           </form>
-          <button type="button" class="btn btn-light btn-small review-someday-toggle" id="reviewSomedayToggle">From Someday ▾</button>
+          <button type="button" class="btn btn-light btn-small review-someday-toggle" id="reviewSomedayToggle">From Backburner ▾</button>
         </div>
         <ul class="review-someday-list" id="reviewSomedayList" hidden></ul>
       ` : ""}
@@ -697,12 +697,12 @@ export class ReviewController {
         .filter((t) => !t.projectId);
       if (somedayTasks.length === 0) {
         toggleBtn.setAttribute("disabled", "");
-        toggleBtn.textContent = "From Someday (none)";
+        toggleBtn.textContent = "From Backburner (none)";
       } else {
         toggleBtn.addEventListener("click", () => {
           const isHidden = somedayList.hidden;
           somedayList.hidden = !isHidden;
-          toggleBtn.textContent = isHidden ? "From Someday ▴" : "From Someday ▾";
+          toggleBtn.textContent = isHidden ? "From Backburner ▴" : "From Backburner ▾";
           if (isHidden && somedayList.childElementCount === 0) {
             somedayList.innerHTML = somedayTasks.map((t) => `
               <li class="review-someday-item" data-task-id="${_esc(t.id)}">${_esc(t.title)}</li>

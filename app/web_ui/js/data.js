@@ -135,24 +135,27 @@ const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const STATUS_LABELS = {
   [STATUS.INBOX]: "Inbox",
-  [STATUS.NEXT]: "Next Actions",
+  [STATUS.NEXT]: "Pending Tasks",
   [STATUS.DOING]: "Doing",
-  [STATUS.WAITING]: "Waiting",
-  [STATUS.SOMEDAY]: "Someday / Maybe",
+  [STATUS.WAITING]: "Delegated",
+  [STATUS.SOMEDAY]: "Backburner",
 };
 const STATUS_ORDER = [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING, STATUS.SOMEDAY];
 const SECTION_STATUS_MAP = new Map([
   ["inbox", STATUS.INBOX],
   ["capture", STATUS.INBOX],
+  ["pending tasks", STATUS.NEXT],
   ["next actions", STATUS.NEXT],
   ["next-actions", STATUS.NEXT],
   ["next", STATUS.NEXT],
   ["doing", STATUS.DOING],
   ["in progress", STATUS.DOING],
   ["in-progress", STATUS.DOING],
+  ["delegated", STATUS.WAITING],
   ["waiting for", STATUS.WAITING],
   ["waiting-for", STATUS.WAITING],
   ["waiting", STATUS.WAITING],
+  ["backburner", STATUS.SOMEDAY],
   ["someday maybe", STATUS.SOMEDAY],
   ["someday / maybe", STATUS.SOMEDAY],
   ["someday-maybe", STATUS.SOMEDAY],
@@ -190,10 +193,10 @@ const defaultState = () => ({
   completedProjects: [],
   checklist: [
     { id: "c-1", label: "Get inbox to zero", done: false },
-    { id: "c-2", label: "Review next actions by context", done: false },
-    { id: "c-3", label: "Update waiting-for list", done: false },
+    { id: "c-2", label: "Review pending tasks by context", done: false },
+    { id: "c-3", label: "Update delegated list", done: false },
     { id: "c-4", label: "Review calendar notes and blockers", done: false },
-    { id: "c-5", label: "Look at someday/maybe to activate items", done: false },
+    { id: "c-5", label: "Look at backburner to activate items", done: false },
   ],
   analytics: {
     history: [
@@ -1003,10 +1006,10 @@ export class TaskManager extends EventTarget {
     this.emitChange();
     const destLabel = {
       [STATUS.INBOX]: "Inbox",
-      [STATUS.NEXT]: "Next Actions",
+      [STATUS.NEXT]: "Pending Tasks",
       [STATUS.DOING]: "Doing",
-      [STATUS.WAITING]: "Waiting For",
-      [STATUS.SOMEDAY]: "Someday",
+      [STATUS.WAITING]: "Delegated",
+      [STATUS.SOMEDAY]: "Backburner",
     }[task.status] ?? "Inbox";
     this.notify("info", `Added "${task.title}" to ${destLabel}.`);
     return task;
@@ -1614,7 +1617,7 @@ export class TaskManager extends EventTarget {
       }
     }
     this.emitChange();
-    this.notify("info", `Restored "${restored.title}" to Next Actions.`);
+    this.notify("info", `Restored "${restored.title}" to Pending Tasks.`);
     return restored;
   }
 
@@ -1760,7 +1763,7 @@ export class TaskManager extends EventTarget {
     project.someday = true;
     project.updatedAt = nowIso();
     this.emitChange();
-    this.notify("info", `Moved project "${project.name}" to Someday.`);
+    this.notify("info", `Moved project "${project.name}" to Backburner.`);
   }
 
   addProject(name, vision = "", metadata = {}) {

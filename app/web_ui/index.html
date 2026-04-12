@@ -104,7 +104,7 @@
           <div id="associationProjectOptions" class="association-flyout-options"></div>
         </section>
         <section class="association-flyout-group" aria-labelledby="associationFlyoutWaitingLabel">
-          <h3 id="associationFlyoutWaitingLabel">Waiting for</h3>
+          <h3 id="associationFlyoutWaitingLabel">Delegated</h3>
           <div id="associationWaitingOptions" class="association-flyout-options"></div>
         </section>
         <section class="association-flyout-group" aria-labelledby="associationFlyoutEffortLabel">
@@ -134,7 +134,7 @@
               <span class="summary-value" id="summaryInbox">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-next" data-panel-target="next" data-status-target="next" aria-controls="panel-next" aria-selected="false">
-              <span class="summary-label">Next Actions</span>
+              <span class="summary-label">Pending Tasks</span>
               <span class="summary-value" id="summaryNext">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-doing" data-panel-target="kanban" data-status-target="doing" aria-controls="panel-kanban" aria-selected="false">
@@ -150,11 +150,11 @@
               <span class="summary-value" id="summaryKanban">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-waiting" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false">
-              <span class="summary-label">Waiting</span>
+              <span class="summary-label">Delegated</span>
               <span class="summary-value" id="summaryWaiting">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-someday" data-panel-target="someday" data-status-target="someday" aria-controls="panel-someday" aria-selected="false">
-              <span class="summary-label">Someday</span>
+              <span class="summary-label">Backburner</span>
               <span class="summary-value" id="summarySomeday">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-projects" data-panel-target="projects" aria-controls="panel-projects" aria-selected="false">
@@ -239,7 +239,7 @@
             <div class="toolbar-actions">
               <label id="nextProjectFanoutControl" class="toolbar-toggle" for="toggleNextProjectFanout">
                 <input id="toggleNextProjectFanout" type="checkbox" />
-                <span>Show all next actions per project</span>
+                <span>Show all pending tasks per project</span>
               </label>
               <label id="nextHideScheduledControl" class="toolbar-toggle" for="toggleHideScheduledNext">
                 <input id="toggleHideScheduledNext" type="checkbox" />
@@ -533,7 +533,7 @@
             <article class="statistics-card">
               <h4>Archive + Delegation</h4>
               <ul id="statsArchiveMix" class="statistics-list" role="list"></ul>
-              <h5>Top Waiting For</h5>
+              <h5>Top Delegated</h5>
               <ul id="statsPeopleList" class="statistics-list" role="list"></ul>
             </article>
           </section>
@@ -878,7 +878,7 @@
           <p class="clarify-question">Does this need to be done?</p>
           <div class="clarify-option-buttons">
             <button id="clarifyActionableYes" class="btn btn-primary clarify-choice" type="button">Yes</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Someday / Maybe</button>
+            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Backburner</button>
             <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">Trash</button>
           </div>
 
@@ -931,7 +931,7 @@
               <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
               <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
               <div class="clarify-option-buttons">
-                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Waiting For</button>
+                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Delegated</button>
                 <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
               </div>
             </div>
@@ -969,7 +969,7 @@
                 </div>
               </div>
               <div class="clarify-project-option">
-                <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date → Next Actions</label>
+                <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date → Pending Tasks</label>
                 <div id="clarifyDueDateFields" hidden>
                   <input id="clarifyDueDateInput" type="date" />
                 </div>
@@ -1059,7 +1059,7 @@
         <ol>
           <li><strong>Capture</strong> new ideas in the Inbox using the quick add bar.</li>
           <li><strong>Clarify</strong> each item by editing it—set the desired status, context, due dates, and project.</li>
-          <li><strong>Organize</strong> tasks into Next Actions, Waiting For, or Someday by dragging or editing.</li>
+          <li><strong>Organize</strong> tasks into Pending Tasks, Delegated, or Backburner by dragging or editing.</li>
           <li><strong>Review</strong> projects regularly: ensure every active project has a clear outcome and at least one next action.</li>
           <li><strong>Engage</strong> with the active tab that matters now—filter by context, run the Pomodoro timer, and check off progress.</li>
         </ol>

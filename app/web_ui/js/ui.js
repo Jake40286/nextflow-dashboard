@@ -50,12 +50,12 @@ const TRANSITIONS = {
   [STATUS.NEXT]: [
     { label: "Start doing", target: STATUS.DOING },
     { label: "Move to Waiting", target: STATUS.WAITING },
-    { label: "Archive to Someday", target: STATUS.SOMEDAY },
+    { label: "Move to Backburner", target: STATUS.SOMEDAY },
   ],
   [STATUS.DOING]: [
     { label: "Back to Next", target: STATUS.NEXT },
     { label: "Move to Waiting", target: STATUS.WAITING },
-    { label: "Archive to Someday", target: STATUS.SOMEDAY },
+    { label: "Move to Backburner", target: STATUS.SOMEDAY },
   ],
   [STATUS.WAITING]: [
     { label: "Back to Next", target: STATUS.NEXT },
@@ -821,8 +821,8 @@ export class UIController {
 
     if (toolbarActionsTitle && toolbarActionsNote) {
       if (supportsNextFanout) {
-        toolbarActionsTitle.textContent = "Next Actions Controls";
-        toolbarActionsNote.textContent = "Tune how next actions are grouped and filtered.";
+        toolbarActionsTitle.textContent = "Pending Tasks Controls";
+        toolbarActionsNote.textContent = "Tune how pending tasks are grouped and filtered.";
       } else if (supportsKanbanGroupBy) {
         toolbarActionsTitle.textContent = "Kanban Controls";
         toolbarActionsNote.textContent = "Choose how tasks are grouped into swimlanes.";
@@ -1362,7 +1362,7 @@ export class UIController {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((project) => ({
           value: project.id,
-          label: project.name + (project.someday ? " (Someday)" : ""),
+          label: project.name + (project.someday ? " (Backburner)" : ""),
         })),
     ];
 
@@ -1799,7 +1799,7 @@ export class UIController {
     const subheadingEl = this.elements.nextPanelSubheading;
     if (subheadingEl) {
       const labels = { context: "context", project: "project", area: "area of focus", effort: "effort level", none: "ungrouped" };
-      subheadingEl.textContent = groupBy === "none" ? "All next actions" : `Grouped by ${labels[groupBy] || groupBy}`;
+      subheadingEl.textContent = groupBy === "none" ? "All pending tasks" : `Grouped by ${labels[groupBy] || groupBy}`;
     }
 
     const groups = this.buildNextActionsGroups(tasks, groupBy);
@@ -1924,7 +1924,7 @@ export class UIController {
     }
 
     // "none" — flat
-    return tasks.length ? [{ key: "all", label: "All next actions", tasks }] : [];
+    return tasks.length ? [{ key: "all", label: "All pending tasks", tasks }] : [];
   }
 
   renderKanban() {
@@ -2400,11 +2400,11 @@ export class UIController {
       });
 
       const groups = [
-        { status: STATUS.NEXT, label: "Next Actions", empty: "No next actions defined." },
+        { status: STATUS.NEXT, label: "Pending Tasks", empty: "No pending tasks defined." },
         { status: STATUS.DOING, label: "Doing", empty: "Nothing currently in progress." },
-        { status: STATUS.WAITING, label: "Waiting", empty: "Nothing delegated at the moment." },
+        { status: STATUS.WAITING, label: "Delegated", empty: "Nothing delegated at the moment." },
         { status: STATUS.INBOX, label: "Inbox", empty: "", hideEmpty: true },
-        { status: STATUS.SOMEDAY, label: "Someday / Maybe", empty: "No ideas parked here yet." },
+        { status: STATUS.SOMEDAY, label: "Backburner", empty: "No ideas parked here yet." },
       ];
 
       const sectionsWrapper = document.createElement("div");
@@ -2564,7 +2564,7 @@ export class UIController {
       const somedayBtn = document.createElement("button");
       somedayBtn.type = "button";
       somedayBtn.className = "btn btn-light";
-      somedayBtn.textContent = "Move to Someday";
+      somedayBtn.textContent = "Move to Backburner";
       somedayBtn.addEventListener("click", () => this.taskManager.moveProjectToSomeday(project.id));
       footer.append(somedayBtn);
     }
@@ -3260,10 +3260,10 @@ export class UIController {
 
     const statusRows = [
       { label: "Inbox", value: statsInbox, meta: `${this.toPercent(statsInbox, activeTasks.length)}%` },
-      { label: "Next Actions", value: statsNext, meta: `${this.toPercent(statsNext, activeTasks.length)}%` },
+      { label: "Pending Tasks", value: statsNext, meta: `${this.toPercent(statsNext, activeTasks.length)}%` },
       { label: "Doing", value: statsDoing, meta: `${this.toPercent(statsDoing, activeTasks.length)}%` },
-      { label: "Waiting", value: statsWaiting, meta: `${this.toPercent(statsWaiting, activeTasks.length)}%` },
-      { label: "Someday", value: statsSomeday, meta: `${this.toPercent(statsSomeday, activeTasks.length)}%` },
+      { label: "Delegated", value: statsWaiting, meta: `${this.toPercent(statsWaiting, activeTasks.length)}%` },
+      { label: "Backburner", value: statsSomeday, meta: `${this.toPercent(statsSomeday, activeTasks.length)}%` },
     ];
     this.renderStatisticsRows(statsStatusBreakdown, statusRows, {
       emptyMessage: "No active tasks available.",
@@ -3325,7 +3325,7 @@ export class UIController {
         let healthLabel = "Healthy";
         if (project.someday) {
           health = "neutral";
-          healthLabel = "Someday";
+          healthLabel = "Backburner";
         } else if (deadlinePassed) {
           health = "risk";
           healthLabel = "Deadline passed";
@@ -3500,7 +3500,7 @@ export class UIController {
       .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
       .slice(0, 8);
     this.renderStatisticsRows(statsPeopleList, peopleRows, {
-      emptyMessage: "No Waiting For assignees yet.",
+      emptyMessage: "No delegated assignees yet.",
       includeBars: true,
     });
   }
@@ -4790,7 +4790,7 @@ export class UIController {
     const futureDueLabelWrap = document.createElement("div");
     futureDueLabelWrap.className = "settings-item-label";
     const futureDueLabel = document.createElement("span");
-    futureDueLabel.textContent = "Hide far-future due dates from Next Actions";
+    futureDueLabel.textContent = "Hide far-future due dates from Pending Tasks";
     const futureDueMeta = document.createElement("span");
     futureDueMeta.className = "settings-item-meta muted small-text";
     futureDueMeta.textContent =
@@ -5767,7 +5767,7 @@ export class UIController {
       includeFutureScheduled: !this.hideScheduledNextActions,
     });
     if (!tasks.length) {
-      this.taskManager.notify("warn", contextValue === "all" ? "No next actions available." : `No next actions found for ${contextValue}.`);
+      this.taskManager.notify("warn", contextValue === "all" ? "No pending tasks available." : `No pending tasks found for ${contextValue}.`);
       return;
     }
     const easy = tasks.filter((t) => t.effortLevel === "low" && (t.timeRequired === "<5min" || t.timeRequired === "<15min"));
@@ -5852,7 +5852,7 @@ export class UIController {
       if (referencedTask) {
         metaItems.push(this.createMetaSpan(`Blocking: ${referencedTask.slug || referencedTask.id}`));
       } else {
-        metaItems.push(this.createMetaSpan(`Waiting For: ${task.waitingFor}`));
+        metaItems.push(this.createMetaSpan(`Delegated: ${task.waitingFor}`));
       }
     }
     if (task.effortLevel) metaItems.push(this.createMetaSpan(`Effort: ${task.effortLevel}`));
@@ -7611,7 +7611,7 @@ export class UIController {
     projects.forEach((project) => {
       const option = document.createElement("option");
       option.value = project.id;
-      option.textContent = project.name + (project.someday ? " (Someday)" : "");
+      option.textContent = project.name + (project.someday ? " (Backburner)" : "");
       select.append(option);
     });
     select.value = this.clarifyState.projectId || "none";
@@ -7634,7 +7634,7 @@ export class UIController {
       this.taskManager.notify("info", "Captured idea deleted.");
     } else if (destination === "someday") {
       this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
-      this.taskManager.notify("info", "Moved to Someday / Maybe.");
+      this.taskManager.notify("info", "Moved to Backburner.");
     }
     this._clarifyCompleting = true;
     this._clearClarifyDraft(this.clarifyState.taskId);
@@ -7958,17 +7958,17 @@ export class UIController {
     }
     this.taskManager.updateTask(task.id, updates);
     const destinations = [];
-    if (updates.status === STATUS.WAITING) destinations.push("Waiting");
+    if (updates.status === STATUS.WAITING) destinations.push("Delegated");
     else if (updates.calendarDate) destinations.push("Calendar");
-    else if (updates.dueDate) destinations.push("Next Actions (due)");
-    else destinations.push("Next Actions");
+    else if (updates.dueDate) destinations.push("Pending Tasks (due)");
+    else destinations.push("Pending Tasks");
     if (updates.projectId) {
       const name = this.getProjectName(updates.projectId);
       if (name) destinations.push(`Project: ${name}`);
     }
     const routeMessage = destinations.length > 1
       ? `Routed to ${destinations.join(" + ")}.`
-      : `Routed to ${destinations[0] || "Next Actions"}.`;
+      : `Routed to ${destinations[0] || "Pending Tasks"}.`;
     this.taskManager.notify("info", routeMessage);
     this._clarifyCompleting = true;
     this._clearClarifyDraft(this.clarifyState.taskId);
@@ -7980,10 +7980,10 @@ export class UIController {
     const messageEl = this.elements.clarifyFinalMessage;
     if (!messageEl) return;
     const destinations = [];
-    if (updates.status === STATUS.WAITING) destinations.push("Waiting");
+    if (updates.status === STATUS.WAITING) destinations.push("Delegated");
     else if (updates.calendarDate) destinations.push("Calendar");
-    else if (updates.dueDate) destinations.push("Next Actions (due)");
-    else destinations.push("Next Actions");
+    else if (updates.dueDate) destinations.push("Pending Tasks (due)");
+    else destinations.push("Pending Tasks");
     if (updates.projectId) {
       const name = this.getProjectName(updates.projectId);
       if (name) destinations.push(`Project: ${name}`);
@@ -7991,7 +7991,7 @@ export class UIController {
     messageEl.textContent =
       destinations.length > 1
         ? `Routed to ${destinations.join(" + ")}.`
-        : `Routed to ${destinations[0] || "Next Actions"}.`;
+        : `Routed to ${destinations[0] || "Pending Tasks"}.`;
   }
 
   closeClarifyFlowToInbox() {
@@ -8770,7 +8770,7 @@ export class UIController {
     this.getProjectCache().forEach((project) => {
       const option = document.createElement("option");
       option.value = project.id;
-      option.textContent = project.name + (project.someday ? " (Someday)" : "");
+      option.textContent = project.name + (project.someday ? " (Backburner)" : "");
       projectSelect.append(option);
     });
     projectSelect.value = task.projectId || "";

@@ -94,7 +94,7 @@ googleCalendarConfig: { calendarId, timezone, defaultDurationMinutes }
 
 `inbox · myday · next · kanban · projects · calendar · waitingfor · someday · allactive · reports · statistics · settings`
 
-Next Actions grouping modes: `context | project | area | effort | none`
+Pending Tasks grouping modes: `context | project | area | effort | none`
 
 ---
 

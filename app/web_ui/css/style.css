@@ -1445,22 +1445,6 @@ button.meta-item:hover {
   align-content: start;
 }
 
-.project-flyout-next-highlight {
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  padding: var(--space-2) var(--space-3);
-  display: grid;
-  gap: var(--space-2);
-}
-
-.project-flyout-next-label {
-  font-size: 0.77rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-}
 
 .project-flyout-footer {
   border-top: 1px solid var(--line);

@@ -2357,21 +2357,6 @@ export class UIController {
     outcome.append(outcomeLabel, outcomeText);
     content.append(outcome);
 
-    // Next action highlight
-    const nextActions = projectTasks.filter((t) => t.status === STATUS.NEXT);
-    if (nextActions.length) {
-      const highlight = document.createElement("div");
-      highlight.className = "project-flyout-next-highlight";
-      const hlLabel = document.createElement("div");
-      hlLabel.className = "project-flyout-next-label";
-      hlLabel.textContent = "Next action";
-      highlight.append(hlLabel);
-      const card = this.createTaskCard(nextActions[0]);
-      card.classList.add("task-card-primary");
-      highlight.append(card);
-      content.append(highlight);
-    }
-
     // Add task form
     const addForm = document.createElement("form");
     addForm.className = "project-next-action-form";

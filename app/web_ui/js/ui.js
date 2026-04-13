@@ -951,6 +951,7 @@ export class UIController {
     this.applySearchVisibility();
     this.updateCounts();
     this.syncTheme(this.taskManager.getTheme());
+    this.updateFooterVersion();
     this.applyPanelVisibility();
     // Mark all panels dirty; only render the visible one now.
     // Hidden panels render on-demand when the user switches to them.
@@ -1349,12 +1350,12 @@ export class UIController {
       .getContexts({ areaLens: this.activeArea })
       .slice()
       .sort((a, b) => a.localeCompare(b))
-      .map((value) => ({ value, label: value }));
+      .map((value) => ({ value, label: value.startsWith("@") ? value.slice(1) : value }));
     const people = this.taskManager
       .getPeopleTags({ areaLens: this.activeArea })
       .slice()
       .sort((a, b) => a.localeCompare(b))
-      .map((value) => ({ value, label: value }));
+      .map((value) => ({ value, label: value.startsWith("+") ? value.slice(1) : value }));
     const projects = [
       { value: "none", label: "No project" },
       ...(this.projectCache || [])
@@ -1853,7 +1854,7 @@ export class UIController {
         this.openContextColumnContextMenu(group.key, groupBy, group.label, event.clientX, event.clientY);
       });
       board.append(column);
-      this.attachDropzone(column, STATUS.NEXT, groupBy === "context" ? group.key : undefined);
+      this.attachNextGroupDropzone(column, groupBy, group.key);
     });
   }
 
@@ -2270,6 +2271,8 @@ export class UIController {
     this.currentProjectFlyoutId = projectId;
     this.renderProjectFlyout(project);
     flyout.classList.add("is-open");
+    flyout.classList.add("is-top");
+    this.elements.taskFlyout?.classList.remove("is-top");
     flyout.setAttribute("aria-hidden", "false");
     this.isProjectFlyoutOpen = true;
     if (!wasOpen) {
@@ -3934,6 +3937,20 @@ export class UIController {
       }
       card.append(desc);
 
+      // Implementation notes (shown on resolved items when triage has written notes)
+      let implNotesEl = null;
+      if (item.implementationNotes) {
+        implNotesEl = document.createElement("div");
+        implNotesEl.className = "feedback-impl-notes";
+        const label = document.createElement("span");
+        label.className = "feedback-impl-notes-label";
+        label.textContent = "What was done:";
+        const text = document.createElement("span");
+        text.textContent = item.implementationNotes;
+        implNotesEl.append(label, text);
+        card.append(implNotesEl);
+      }
+
       let tagsEl = null;
       const renderCardTags = (tags) => {
         if (tagsEl) tagsEl.remove();
@@ -4015,37 +4032,82 @@ export class UIController {
         actions.append(orderGroup);
       }
 
-      // Resolve / Unresolve
-      const resolveBtn = document.createElement("button");
-      resolveBtn.type = "button";
-      resolveBtn.className = "btn btn-light btn-small";
-      resolveBtn.textContent = item.resolved ? "Unresolve" : "Resolve";
-      resolveBtn.addEventListener("click", async () => {
-        resolveBtn.disabled = true;
-        try {
-          const res = await fetch("/feedback/" + item.id, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resolved: !item.resolved }),
-          });
-          if (!res.ok) throw new Error();
-          item.resolved = !item.resolved;
-          // Move between open/resolved lists
-          const { open, resolved } = colItems[colType];
-          if (item.resolved) {
-            const idx = open.findIndex((i) => i.id === item.id);
-            if (idx !== -1) { open.splice(idx, 1); resolved.push(item); }
-          } else {
+      // Resolve / Confirm Resolved / Re-open
+      if (item.resolved) {
+        // Confirm Resolved button
+        const confirmBtn = document.createElement("button");
+        confirmBtn.type = "button";
+        confirmBtn.className = "btn btn-light btn-small" + (item.confirmedResolved ? " feedback-btn-confirmed" : "");
+        confirmBtn.textContent = item.confirmedResolved ? "Confirmed" : "Confirm Resolved";
+        confirmBtn.disabled = !!item.confirmedResolved;
+        confirmBtn.addEventListener("click", async () => {
+          confirmBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ confirmedResolved: true }),
+            });
+            if (!res.ok) throw new Error();
+            item.confirmedResolved = true;
+            confirmBtn.textContent = "Confirmed";
+            confirmBtn.classList.add("feedback-btn-confirmed");
+          } catch {
+            confirmBtn.disabled = false;
+            this.showToast("error", "Could not confirm item.");
+          }
+        });
+        // Re-open button
+        const reopenBtn = document.createElement("button");
+        reopenBtn.type = "button";
+        reopenBtn.className = "btn btn-light btn-small";
+        reopenBtn.textContent = "Re-open";
+        reopenBtn.addEventListener("click", async () => {
+          reopenBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ resolved: false }),
+            });
+            if (!res.ok) throw new Error();
+            item.resolved = false;
+            const { open, resolved } = colItems[colType];
             const idx = resolved.findIndex((i) => i.id === item.id);
             if (idx !== -1) { resolved.splice(idx, 1); open.push(item); }
+            renderCol();
+          } catch {
+            reopenBtn.disabled = false;
+            this.showToast("error", "Could not re-open item.");
           }
-          renderCol();
-        } catch {
-          resolveBtn.disabled = false;
-          this.showToast("error", "Could not update item.");
-        }
-      });
-      actions.append(resolveBtn);
+        });
+        actions.append(confirmBtn, reopenBtn);
+      } else {
+        const resolveBtn = document.createElement("button");
+        resolveBtn.type = "button";
+        resolveBtn.className = "btn btn-light btn-small";
+        resolveBtn.textContent = "Resolve";
+        resolveBtn.addEventListener("click", async () => {
+          resolveBtn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ resolved: true }),
+            });
+            if (!res.ok) throw new Error();
+            item.resolved = true;
+            const { open, resolved } = colItems[colType];
+            const idx = open.findIndex((i) => i.id === item.id);
+            if (idx !== -1) { open.splice(idx, 1); resolved.push(item); }
+            renderCol();
+          } catch {
+            resolveBtn.disabled = false;
+            this.showToast("error", "Could not resolve item.");
+          }
+        });
+        actions.append(resolveBtn);
+      }
 
       // Edit (inline)
       const editBtn = document.createElement("button");
@@ -8016,6 +8078,8 @@ export class UIController {
     this.flyoutContext = { readOnly, entry };
     this.renderTaskFlyout(task, { readOnly, entry });
     flyout.classList.add("is-open");
+    flyout.classList.add("is-top");
+    this.elements.projectFlyout?.classList.remove("is-top");
     flyout.setAttribute("aria-hidden", "false");
     document.body.classList.add("flyout-open");
     this.isFlyoutOpen = true;
@@ -9837,6 +9901,53 @@ export class UIController {
     }
   }
 
+  attachNextGroupDropzone(element, groupBy, groupKey) {
+    if (!element) return;
+    if (this.dropzones.includes(element)) return;
+    this.dropzones.push(element);
+
+    const onDrop = (taskId) => {
+      const task = this.taskManager.getTaskById(taskId);
+      if (!task) { this.taskManager.notify("error", "Cannot drop missing task."); return; }
+      const updates = { status: STATUS.NEXT };
+      switch (groupBy) {
+        case "context":
+          updates.contexts = groupKey === "No context" ? [] : [groupKey];
+          break;
+        case "project":
+          updates.projectId = groupKey === "no-project" ? null : groupKey;
+          break;
+        case "area":
+          updates.areaOfFocus = groupKey === "No Area" ? null : groupKey;
+          break;
+        case "effort":
+          updates.effortLevel = groupKey === "no-effort" ? null : groupKey;
+          break;
+        // "none" groupBy: only status change needed (already in updates)
+      }
+      this.taskManager.updateTask(taskId, updates);
+    };
+
+    const helper = window.DragDropHelper;
+    if (helper) {
+      helper.setupDropzone(element, { onDrop });
+    } else {
+      element.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        element.classList.add("is-drag-over");
+      });
+      element.addEventListener("dragleave", () => {
+        element.classList.remove("is-drag-over");
+      });
+      element.addEventListener("drop", (event) => {
+        event.preventDefault();
+        element.classList.remove("is-drag-over");
+        const taskId = event.dataTransfer?.getData("text/task-id");
+        if (taskId) onDrop(taskId);
+      });
+    }
+  }
+
   handleProjectNextReorderDrop({ sourceId, targetId, projectId, before }) {
     if (!sourceId || !targetId || !projectId || sourceId === targetId) {
       return;
@@ -10310,6 +10421,13 @@ export class UIController {
     this.elements.footerYear.textContent = year;
   }
 
+  updateFooterVersion() {
+    const v = this.taskManager.serverVersion;
+    if (this.elements.appVersion) {
+      this.elements.appVersion.textContent = v ? `build: ${v}` : '';
+    }
+  }
+
   openClosureNotes(taskId, archive = "reference") {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) return;
@@ -10627,6 +10745,7 @@ function mapElements() {
     syncDiagCopyBtn: byId("syncDiagCopyBtn"),
     syncDiagClearBtn: byId("syncDiagClearBtn"),
     footerYear: byId("footerYear"),
+    appVersion: byId("appVersion"),
     themeToggle: document.getElementById("themeToggle"),
     topbarInboxBtn: byId("topbarInboxBtn"),
     topbarSettings: byId("topbarSettings"),

@@ -24,17 +24,28 @@ curl -s http://localhost:8002/feedback | python3 -c \
 
 | Step | Action |
 |------|--------|
-| **Understand** | Read the item text and any notes; check `.claude/commands/feedback.md` for prior analysis |
 | **Design** | `/ask <description>` — get an architectural recommendation before touching code |
 | **Implement** | `/code <description>` — implement the change |
 | **Test** | `npm test` — run the full suite; add a test if the bug is logic-level |
-| **Resolve** | Mark resolved via Settings UI **or** `PATCH /feedback/<full-id>` (see below) |
+| **Record** | Write implementation notes to the item (see below) — this is required so you have context of prior changes if an item is re-opened. |
+| **Resolve** | Mark resolved via `PATCH /feedback/<full-id>` (see below) |
 
 ```bash
-# Resolve via API
+# Write implementation notes BEFORE resolving (required step)
+# Summarise what files were changed and what the fix/feature does in 1-3 sentences.
+curl -s -X PATCH http://localhost:8002/feedback/<FULL_UUID> \
+  -H "Content-Type: application/json" \
+  -d '{"implementationNotes": "Brief description of what was changed and why."}'
+
+# Resolve via API (after writing notes)
 curl -s -X PATCH http://localhost:8002/feedback/<FULL_UUID> \
   -H "Content-Type: application/json" \
   -d '{"resolved": true}'
+
+# Both in one call
+curl -s -X PATCH http://localhost:8002/feedback/<FULL_UUID> \
+  -H "Content-Type: application/json" \
+  -d '{"resolved": true, "implementationNotes": "Brief description of what was changed and why."}'
 
 # Delete an item
 curl -s -X DELETE http://localhost:8002/feedback/<FULL_UUID>

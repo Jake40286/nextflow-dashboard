@@ -490,6 +490,7 @@ export class TaskManager extends EventTarget {
     this.lastSyncInfo = null;
     this.connectionStatus = "unknown";
     this.serverVersion = null;
+    this._initialLoadComplete = false;
     this._localPersistTimer = null;
     this._completedDataLoaded = false;
     this._completionsDirty = false;
@@ -517,6 +518,7 @@ export class TaskManager extends EventTarget {
         readCompletedState().catch(() => ({})),
       ]);
       this._checkServerVersion(remoteState);
+      this._initialLoadComplete = true;
       // Reconstitute a full remote state for merging so that tombstones
       // (tasks completed on another device) are preserved correctly.
       const remoteStateFull = { ...remoteState, ...completedData };
@@ -753,7 +755,9 @@ export class TaskManager extends EventTarget {
     } else if (v !== lastKnown) {
       // Server was redeployed since last session (or mid-session). Show banner.
       this.storage?.setItem(STORAGE_KEY, v);
-      this.dispatchEvent(new CustomEvent("versionchange"));
+      if (this._initialLoadComplete) {
+        this.dispatchEvent(new CustomEvent("versionchange"));
+      }
     }
     this.serverVersion = v;
   }

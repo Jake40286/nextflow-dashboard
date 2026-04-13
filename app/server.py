@@ -526,7 +526,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         except (OSError, json.JSONDecodeError):
             self._send_json({"error": "Invalid JSON"}, status=400)
             return
-        updates = {k: v for k, v in payload.items() if k in ("description", "type", "resolved", "sortOrder")}
+        updates = {k: v for k, v in payload.items() if k in ("description", "type", "resolved", "sortOrder", "implementationNotes", "confirmedResolved")}
         if not updates:
             self._send_json({"error": "No valid fields to update"}, status=400)
             return

@@ -61,6 +61,7 @@ curl -s -X DELETE http://localhost:8002/feedback/<FULL_UUID>
 2. If the fix affects architecture described in `CLAUDE.md`, update the relevant section
 3. Restart the container if Python changed: `docker compose restart web`
 4. JS/CSS changes are live immediately — no restart needed
+5. Increment the build version so clients know there is an update.
 
 ## Key Files
 - [app/server.py](app/server.py) — `/feedback` CRUD endpoints

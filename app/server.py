@@ -28,15 +28,29 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 def _compute_server_version():
+    import hashlib
+
     try:
-        return subprocess.check_output(
+        sha = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=BASE_DIR,
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
     except Exception:  # noqa: BLE001
-        return str(int(time.time()))
+        sha = "dev"
+
+    web_ui = BASE_DIR / "web_ui"
+    mtimes = [
+        p.stat().st_mtime
+        for p in web_ui.rglob("*")
+        if p.is_file() and p.suffix in {".js", ".css", ".html"}
+    ]
+    mtime_tag = hashlib.sha1(
+        str(max(mtimes, default=0)).encode()
+    ).hexdigest()[:6]
+
+    return f"{sha}-{mtime_tag}"
 
 
 SERVER_VERSION = _compute_server_version()

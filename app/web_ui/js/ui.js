@@ -5905,7 +5905,9 @@ export class UIController {
     if (this.isTaskInMyDay(task)) {
       metaItems.push(this.createMetaSpan("MY DAY", "task-meta-pill task-meta-my-day"));
     }
-    metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
+    if (task.status !== STATUS.INBOX) {
+      metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
+    }
     if (task.contexts?.length) task.contexts.forEach((ctx) => metaItems.push(this.createMetaSpan(stripTagPrefix(ctx))));
     const projectName = this.getProjectName(task.projectId);
     if (projectName) metaItems.push(this.createMetaSpan(projectName));
@@ -5943,11 +5945,11 @@ export class UIController {
       meta.append(item);
     });
 
-    if (!metaItems.length) {
-      meta.append(this.createMetaSpan("No extra details"));
+    if (metaItems.length) {
+      main.append(title, meta);
+    } else {
+      main.append(title);
     }
-
-    main.append(title, meta);
 
     const caret = document.createElement("span");
     caret.className = "task-row-caret";

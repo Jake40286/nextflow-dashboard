@@ -1397,6 +1397,81 @@ test("addTask with status 'next' and projectId is retrievable by projectId filte
   assert.equal(found[0].id, task.id);
 });
 
+// ── Doing-session tests ──────────────────────────────────────────────────────
+
+test("moveTask to doing logs a session entry and sets doingStartedAt", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Focus task", status: "next" });
+  manager.moveTask(task.id, "doing");
+  const t = manager.getTaskById(task.id);
+  assert.ok(t.doingStartedAt, "doingStartedAt set");
+  assert.equal(t.doingSessions?.length, 1, "one session opened");
+  assert.equal(t.doingSessions[0].end, null, "session is still open");
+});
+
+test("moveTask away from doing closes session and accumulates totalDoingSeconds", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Focus task", status: "doing" });
+  // Simulate task already in doing with a known start time
+  const startedAt = new Date(Date.now() - 60_000).toISOString(); // 60s ago
+  manager.updateTask(task.id, { status: "doing" }); // ensure session open
+  const t = manager.getTaskById(task.id);
+  // Backdate the session start so we can measure elapsed
+  t.doingStartedAt = startedAt;
+  if (t.doingSessions?.length) t.doingSessions[t.doingSessions.length - 1].start = startedAt;
+
+  manager.moveTask(task.id, "next");
+  const after = manager.getTaskById(task.id);
+  assert.equal(after.doingStartedAt, null, "doingStartedAt cleared");
+  assert.ok((after.totalDoingSeconds || 0) >= 59, "at least 59s accumulated");
+  const closed = after.doingSessions?.find((s) => s.end !== null);
+  assert.ok(closed, "session has been closed with an end timestamp");
+});
+
+test("addDoingSession adds a manual session and updates the total", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Logged task", status: "next" });
+  const start = "2026-04-13T10:00:00.000Z";
+  const end   = "2026-04-13T10:30:00.000Z"; // 30 min = 1800s
+  manager.addDoingSession(task.id, { start, end });
+  const t = manager.getTaskById(task.id);
+  assert.equal(t.doingSessions?.length, 1, "one session added");
+  assert.equal(t.doingSessions[0].start, start);
+  assert.equal(t.doingSessions[0].end, end);
+  assert.equal(t.totalDoingSeconds, 1800, "totalDoingSeconds updated");
+});
+
+test("updateDoingSession adjusts totalDoingSeconds by the delta", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Logged task", status: "next" });
+  const start = "2026-04-13T10:00:00.000Z";
+  const end   = "2026-04-13T10:30:00.000Z"; // 1800s
+  manager.addDoingSession(task.id, { start, end });
+  const t = manager.getTaskById(task.id);
+  const sessId = t.doingSessions[0].id;
+
+  // Extend end by 15 min → 2700s total
+  manager.updateDoingSession(task.id, sessId, { end: "2026-04-13T10:45:00.000Z" });
+  const after = manager.getTaskById(task.id);
+  assert.equal(after.totalDoingSeconds, 2700, "total updated to 45 min");
+  assert.equal(after.doingSessions[0].end, "2026-04-13T10:45:00.000Z");
+});
+
+test("deleteDoingSession removes the entry and subtracts from totalDoingSeconds", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Logged task", status: "next" });
+  manager.addDoingSession(task.id, { start: "2026-04-13T10:00:00.000Z", end: "2026-04-13T11:00:00.000Z" }); // 3600s
+  manager.addDoingSession(task.id, { start: "2026-04-13T12:00:00.000Z", end: "2026-04-13T12:30:00.000Z" }); // 1800s
+  const t = manager.getTaskById(task.id);
+  assert.equal(t.totalDoingSeconds, 5400, "combined total = 90 min");
+  const firstId = t.doingSessions[0].id;
+
+  manager.deleteDoingSession(task.id, firstId);
+  const after = manager.getTaskById(task.id);
+  assert.equal(after.doingSessions.length, 1, "one session remains");
+  assert.equal(after.totalDoingSeconds, 1800, "total reduced to 30 min");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

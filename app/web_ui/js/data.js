@@ -362,6 +362,33 @@ function generateId(prefix) {
   return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now()}`;
 }
 
+function _sessionSecs(start, end) {
+  return Math.max(0, Math.floor((new Date(end) - new Date(start)) / 1000));
+}
+
+function _logDoingSessionStart(task, startIso) {
+  task.doingSessions = task.doingSessions || [];
+  task.doingSessions.push({ id: generateId("sess"), start: startIso, end: null });
+  task.doingStartedAt = startIso;
+}
+
+function _closeDoingSession(task, endIso) {
+  const sessions = task.doingSessions || [];
+  const openIdx = sessions.findIndex((s) => s.start && !s.end);
+  // Prefer the open session's start; fall back to the legacy doingStartedAt field.
+  const startIso = openIdx >= 0 ? sessions[openIdx].start : task.doingStartedAt;
+  if (startIso) {
+    task.totalDoingSeconds = (task.totalDoingSeconds || 0) + _sessionSecs(startIso, endIso);
+    if (openIdx >= 0) {
+      sessions[openIdx] = { ...sessions[openIdx], end: endIso };
+    } else {
+      // Backward-compat: had doingStartedAt but no session entry yet.
+      task.doingSessions = [...sessions, { id: generateId("sess"), start: startIso, end: endIso }];
+    }
+  }
+  task.doingStartedAt = null;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -1058,15 +1085,9 @@ export class TaskManager extends EventTarget {
       ft.status = now;
       const wasAlreadyDoing = originalFields.status === STATUS.DOING;
       if (nextUpdates.status === STATUS.DOING && !wasAlreadyDoing) {
-        task.doingStartedAt = now;
+        _logDoingSessionStart(task, now);
       } else if (nextUpdates.status !== STATUS.DOING && wasAlreadyDoing) {
-        if (task.doingStartedAt) {
-          const sessionSecs = Math.max(0, Math.floor((new Date(now) - new Date(task.doingStartedAt)) / 1000));
-          task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
-        }
-        task.doingStartedAt = null;
-      } else if (nextUpdates.status !== STATUS.DOING) {
-        task.doingStartedAt = null;
+        _closeDoingSession(task, now);
       }
     }
     if ("dueDate" in nextUpdates) ft.dueDate = now;
@@ -1418,15 +1439,9 @@ export class TaskManager extends EventTarget {
     task.status = nextStatus;
     task.completedAt = null;
     if (nextStatus === STATUS.DOING && !wasAlreadyDoing) {
-      task.doingStartedAt = nowIso();
+      _logDoingSessionStart(task, nowIso());
     } else if (nextStatus !== STATUS.DOING && wasAlreadyDoing) {
-      if (task.doingStartedAt) {
-        const sessionSecs = Math.max(0, Math.floor((Date.now() - new Date(task.doingStartedAt).getTime()) / 1000));
-        task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
-      }
-      task.doingStartedAt = null;
-    } else if (nextStatus !== STATUS.DOING) {
-      task.doingStartedAt = null;
+      _closeDoingSession(task, nowIso());
     }
     if (nextStatus === STATUS.WAITING && !task.waitingFor) {
       task.waitingFor = "Pending response";
@@ -1434,6 +1449,52 @@ export class TaskManager extends EventTarget {
     if (nextStatus !== STATUS.WAITING) {
       task.waitingFor = task.waitingFor && task.waitingFor.startsWith("Pending") ? null : task.waitingFor;
     }
+    task.updatedAt = nowIso();
+    this.emitChange();
+  }
+
+  addDoingSession(taskId, { start, end }) {
+    const task = this.getTaskById(taskId);
+    if (!task || !start || !end) return;
+    task.doingSessions = task.doingSessions || [];
+    task.doingSessions.push({ id: generateId("sess"), start, end });
+    task.totalDoingSeconds = (task.totalDoingSeconds || 0) + _sessionSecs(start, end);
+    task.updatedAt = nowIso();
+    this.emitChange();
+  }
+
+  updateDoingSession(taskId, sessionId, { start, end }) {
+    const task = this.getTaskById(taskId);
+    if (!task) return;
+    const sessions = task.doingSessions || [];
+    const idx = sessions.findIndex((s) => s.id === sessionId);
+    if (idx < 0) return;
+    const old = sessions[idx];
+    if (old.start && old.end) {
+      task.totalDoingSeconds = Math.max(0, (task.totalDoingSeconds || 0) - _sessionSecs(old.start, old.end));
+    }
+    const newStart = start ?? old.start;
+    const newEnd = end ?? old.end;
+    if (newStart && newEnd) {
+      task.totalDoingSeconds = (task.totalDoingSeconds || 0) + _sessionSecs(newStart, newEnd);
+    }
+    sessions[idx] = { ...old, start: newStart, end: newEnd };
+    task.doingSessions = sessions;
+    task.updatedAt = nowIso();
+    this.emitChange();
+  }
+
+  deleteDoingSession(taskId, sessionId) {
+    const task = this.getTaskById(taskId);
+    if (!task) return;
+    const sessions = task.doingSessions || [];
+    const idx = sessions.findIndex((s) => s.id === sessionId);
+    if (idx < 0) return;
+    const old = sessions[idx];
+    if (old.start && old.end) {
+      task.totalDoingSeconds = Math.max(0, (task.totalDoingSeconds || 0) - _sessionSecs(old.start, old.end));
+    }
+    task.doingSessions = sessions.filter((_, i) => i !== idx);
     task.updatedAt = nowIso();
     this.emitChange();
   }
@@ -1489,9 +1550,7 @@ export class TaskManager extends EventTarget {
     this.state._tombstones[task.id] = completedAt;
     // Flush any in-progress doing session into the total before snapshotting.
     if (task.doingStartedAt) {
-      const sessionSecs = Math.max(0, Math.floor((new Date(completedAt) - new Date(task.doingStartedAt)) / 1000));
-      task.totalDoingSeconds = (task.totalDoingSeconds || 0) + sessionSecs;
-      task.doingStartedAt = null;
+      _closeDoingSession(task, completedAt);
     }
     normalizeTaskTags(task);
     if (typeof closureNotes === "string") {
@@ -3311,6 +3370,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     originDevice: task.originDevice || null,
     originDeviceId: task.originDeviceId || null,
     totalDoingSeconds: task.totalDoingSeconds || null,
+    doingSessions: task.doingSessions?.length ? task.doingSessions : null,
   };
 }
 

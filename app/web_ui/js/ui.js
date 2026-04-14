@@ -462,6 +462,12 @@ export class UIController {
     this.elements.topbarInboxBtn?.addEventListener("click", () => {
       this.setActivePanel("inbox");
     });
+    this.elements.topbarDueTodayBtn?.addEventListener("click", () => {
+      this.setActivePanel("my-day");
+    });
+    this.elements.topbarOverdueBtn?.addEventListener("click", () => {
+      this.setActivePanel("next");
+    });
     this.elements.topbarSettings?.addEventListener("click", () => {
       this.setActivePanel("settings");
     });
@@ -8332,12 +8338,295 @@ export class UIController {
       completeSection.append(completeButton, completeArchiveButton);
     }
 
+    const sessionsSection = this.createSessionsSection(task, { readOnly });
     if (!isCompleted) {
-      content.append(...[description, projectChip, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), meta].filter(Boolean));
+      content.append(...[description, projectChip, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), sessionsSection, meta].filter(Boolean));
     } else {
-      content.append(...[description, projectChip, actionToolbar, listSection, notesSection, meta].filter(Boolean));
+      content.append(...[description, projectChip, actionToolbar, listSection, notesSection, sessionsSection, meta].filter(Boolean));
     }
     content.append(this.createTaskForm(task));
+  }
+
+  // ── Session log section ─────────────────────────────────────────────────
+
+  _isoToDatetimeLocal(iso) {
+    if (!iso) return "";
+    // Convert ISO string to the value format expected by <input type="datetime-local">
+    // e.g. "2026-04-13T10:30:00.000Z" → "2026-04-13T10:30" (local time)
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  _formatSessionDuration(startIso, endIso) {
+    if (!startIso || !endIso) return null;
+    const secs = Math.max(0, Math.floor((new Date(endIso) - new Date(startIso)) / 1000));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  createSessionsSection(task, { readOnly = false } = {}) {
+    const sessions = task.doingSessions || [];
+    const isActiveDoing = task.status === STATUS.DOING && task.doingStartedAt;
+    // Only render if there's something to show (or active session).
+    if (sessions.length === 0 && !isActiveDoing && (task.totalDoingSeconds || 0) === 0) return null;
+
+    const section = document.createElement("section");
+    section.className = "session-log";
+
+    // ── Header ──
+    const header = document.createElement("div");
+    header.className = "session-log-header";
+    const heading = document.createElement("h3");
+    heading.textContent = "Time Tracked";
+
+    const totalEl = document.createElement("span");
+    totalEl.className = "session-log-total";
+    totalEl.textContent = this._formatDoingElapsed(task.doingStartedAt, task.totalDoingSeconds || 0);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon session-log-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle session log");
+    toggleBtn.textContent = "⏱";
+
+    header.append(heading, totalEl, toggleBtn);
+    section.append(header);
+
+    // ── Body (collapsible) ──
+    const hasEntries = sessions.length > 0 || isActiveDoing;
+    const body = document.createElement("div");
+    body.className = "session-log-body";
+    body.hidden = !hasEntries; // expand when there are entries, collapse when legacy-only
+    toggleBtn.setAttribute("aria-expanded", String(!body.hidden));
+    toggleBtn.classList.toggle("is-active", !body.hidden);
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+    });
+
+    // ── Session list ──
+    const list = document.createElement("div");
+    list.className = "session-list";
+    body.append(list);
+
+    const renderList = () => {
+      list.innerHTML = "";
+      const currentTask = this.taskManager.getTaskById(task.id) || task;
+      const currentSessions = currentTask.doingSessions || [];
+      const activeDoing = currentTask.status === STATUS.DOING && currentTask.doingStartedAt;
+
+      // Active (open) session badge at top
+      if (activeDoing) {
+        const activeRow = document.createElement("div");
+        activeRow.className = "session-entry session-entry--active";
+        const activeLabel = document.createElement("span");
+        activeLabel.className = "session-entry-range";
+        activeLabel.textContent = `${new Date(currentTask.doingStartedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} → in progress`;
+        const activeBadge = document.createElement("span");
+        activeBadge.className = "session-entry-badge";
+        activeBadge.textContent = "Active";
+        activeRow.append(activeLabel, activeBadge);
+        list.append(activeRow);
+      }
+
+      // Closed sessions (newest first)
+      [...currentSessions].reverse().forEach((sess) => {
+        if (!sess.end) return; // skip the open session (shown above)
+        const row = document.createElement("div");
+        row.className = "session-entry";
+
+        const rangeEl = document.createElement("span");
+        rangeEl.className = "session-entry-range";
+        const startStr = new Date(sess.start).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        const endStr = new Date(sess.end).toLocaleString([], { timeStyle: "short" });
+        const dur = this._formatSessionDuration(sess.start, sess.end);
+        rangeEl.textContent = `${startStr} → ${endStr}`;
+
+        const durEl = document.createElement("span");
+        durEl.className = "session-entry-duration";
+        durEl.textContent = dur || "";
+
+        row.append(rangeEl, durEl);
+
+        if (!readOnly) {
+          const actions = document.createElement("span");
+          actions.className = "session-entry-actions";
+
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "btn-link";
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", () => {
+            if (row.querySelector(".session-edit-form")) return;
+            const form = this._buildSessionEditForm(task.id, sess, () => renderList());
+            row.append(form);
+            editBtn.disabled = true;
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "btn-link btn-link--danger";
+          delBtn.textContent = "Delete";
+          delBtn.addEventListener("click", () => {
+            this.taskManager.deleteDoingSession(task.id, sess.id);
+            // Update the total in the header
+            const refreshedTask = this.taskManager.getTaskById(task.id) || task;
+            totalEl.textContent = this._formatDoingElapsed(refreshedTask.doingStartedAt, refreshedTask.totalDoingSeconds || 0);
+            renderList();
+          });
+
+          actions.append(editBtn, delBtn);
+          row.append(actions);
+        }
+
+        list.append(row);
+      });
+
+      // Empty state
+      if (!activeDoing && currentSessions.filter((s) => s.end).length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "session-log-empty muted small-text";
+        empty.textContent = "No sessions logged yet.";
+        list.append(empty);
+      }
+    };
+
+    renderList();
+
+    // ── Add session form ──
+    if (!readOnly) {
+      const addRow = document.createElement("div");
+      addRow.className = "session-log-add";
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn btn-small btn-light";
+      addBtn.textContent = "+ Add session";
+      addBtn.addEventListener("click", () => {
+        if (addRow.querySelector(".session-edit-form")) return;
+        const form = this._buildSessionAddForm(task.id, () => {
+          const refreshedTask = this.taskManager.getTaskById(task.id) || task;
+          totalEl.textContent = this._formatDoingElapsed(refreshedTask.doingStartedAt, refreshedTask.totalDoingSeconds || 0);
+          renderList();
+          form.remove();
+        });
+        addRow.append(form);
+      });
+      addRow.append(addBtn);
+      body.append(addRow);
+    }
+
+    section.append(body);
+    return section;
+  }
+
+  _buildSessionEditForm(taskId, sess, onSave) {
+    const form = document.createElement("div");
+    form.className = "session-edit-form";
+
+    const startInput = document.createElement("input");
+    startInput.type = "datetime-local";
+    startInput.className = "session-time-input";
+    startInput.value = this._isoToDatetimeLocal(sess.start);
+
+    const endInput = document.createElement("input");
+    endInput.type = "datetime-local";
+    endInput.className = "session-time-input";
+    endInput.value = this._isoToDatetimeLocal(sess.end);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-small btn-primary";
+    saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", () => {
+      const newStart = startInput.value ? new Date(startInput.value).toISOString() : sess.start;
+      const newEnd = endInput.value ? new Date(endInput.value).toISOString() : sess.end;
+      if (newEnd && newStart > newEnd) {
+        this.taskManager.notify("warn", "Session end must be after start.");
+        return;
+      }
+      this.taskManager.updateDoingSession(taskId, sess.id, { start: newStart, end: newEnd });
+      onSave();
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn-small btn-light";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => form.remove());
+
+    const startLabel = document.createElement("label");
+    startLabel.textContent = "Start";
+    const endLabel = document.createElement("label");
+    endLabel.textContent = "End";
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "session-edit-btns";
+    btnRow.append(saveBtn, cancelBtn);
+
+    form.append(startLabel, startInput, endLabel, endInput, btnRow);
+    return form;
+  }
+
+  _buildSessionAddForm(taskId, onSave) {
+    const form = document.createElement("div");
+    form.className = "session-edit-form session-add-form";
+
+    const now = this._isoToDatetimeLocal(new Date().toISOString());
+
+    const startInput = document.createElement("input");
+    startInput.type = "datetime-local";
+    startInput.className = "session-time-input";
+    startInput.value = now;
+
+    const endInput = document.createElement("input");
+    endInput.type = "datetime-local";
+    endInput.className = "session-time-input";
+    endInput.value = now;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-small btn-primary";
+    saveBtn.textContent = "Add";
+    saveBtn.addEventListener("click", () => {
+      if (!startInput.value || !endInput.value) {
+        this.taskManager.notify("warn", "Both start and end are required.");
+        return;
+      }
+      const start = new Date(startInput.value).toISOString();
+      const end = new Date(endInput.value).toISOString();
+      if (start >= end) {
+        this.taskManager.notify("warn", "Session end must be after start.");
+        return;
+      }
+      this.taskManager.addDoingSession(taskId, { start, end });
+      onSave();
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn-small btn-light";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => form.remove());
+
+    const startLabel = document.createElement("label");
+    startLabel.textContent = "Start";
+    const endLabel = document.createElement("label");
+    endLabel.textContent = "End";
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "session-edit-btns";
+    btnRow.append(saveBtn, cancelBtn);
+
+    form.append(startLabel, startInput, endLabel, endInput, btnRow);
+    return form;
   }
 
   createFollowupSection(task) {
@@ -10750,6 +11039,8 @@ function mapElements() {
     appVersion: byId("appVersion"),
     themeToggle: document.getElementById("themeToggle"),
     topbarInboxBtn: byId("topbarInboxBtn"),
+    topbarDueTodayBtn: byId("topbarDueTodayBtn"),
+    topbarOverdueBtn: byId("topbarOverdueBtn"),
     topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
     contextSuggestions: document.getElementById("contextSuggestions"),

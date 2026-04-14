@@ -3091,6 +3091,173 @@ button.meta-item:hover {
   color: var(--text);
 }
 
+/* ── Session Log ──────────────────────────────────────────────── */
+
+.session-log {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.session-log-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.session-log-header h3 {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0;
+  flex: 1;
+}
+
+.session-log-total {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.session-log-toggle {
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.session-log-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.session-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.session-entry {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.session-entry--active {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent-soft);
+  grid-template-columns: 1fr auto;
+}
+
+.session-entry-range {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-entry-duration {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.session-entry-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.session-entry-actions {
+  display: flex;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-link:hover {
+  color: var(--text);
+}
+
+.btn-link--danger:hover {
+  color: var(--error, #ef4444);
+}
+
+.session-edit-form {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  grid-column: 1 / -1;
+}
+
+.session-edit-form label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.session-time-input {
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  width: 100%;
+  min-width: 0;
+}
+
+.session-edit-btns {
+  display: flex;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.session-add-form {
+  margin-top: var(--space-1);
+}
+
+.session-log-add {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.session-log-empty {
+  margin: 0;
+  text-align: center;
+  padding: var(--space-2) 0;
+}
+
 .task-flyout-workflow-label {
   margin: 0 0 2px;
   font-size: 0.72rem;

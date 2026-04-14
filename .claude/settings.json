@@ -1,12 +1,11 @@
 {
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  },
   "permissions": {
     "allow": [
-      "Bash(python3 -c 'import json,sys; items = [i for i in json.load\\(sys.stdin\\) if not i.get\\('\\\\''resolved'\\\\''\\) and i.get\\('\\\\''type'\\\\''\\) == '\\\\''bug'\\\\'']; [print\\(i['\\\\''id'\\\\''][:8], repr\\(i['\\\\''text'\\\\''][:100]\\)\\) for i in items]; print\\(f'\\\\''\\\\nTotal bugs: {len\\(items\\)}'\\\\''\\)')",
-      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\(json.dumps\\(data[0], indent=2\\) if data else 'empty'\\)\")",
-      "Bash(python3 -c ':*)",
-      "Bash(curl -s -X PATCH http://localhost:8002/feedback/100a73c4812546a0af0ccc000a9e436a -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
-      "Bash(curl -s http://localhost:8002/feedback)",
-      "Bash(curl -s -X PATCH http://localhost:8002/feedback/0ce2c9fc62864712a2312be916047bae -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
+      "Bash(python3 -c :*)",
+      "Bash(curl:*)",
       "Bash(python3 -c 'import json,sys; [print\\(json.dumps\\(i,indent=2\\)\\) for i in json.load\\(sys.stdin\\) if i['\\\\''id'\\\\''].startswith\\('\\\\''81801cdee52243168d88c87ab91b492e'\\\\''\\)]')",
       "Bash(curl -s -X PATCH http://localhost:8002/feedback/81801cdee52243168d88c87ab91b492e -H 'Content-Type: application/json' -d '{\"resolved\": true}')",
       "Bash(git commit -m ':*)",
@@ -21,8 +20,5 @@
       "Bash(node --check app/web_ui/js/data.js)",
       "Bash(curl -s -X PATCH http://localhost:8002/feedback/bd8335cb301847cab198f6166189cae8 -H 'Content-Type: application/json' -d '{\"resolved\": true}')"
     ]
-  },
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true
   }
 }

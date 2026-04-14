@@ -795,7 +795,8 @@ export class TaskManager extends EventTarget {
       return false;
     }
     try {
-      await readServerState();
+      const state = await readServerState();
+      this._checkServerVersion(state);
       this.setConnectionStatus("online");
       return true;
     } catch (error) {

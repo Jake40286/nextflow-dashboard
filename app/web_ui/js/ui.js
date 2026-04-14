@@ -657,6 +657,7 @@ export class UIController {
 
     this.taskManager.addEventListener("versionchange", () => {
       this.showUpdateBanner();
+      this.updateFooterVersion();
     });
   }
 

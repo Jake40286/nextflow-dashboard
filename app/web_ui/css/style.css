@@ -1321,6 +1321,22 @@ button.meta-item:hover {
   background: var(--surface);
 }
 
+.project-row-chip--muted {
+  opacity: 0.65;
+  background: var(--bg);
+}
+
+.project-section-divider {
+  padding: var(--space-3) 0 var(--space-2);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .project-row-meta {
   display: flex;
   align-items: center;

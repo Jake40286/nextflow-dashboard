@@ -7462,6 +7462,8 @@ export class UIController {
       this.clarifyState.time = task.timeRequired || "";
       this.clarifyState.previewField = "title";
       this.clarifyState.previewText = task.title || "";
+      this.clarifyState.projectId = task.projectId || null;
+      this.clarifyState.projectName = task.projectId ? (this.getProjectName(task.projectId) || "") : "";
     }
 
     this.populateClarifyPreview(task);
@@ -7476,6 +7478,15 @@ export class UIController {
 
     if (restoredDraft) {
       this._restoreClarifyDraftDOM();
+    } else if (task.projectId) {
+      // Pre-select "Add to existing project" and show the picker when the task
+      // already belongs to a project, so the user sees the association and
+      // doesn't accidentally clear it by choosing "Single action".
+      if (this.elements.clarifyProjectPicker) {
+        this.elements.clarifyProjectPicker.hidden = false;
+      }
+      document.getElementById("clarifyActionAddExisting")?.classList.add("is-selected");
+      document.getElementById("clarifyActionSingle")?.classList.remove("is-selected");
     }
 
     this.setClarifyModalOpen(true);

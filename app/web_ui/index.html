@@ -1213,5 +1213,22 @@
       </div>
     </div>
   </div>
+
+    <!-- Multi-edit action bar — slides up when tasks are selected -->
+    <div id="multiEditBar" role="toolbar" aria-label="Bulk edit selected tasks" hidden>
+      <span id="multiEditCount" class="multi-edit-count"></span>
+      <div class="multi-edit-fields">
+        <select id="multiEditStatus" class="multi-edit-select" aria-label="Set status for selected tasks">
+          <option value="">Set status…</option>
+        </select>
+        <select id="multiEditProject" class="multi-edit-select" aria-label="Move selected tasks to project">
+          <option value="">Move to project…</option>
+        </select>
+        <select id="multiEditArea" class="multi-edit-select" aria-label="Set area for selected tasks">
+          <option value="">Set area…</option>
+        </select>
+      </div>
+      <button id="multiEditClear" class="btn btn-icon multi-edit-clear" type="button" title="Clear selection" aria-label="Clear selection">✕</button>
+    </div>
 </body>
 </html>

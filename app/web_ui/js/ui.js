@@ -196,6 +196,7 @@ export class UIController {
     this.entityMentionDismissHandler = null;
     this.entityMentionRepositionHandler = null;
     this._dirtyPanels = new Set();
+    this.selectedTaskIds = new Set();
   }
 
   init() {
@@ -224,6 +225,7 @@ export class UIController {
       if (feedbackWidget) feedbackWidget.hidden = false;
       this.setupFeedbackWidget();
     }
+    this.setupMultiEditBar();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -6063,10 +6065,34 @@ export class UIController {
     caret.setAttribute("aria-hidden", "true");
     caret.textContent = "›";
 
-    row.append(main, caret);
+    // Multi-select checkbox — hidden by CSS until row is hovered or selected
+    const selectSlot = document.createElement("span");
+    selectSlot.className = "task-row-select";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.tabIndex = -1;
+    checkbox.setAttribute("aria-label", `Select task "${task.title || "Untitled"}"`);
+    checkbox.checked = this.selectedTaskIds.has(task.id);
+    selectSlot.append(checkbox);
+
+    if (this.selectedTaskIds.has(task.id)) {
+      row.classList.add("is-selected");
+    }
+
+    checkbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleTaskSelection(task.id);
+    });
+
+    row.append(selectSlot, main, caret);
 
     const openDetails = () => {
       if (row.classList.contains("is-dragging")) return;
+      // If any tasks are already selected, clicking a row toggles it instead of opening it
+      if (this.selectedTaskIds.size > 0) {
+        this.toggleTaskSelection(task.id);
+        return;
+      }
       this.closeTaskContextMenu();
       this.closeCalendarDayContextMenu();
       if (task.status === STATUS.INBOX) {
@@ -6133,6 +6159,149 @@ export class UIController {
       }
     });
   }
+
+  // ─── Multi-select & bulk edit ─────────────────────────────────────────────
+
+  toggleTaskSelection(taskId) {
+    if (this.selectedTaskIds.has(taskId)) {
+      this.selectedTaskIds.delete(taskId);
+    } else {
+      this.selectedTaskIds.add(taskId);
+    }
+    // Sync checked state + is-selected class on any rendered row for this task
+    document.querySelectorAll(`.task-row[data-task-id="${CSS.escape(taskId)}"]`).forEach((row) => {
+      const checkbox = row.querySelector(".task-row-select input");
+      const selected = this.selectedTaskIds.has(taskId);
+      row.classList.toggle("is-selected", selected);
+      if (checkbox) checkbox.checked = selected;
+    });
+    this.updateMultiEditBar();
+  }
+
+  clearSelection() {
+    const ids = Array.from(this.selectedTaskIds);
+    this.selectedTaskIds.clear();
+    ids.forEach((taskId) => {
+      document.querySelectorAll(`.task-row[data-task-id="${CSS.escape(taskId)}"]`).forEach((row) => {
+        row.classList.remove("is-selected");
+        const checkbox = row.querySelector(".task-row-select input");
+        if (checkbox) checkbox.checked = false;
+      });
+    });
+    this.updateMultiEditBar();
+  }
+
+  updateMultiEditBar() {
+    const { multiEditBar, multiEditCount, multiEditStatus, multiEditProject, multiEditArea } = this.elements;
+    if (!multiEditBar) return;
+    const count = this.selectedTaskIds.size;
+    if (count === 0) {
+      multiEditBar.classList.remove("is-visible");
+      // Let slide-out animation finish before hiding
+      setTimeout(() => {
+        if (this.selectedTaskIds.size === 0) multiEditBar.hidden = true;
+      }, 260);
+      return;
+    }
+    multiEditBar.hidden = false;
+    // Force reflow so the transition fires from the hidden position
+    multiEditBar.getBoundingClientRect();
+    multiEditBar.classList.add("is-visible");
+
+    if (multiEditCount) {
+      multiEditCount.textContent = `${count} task${count === 1 ? "" : "s"} selected`;
+    }
+
+    // Populate status options (once — they never change)
+    if (multiEditStatus && multiEditStatus.options.length === 1) {
+      const statusOrder = [STATUS.INBOX, STATUS.NEXT, STATUS.DOING, STATUS.WAITING, STATUS.SOMEDAY];
+      statusOrder.forEach((s) => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = STATUS_LABELS[s] || s;
+        multiEditStatus.append(opt);
+      });
+    }
+
+    // Populate project options from current state
+    if (multiEditProject) {
+      const currentProjectVal = multiEditProject.value;
+      while (multiEditProject.options.length > 1) multiEditProject.remove(1);
+      const noneOpt = document.createElement("option");
+      noneOpt.value = "__none__";
+      noneOpt.textContent = "No project";
+      multiEditProject.append(noneOpt);
+      this.taskManager.getProjects().forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        multiEditProject.append(opt);
+      });
+      if (currentProjectVal) multiEditProject.value = currentProjectVal;
+    }
+
+    // Populate area options from current state
+    if (multiEditArea) {
+      const currentAreaVal = multiEditArea.value;
+      while (multiEditArea.options.length > 1) multiEditArea.remove(1);
+      const noneOpt = document.createElement("option");
+      noneOpt.value = "__none__";
+      noneOpt.textContent = "No area";
+      multiEditArea.append(noneOpt);
+      this.taskManager.getAreasOfFocus().forEach((area) => {
+        const opt = document.createElement("option");
+        opt.value = area;
+        opt.textContent = area;
+        multiEditArea.append(opt);
+      });
+      if (currentAreaVal) multiEditArea.value = currentAreaVal;
+    }
+  }
+
+  applyBulkField(field, value) {
+    if (!value || !this.selectedTaskIds.size) return;
+    const ids = Array.from(this.selectedTaskIds);
+    const resolvedValue = value === "__none__" ? null : value;
+    ids.forEach((taskId) => {
+      this.taskManager.updateTask(taskId, { [field]: resolvedValue });
+    });
+    this.taskManager.notify("info", `Updated ${ids.length} task${ids.length === 1 ? "" : "s"}.`);
+    this.clearSelection();
+  }
+
+  setupMultiEditBar() {
+    const { multiEditStatus, multiEditProject, multiEditArea, multiEditClear, multiEditBar } = this.elements;
+    if (!multiEditBar) return;
+
+    multiEditStatus?.addEventListener("change", () => {
+      if (multiEditStatus.value) {
+        this.applyBulkField("status", multiEditStatus.value);
+        multiEditStatus.value = "";
+      }
+    });
+    multiEditProject?.addEventListener("change", () => {
+      if (multiEditProject.value) {
+        this.applyBulkField("projectId", multiEditProject.value);
+        multiEditProject.value = "";
+      }
+    });
+    multiEditArea?.addEventListener("change", () => {
+      if (multiEditArea.value) {
+        this.applyBulkField("areaOfFocus", multiEditArea.value);
+        multiEditArea.value = "";
+      }
+    });
+    multiEditClear?.addEventListener("click", () => this.clearSelection());
+
+    // Escape key clears selection when bar is visible
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.selectedTaskIds.size > 0) {
+        this.clearSelection();
+      }
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
 
   openTaskContextMenuForTask(taskId, anchor) {
     if (!anchor) return;
@@ -11081,6 +11250,12 @@ function mapElements() {
     confirmModalCancel: byId("confirmModalCancel"),
     manualSyncButton: byId("manualSyncButton"),
     connectionStatusDot: byId("connectionStatusDot"),
+    multiEditBar: byId("multiEditBar"),
+    multiEditCount: byId("multiEditCount"),
+    multiEditStatus: byId("multiEditStatus"),
+    multiEditProject: byId("multiEditProject"),
+    multiEditArea: byId("multiEditArea"),
+    multiEditClear: byId("multiEditClear"),
     taskContextMenu: byId("taskContextMenu"),
     taskNoteContextMenu: byId("taskNoteContextMenu"),
     taskListItemContextMenu: byId("taskListItemContextMenu"),

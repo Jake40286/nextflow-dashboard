@@ -1529,14 +1529,19 @@ button.meta-item:hover {
   gap: var(--space-2);
 }
 
-.project-next-action-form {
-  display: flex;
-  flex-wrap: wrap;
+.project-quick-add-form {
+  display: grid;
   gap: var(--space-2);
 }
 
-.project-next-action-form input {
-  flex: 1 1 220px;
+.project-quick-add-form textarea {
+  resize: vertical;
+  min-height: 52px;
+}
+
+.project-quick-add-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .project-task-groups {

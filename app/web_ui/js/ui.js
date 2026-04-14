@@ -2368,30 +2368,28 @@ export class UIController {
 
     // Add task form
     const addForm = document.createElement("form");
-    addForm.className = "project-next-action-form";
-    const addInput = document.createElement("input");
-    addInput.type = "text";
-    addInput.placeholder = "Add task";
-    addInput.autocomplete = "off";
-    addInput.setAttribute("aria-label", `Add task for ${project.name}`);
+    addForm.className = "project-quick-add-form";
+    const addTextarea = document.createElement("textarea");
+    addTextarea.rows = 2;
+    addTextarea.placeholder = "Add tasks — one per line";
+    addTextarea.setAttribute("aria-label", `Add tasks for ${project.name}`);
+    const addActions = document.createElement("div");
+    addActions.className = "project-quick-add-actions";
     const addBtn = document.createElement("button");
     addBtn.type = "submit";
     addBtn.className = "btn btn-primary";
     addBtn.textContent = "Add";
-    addForm.append(addInput, addBtn);
+    addActions.append(addBtn);
+    addForm.append(addTextarea, addActions);
     addForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const title = addInput.value.trim();
-      if (!title) {
-        this.taskManager.notify("warn", "Enter a task title.");
-        addInput.focus();
-        return;
-      }
-      const created = this.taskManager.addTask({ title, status: STATUS.INBOX, projectId: project.id });
-      if (created) {
-        addInput.value = "";
-        addInput.focus();
-      }
+      const lines = addTextarea.value.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+      lines.forEach((title) => {
+        this.taskManager.addTask({ title, status: STATUS.INBOX, projectId: project.id });
+      });
+      addTextarea.value = "";
+      addTextarea.focus();
     });
     content.append(addForm);
 

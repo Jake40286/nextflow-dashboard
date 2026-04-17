@@ -2101,7 +2101,7 @@ export class UIController {
     const container = this.elements.projectList;
     container.innerHTML = "";
     const filterArea = this.elements.projectAreaFilter?.value || "all";
-    const hasActiveFilter = (filterArea && filterArea !== "all") || Boolean(this.showMissingNextOnly);
+    const hasActiveFilter = filterArea !== "all" || Boolean(this.showMissingNextOnly);
     const filtersDiv = this.elements.projectAreaFilter?.closest(".project-filters");
     if (filtersDiv) {
       filtersDiv.classList.toggle("has-active-filter", hasActiveFilter);
@@ -2378,6 +2378,9 @@ export class UIController {
     if (!project) return;
     const wasOpen = this.isProjectFlyoutOpen;
     this.currentProjectFlyoutId = projectId;
+    this._flyoutNavList = Array.from(
+      this.elements.projectList?.querySelectorAll("[data-project-id]") || []
+    ).map((el) => el.dataset.projectId).filter(Boolean);
     this.renderProjectFlyout(project);
     flyout.classList.add("is-open");
     flyout.classList.add("is-top");
@@ -2425,6 +2428,40 @@ export class UIController {
     if (!content) return;
 
     if (titleEl) titleEl.textContent = project.name;
+
+    if (titleEl && this._flyoutNavList?.length > 1) {
+      const navList = this._flyoutNavList;
+      const currentIdx = navList.indexOf(project.id);
+      const prevId = currentIdx > 0 ? navList[currentIdx - 1] : null;
+      const nextId = currentIdx < navList.length - 1 ? navList[currentIdx + 1] : null;
+
+      titleEl.parentElement?.querySelector(".project-flyout-nav")?.remove();
+
+      const makeNavBtn = (label, glyph, targetId) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "project-flyout-nav-btn";
+        btn.setAttribute("aria-label", label);
+        btn.textContent = glyph;
+        btn.disabled = !targetId;
+        if (targetId) {
+          btn.addEventListener("click", () => {
+            const target = (this.projectCache || []).find((p) => p.id === targetId);
+            if (target) this.renderProjectFlyout(target);
+          });
+        }
+        return btn;
+      };
+
+      const nav = document.createElement("div");
+      nav.className = "project-flyout-nav";
+      nav.setAttribute("aria-label", "Navigate projects");
+      nav.append(
+        makeNavBtn("Previous project", "‹", prevId),
+        makeNavBtn("Next project", "›", nextId),
+      );
+      titleEl.insertAdjacentElement("afterend", nav);
+    }
 
     // Header chips
     if (chipsEl) {

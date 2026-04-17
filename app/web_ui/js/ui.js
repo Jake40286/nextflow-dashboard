@@ -40,6 +40,8 @@ const ACTIVE_AREA_KEY = "nextflow-active-area";
   }
 })();
 const ENTITY_LINK_TOKEN_PATTERN = /([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
+const URL_PATTERN = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/;
+const MARKDOWN_INLINE_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
 
 const TRANSITIONS = {
   [STATUS.INBOX]: [
@@ -216,9 +218,11 @@ export class UIController {
     this.bindClarifyModal();
     this.bindProjectCompletionModal();
     this.bindProjectMergeModal();
+    this.bindTemplateModals();
     this.setupLightbox();
     this.setupAreaScope();
     if (this.isAdmin) {
+      document.body.classList.add("is-admin");
       const backlogTab = document.getElementById("summary-tab-backlog");
       if (backlogTab) backlogTab.hidden = false;
       const feedbackWidget = document.getElementById("feedbackWidget");
@@ -574,6 +578,75 @@ export class UIController {
       this.setActivePanel("backlog");
     });
 
+    this.elements.exportJSON?.addEventListener("click", async () => {
+      const btn = this.elements.exportJSON;
+      btn.disabled = true;
+      btn.textContent = "Exporting…";
+      try {
+        const [stateRes, completedRes] = await Promise.all([
+          fetch("/state"),
+          fetch("/completed"),
+        ]);
+        const state = await stateRes.json();
+        const completed = await completedRes.json();
+        const full = { ...state, ...completed };
+        const blob = new Blob([JSON.stringify(full, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `nextflow-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showToast("info", "Export complete.");
+      } catch (error) {
+        this.showToast("error", error.message || "Export failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Export JSON";
+      }
+    });
+
+    this.elements.importJSON?.addEventListener("click", () => {
+      this.elements.jsonFileInput?.click();
+    });
+
+    this.elements.jsonFileInput?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const confirmed = await this.showConfirm(
+        `Import "${file.name}"? This will overwrite all current data.`,
+        { title: "Import data", okLabel: "Import", danger: true }
+      );
+      if (!confirmed) {
+        this.elements.jsonFileInput.value = "";
+        return;
+      }
+      const btn = this.elements.importJSON;
+      btn.disabled = true;
+      btn.textContent = "Importing…";
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const res = await fetch("/state", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Import failed (${res.status})`);
+        }
+        await this.taskManager.loadRemoteState();
+        this.showToast("info", "Import complete — state refreshed.");
+      } catch (error) {
+        this.showToast("error", error.message || "Import failed.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Import JSON";
+        this.elements.jsonFileInput.value = "";
+      }
+    });
+
     this.elements.settingsDeviceNameInput?.addEventListener("change", () => {
       const input = this.elements.settingsDeviceNameInput;
       let newLabel = input.value.trim();
@@ -638,7 +711,7 @@ export class UIController {
     });
 
     this.taskManager.addEventListener("toast", (event) => {
-      this.showToast(event.detail.level, event.detail.message);
+      this.showToast(event.detail.level, event.detail.message, { action: event.detail.action });
     });
 
     this.taskManager.addEventListener("connection", (event) => {
@@ -2028,6 +2101,11 @@ export class UIController {
     const container = this.elements.projectList;
     container.innerHTML = "";
     const filterArea = this.elements.projectAreaFilter?.value || "all";
+    const hasActiveFilter = (filterArea && filterArea !== "all") || Boolean(this.showMissingNextOnly);
+    const filtersDiv = this.elements.projectAreaFilter?.closest(".project-filters");
+    if (filtersDiv) {
+      filtersDiv.classList.toggle("has-active-filter", hasActiveFilter);
+    }
     const allTasks = this.taskManager.getTasks({ includeCompleted: false });
     const hasNextAction = new Map();
     const taskCountByProject = new Map();
@@ -2075,7 +2153,9 @@ export class UIController {
         select.append(option);
       });
     }
-    populateAreaSelect(this.elements.projectAreaSelect, areas, this.elements.projectAreaSelect?.value || "");
+    const currentAreaVal = this.elements.projectAreaSelect?.value;
+    const defaultAreaVal = currentAreaVal || (areas.length > 0 ? areas[0] : "");
+    populateAreaSelect(this.elements.projectAreaSelect, areas, defaultAreaVal);
 
     let parkedDividerInserted = false;
     visibleProjects.forEach((project) => {
@@ -2177,6 +2257,8 @@ export class UIController {
 
       container.append(row);
     });
+
+    this.renderTemplateSection(container);
   }
 
   renderCompletedProjects() {
@@ -2327,6 +2409,9 @@ export class UIController {
       document.removeEventListener("keydown", this._handleProjectFlyoutKeydown);
       this._handleProjectFlyoutKeydown = null;
     }
+    if (this.isFlyoutOpen) {
+      this.elements.taskFlyout?.classList.add("is-top");
+    }
     if (wasOpen && !fromPopstate && history.state?.nextflowLayer === "projectFlyout") {
       this._historyNavPending = true;
       history.back();
@@ -2387,6 +2472,36 @@ export class UIController {
     outcome.append(outcomeLabel, outcomeText);
     content.append(outcome);
 
+    // Notes section (collapsible) — shown right after outcome, before task list
+    const allProjectTasks = this.taskManager.getTasks({ projectId: project.id });
+    const allNotes = allProjectTasks
+      .flatMap((t) => (Array.isArray(t.notes) ? t.notes : []).map((note) => ({ ...note, taskTitle: t.title })))
+      .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    if (allNotes.length) {
+      const notesDetails = document.createElement("details");
+      notesDetails.className = "project-notes-section";
+      const notesSummary = document.createElement("summary");
+      notesSummary.textContent = `Notes (${allNotes.length})`;
+      notesDetails.append(notesSummary);
+      const notesList = document.createElement("ul");
+      notesList.className = "project-notes-list";
+      allNotes.forEach((note) => {
+        const li = document.createElement("li");
+        li.className = "project-note-item";
+        const noteMeta = document.createElement("span");
+        noteMeta.className = "project-note-meta";
+        const noteDate = note.createdAt ? new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+        noteMeta.textContent = [note.taskTitle, noteDate].filter(Boolean).join(" \u2022 ");
+        const noteText = document.createElement("p");
+        noteText.className = "project-note-text";
+        noteText.textContent = note.text;
+        li.append(noteMeta, noteText);
+        notesList.append(li);
+      });
+      notesDetails.append(notesList);
+      content.append(notesDetails);
+    }
+
     // Add task form
     const addForm = document.createElement("form");
     addForm.className = "project-quick-add-form";
@@ -2405,12 +2520,16 @@ export class UIController {
     addForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const lines = addTextarea.value.split("\n").map((l) => l.trim()).filter(Boolean);
-      if (!lines.length) return;
+      if (!lines.length) {
+        addTextarea.focus();
+        return;
+      }
       lines.forEach((title) => {
         this.taskManager.addTask({ title, status: STATUS.INBOX, projectId: project.id });
       });
-      addTextarea.value = "";
-      addTextarea.focus();
+      // statechange re-renders the flyout synchronously, so focus the replacement textarea
+      const newTextarea = content.querySelector(".project-quick-add-form textarea");
+      if (newTextarea) newTextarea.focus();
     });
     content.append(addForm);
 
@@ -2527,36 +2646,6 @@ export class UIController {
       content.append(empty);
     }
 
-    // Notes section (collapsible)
-    const allProjectTasks = this.taskManager.getTasks({ projectId: project.id });
-    const allNotes = allProjectTasks
-      .flatMap((t) => (Array.isArray(t.notes) ? t.notes : []).map((note) => ({ ...note, taskTitle: t.title })))
-      .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
-    if (allNotes.length) {
-      const notesDetails = document.createElement("details");
-      notesDetails.className = "project-notes-section";
-      const notesSummary = document.createElement("summary");
-      notesSummary.textContent = `Notes (${allNotes.length})`;
-      notesDetails.append(notesSummary);
-      const notesList = document.createElement("ul");
-      notesList.className = "project-notes-list";
-      allNotes.forEach((note) => {
-        const li = document.createElement("li");
-        li.className = "project-note-item";
-        const noteMeta = document.createElement("span");
-        noteMeta.className = "project-note-meta";
-        const noteDate = note.createdAt ? new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
-        noteMeta.textContent = [note.taskTitle, noteDate].filter(Boolean).join(" \u2022 ");
-        const noteText = document.createElement("p");
-        noteText.className = "project-note-text";
-        noteText.textContent = note.text;
-        li.append(noteMeta, noteText);
-        notesList.append(li);
-      });
-      notesDetails.append(notesList);
-      content.append(notesDetails);
-    }
-
     // Footer actions
     const footer = document.createElement("div");
     footer.className = "project-flyout-footer";
@@ -2606,6 +2695,18 @@ export class UIController {
       this.openProjectCompleteModal(project);
     });
     footer.append(completeBtn);
+
+    const saveAsTemplateBtn = document.createElement("button");
+    saveAsTemplateBtn.type = "button";
+    saveAsTemplateBtn.className = "btn btn-light";
+    saveAsTemplateBtn.textContent = "Save as template\u2026";
+    saveAsTemplateBtn.addEventListener("click", () => {
+      const draft = this.taskManager.buildTemplateFromProject(project.id);
+      if (!draft) return;
+      this.closeProjectFlyout();
+      this.openTemplateEditor(draft);
+    });
+    footer.append(saveAsTemplateBtn);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -2897,6 +2998,488 @@ export class UIController {
     };
     this.taskManager.completeProject(this.projectCompletionState.projectId, payload);
     this.closeProjectCompleteModal();
+  }
+
+  // ─── Template Modals ─────────────────────────────────────────────────────
+
+  bindTemplateModals() {
+    const {
+      useTemplateModal, useTemplateModalBackdrop, closeUseTemplateModal,
+      useTemplateCancelBtn, useTemplateForm,
+      templateEditorModal, templateEditorModalBackdrop, closeTemplateEditorModal,
+      templateEditorCancelBtn, templateEditorForm, templateEditorAddTask,
+    } = this.elements;
+
+    // Use-template modal
+    const closeUse = () => this.closeUseTemplateModal();
+    closeUseTemplateModal?.addEventListener("click", closeUse);
+    useTemplateModalBackdrop?.addEventListener("click", closeUse);
+    useTemplateCancelBtn?.addEventListener("click", closeUse);
+    useTemplateModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUse(); });
+    useTemplateForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const projectName = this.elements.useTemplateProjectName?.value?.trim() || "";
+      const templateId = this._useTemplateId;
+      if (!templateId) return;
+      const project = this.taskManager.createProjectFromTemplate(templateId, projectName);
+      if (project) {
+        this.closeUseTemplateModal();
+        this.openProjectFlyout(project.id);
+      }
+    });
+
+    // Template-editor modal
+    const closeEditor = () => this.closeTemplateEditorModal();
+    closeTemplateEditorModal?.addEventListener("click", closeEditor);
+    templateEditorModalBackdrop?.addEventListener("click", closeEditor);
+    templateEditorCancelBtn?.addEventListener("click", closeEditor);
+    templateEditorModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEditor(); });
+    templateEditorAddTask?.addEventListener("click", () => this._addTemplateTaskRow());
+    templateEditorForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this._saveTemplateFromEditor();
+    });
+  }
+
+  openUseTemplateModal(template) {
+    const { useTemplateModal, useTemplateName, useTemplateProjectName, useTemplateForm } = this.elements;
+    if (!useTemplateModal || !template) return;
+    this._useTemplateId = template.id;
+    if (useTemplateName) useTemplateName.textContent = template.name;
+    useTemplateForm?.reset();
+    if (useTemplateProjectName) {
+      useTemplateProjectName.value = template.name;
+      useTemplateProjectName.select();
+    }
+    useTemplateModal.removeAttribute("hidden");
+    useTemplateModal.classList.add("is-open");
+    useTemplateProjectName?.focus();
+  }
+
+  closeUseTemplateModal() {
+    const { useTemplateModal } = this.elements;
+    if (!useTemplateModal) return;
+    useTemplateModal.classList.remove("is-open");
+    useTemplateModal.setAttribute("hidden", "");
+    this._useTemplateId = null;
+  }
+
+  openTemplateEditor(template = null) {
+    const {
+      templateEditorModal, templateEditorModalTitle, templateEditorName,
+      templateEditorArea, templateEditorTheme, templateEditorStatus,
+      templateEditorTasks, templateEditorForm,
+    } = this.elements;
+    if (!templateEditorModal) return;
+    this._editingTemplateId = template?.id || null;
+    if (templateEditorModalTitle) {
+      templateEditorModalTitle.textContent = template ? "Edit template" : "New template";
+    }
+    templateEditorForm?.reset();
+    if (templateEditorName) templateEditorName.value = template?.name || "";
+    const areas = this.taskManager.getAreasOfFocus();
+    populateAreaSelect(templateEditorArea, areas, template?.areaOfFocus || "");
+    if (templateEditorTheme) templateEditorTheme.value = template?.themeTag || "";
+    if (templateEditorStatus) templateEditorStatus.value = template?.statusTag || "Active";
+    if (templateEditorTasks) {
+      templateEditorTasks.innerHTML = "";
+      (template?.tasks || []).forEach((t) => this._addTemplateTaskRow(t));
+    }
+    templateEditorModal.removeAttribute("hidden");
+    templateEditorModal.classList.add("is-open");
+    templateEditorName?.focus();
+  }
+
+  closeTemplateEditorModal() {
+    this._closeTemplateTaskPopover();
+    const { templateEditorModal } = this.elements;
+    if (!templateEditorModal) return;
+    templateEditorModal.classList.remove("is-open");
+    templateEditorModal.setAttribute("hidden", "");
+    this._editingTemplateId = null;
+  }
+
+  // ─── Template task row chip/popover system ────────────────────────────────
+
+  // Short display labels for status chips (STATUS_LABELS uses the long GTD names)
+  static _TMPL_STATUS_LABELS = {
+    inbox: "Inbox", next: "Next", doing: "Doing", waiting: "Waiting", someday: "Someday",
+  };
+
+  _addTemplateTaskRow(task = null) {
+    const container = this.elements.templateEditorTasks;
+    if (!container) return;
+
+    this._taskRowSeq = (this._taskRowSeq || 0) + 1;
+    const rowId = this._taskRowSeq;
+
+    const row = document.createElement("div");
+    row.className = "template-task-row";
+    row.dataset.rowId = rowId;
+
+    // Mutable state object for this row — source of truth for all properties
+    row._taskData = {
+      status: task?.status || "inbox",
+      contexts: Array.isArray(task?.contexts) ? [...task.contexts] : [],
+      effortLevel: task?.effortLevel || null,
+      timeRequired: task?.timeRequired || null,
+      description: task?.description || "",
+    };
+
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "template-task-title";
+    titleInput.placeholder = "Task title";
+    titleInput.value = task?.title || "";
+    titleInput.required = true;
+
+    const chipStrip = document.createElement("div");
+    chipStrip.className = "tmpl-chip-strip";
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-light btn-small template-task-remove";
+    removeBtn.textContent = "✕";
+    removeBtn.setAttribute("aria-label", "Remove task");
+    removeBtn.addEventListener("click", () => {
+      this._closeTemplateTaskPopover();
+      row.remove();
+    });
+
+    row.append(titleInput, chipStrip, removeBtn);
+    container.append(row);
+    this._renderTaskChips(row);
+    titleInput.focus();
+  }
+
+  _makeTaskChip(label, extraClass = "") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `tmpl-chip${extraClass ? " " + extraClass : ""}`;
+    btn.textContent = label;
+    return btn;
+  }
+
+  _renderTaskChips(row) {
+    const chipStrip = row.querySelector(".tmpl-chip-strip");
+    if (!chipStrip) return;
+    const td = row._taskData;
+    chipStrip.innerHTML = "";
+
+    // Chips are display-only — no click handlers
+    chipStrip.append(this._makeTaskChip(
+      UIController._TMPL_STATUS_LABELS[td.status] || td.status,
+      `tmpl-chip--${td.status}`,
+    ));
+
+    if (td.contexts?.length) {
+      chipStrip.append(this._makeTaskChip(td.contexts.join(" ")));
+    }
+
+    if (td.effortLevel) {
+      chipStrip.append(this._makeTaskChip(td.effortLevel));
+    }
+
+    if (td.timeRequired) {
+      chipStrip.append(this._makeTaskChip(td.timeRequired));
+    }
+
+    if (td.description?.trim()) {
+      const descChip = this._makeTaskChip("✏");
+      descChip.title = td.description.trim();
+      chipStrip.append(descChip);
+    }
+
+    // Single edit button — the only interactive trigger
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "tmpl-chip-add";
+    editBtn.textContent = "···";
+    editBtn.setAttribute("aria-label", "Edit task properties");
+    editBtn.addEventListener("click", () => this._openTemplateTaskPopover(row, editBtn));
+    chipStrip.append(editBtn);
+  }
+
+  _makePopSection(label) {
+    const section = document.createElement("div");
+    section.className = "tmpl-pop-section";
+    const lbl = document.createElement("div");
+    lbl.className = "tmpl-pop-label";
+    lbl.textContent = label;
+    section.append(lbl);
+    return section;
+  }
+
+  _buildTaskPopover(row) {
+    const td = row._taskData;
+    const rowId = row.dataset.rowId;
+    const popover = document.createElement("div");
+    popover.className = "tmpl-popover";
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "Task properties");
+
+    // ── Status ──────────────────────────────────────────────────────────────
+    const statusSection = this._makePopSection("Status");
+    const statusGroup = document.createElement("div");
+    statusGroup.className = "tmpl-pop-radio-group";
+    [
+      { value: "inbox", label: "Inbox" },
+      { value: "next", label: "Next" },
+      { value: "doing", label: "Doing" },
+      { value: "waiting", label: "Waiting" },
+      { value: "someday", label: "Someday" },
+    ].forEach(({ value, label }) => {
+      const lbl = document.createElement("label");
+      lbl.className = "tmpl-pop-radio";
+      const inp = document.createElement("input");
+      inp.type = "radio";
+      inp.name = `tmpl-status-${rowId}`;
+      inp.value = value;
+      inp.checked = td.status === value;
+      inp.addEventListener("change", () => {
+        if (inp.checked) { td.status = value; this._renderTaskChips(row); }
+      });
+      lbl.append(inp, document.createTextNode(label));
+      statusGroup.append(lbl);
+    });
+    statusSection.append(statusGroup);
+    popover.append(statusSection);
+
+    // ── Contexts ─────────────────────────────────────────────────────────────
+    const ctxSection = this._makePopSection("Contexts");
+    const ctxGrid = document.createElement("div");
+    ctxGrid.className = "tmpl-pop-check-grid";
+    this.taskManager.getContexts().forEach((ctx) => {
+      const lbl = document.createElement("label");
+      lbl.className = "tmpl-pop-check";
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.value = ctx;
+      inp.checked = (td.contexts || []).includes(ctx);
+      inp.addEventListener("change", () => {
+        const set = new Set(td.contexts || []);
+        if (inp.checked) set.add(ctx); else set.delete(ctx);
+        td.contexts = Array.from(set);
+        this._renderTaskChips(row);
+      });
+      lbl.append(inp, document.createTextNode(" " + ctx));
+      ctxGrid.append(lbl);
+    });
+    ctxSection.append(ctxGrid);
+    popover.append(ctxSection);
+
+    // ── Effort ───────────────────────────────────────────────────────────────
+    const effortSection = this._makePopSection("Effort");
+    const effortGroup = document.createElement("div");
+    effortGroup.className = "tmpl-pop-radio-group";
+    [{ value: "", label: "None" }, ...EFFORT_LEVELS.map((v) => ({ value: v, label: v }))].forEach(({ value, label }) => {
+      const lbl = document.createElement("label");
+      lbl.className = "tmpl-pop-radio";
+      const inp = document.createElement("input");
+      inp.type = "radio";
+      inp.name = `tmpl-effort-${rowId}`;
+      inp.value = value;
+      inp.checked = (td.effortLevel || "") === value;
+      inp.addEventListener("change", () => {
+        if (inp.checked) { td.effortLevel = value || null; this._renderTaskChips(row); }
+      });
+      lbl.append(inp, document.createTextNode(label));
+      effortGroup.append(lbl);
+    });
+    effortSection.append(effortGroup);
+    popover.append(effortSection);
+
+    // ── Time required ────────────────────────────────────────────────────────
+    const timeSection = this._makePopSection("Time required");
+    const timeGroup = document.createElement("div");
+    timeGroup.className = "tmpl-pop-radio-group";
+    [{ value: "", label: "None" }, ...TIME_REQUIREMENTS.map((v) => ({ value: v, label: v }))].forEach(({ value, label }) => {
+      const lbl = document.createElement("label");
+      lbl.className = "tmpl-pop-radio";
+      const inp = document.createElement("input");
+      inp.type = "radio";
+      inp.name = `tmpl-time-${rowId}`;
+      inp.value = value;
+      inp.checked = (td.timeRequired || "") === value;
+      inp.addEventListener("change", () => {
+        if (inp.checked) { td.timeRequired = value || null; this._renderTaskChips(row); }
+      });
+      lbl.append(inp, document.createTextNode(label));
+      timeGroup.append(lbl);
+    });
+    timeSection.append(timeGroup);
+    popover.append(timeSection);
+
+    // ── Description ──────────────────────────────────────────────────────────
+    const descSection = this._makePopSection("Description");
+    const textarea = document.createElement("textarea");
+    textarea.className = "tmpl-pop-textarea";
+    textarea.rows = 3;
+    textarea.placeholder = "Optional task description…";
+    textarea.value = td.description || "";
+    textarea.addEventListener("input", () => {
+      td.description = textarea.value;
+      this._renderTaskChips(row);
+    });
+    descSection.append(textarea);
+    popover.append(descSection);
+
+    return popover;
+  }
+
+  _openTemplateTaskPopover(row, anchorEl) {
+    this._closeTemplateTaskPopover();
+
+    const popover = this._buildTaskPopover(row);
+    document.body.append(popover);
+    this._activeTaskPopover = popover;
+    this._activeTaskPopoverRow = row;
+
+    // Position: fixed, anchored below the trigger element
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = 280;
+    let left = rect.left;
+    const maxLeft = window.innerWidth - popW - 12;
+    popover.style.top = `${rect.bottom + 4}px`;
+    popover.style.left = `${Math.max(8, Math.min(left, maxLeft))}px`;
+
+    // Focus first focusable element in the popover
+    requestAnimationFrame(() => popover.querySelector("input, textarea")?.focus());
+
+    const onOutside = (e) => {
+      if (!popover.contains(e.target) && !row.contains(e.target)) {
+        this._closeTemplateTaskPopover();
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        this._closeTemplateTaskPopover();
+        anchorEl.focus();
+      }
+    };
+    // Delay mousedown listener one tick so the opening click doesn't immediately close it
+    setTimeout(() => document.addEventListener("mousedown", onOutside), 0);
+    document.addEventListener("keydown", onKey, { capture: true });
+
+    this._popoverCleanup = () => {
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("keydown", onKey, { capture: true });
+    };
+  }
+
+  _closeTemplateTaskPopover() {
+    if (!this._activeTaskPopover) return;
+    this._popoverCleanup?.();
+    this._popoverCleanup = null;
+    this._activeTaskPopover.remove();
+    this._activeTaskPopover = null;
+    this._activeTaskPopoverRow = null;
+  }
+
+  _saveTemplateFromEditor() {
+    // Close any open popover first so its data is already applied to _taskData
+    this._closeTemplateTaskPopover();
+    const {
+      templateEditorName, templateEditorArea, templateEditorTheme,
+      templateEditorStatus, templateEditorTasks,
+    } = this.elements;
+    const name = (templateEditorName?.value || "").trim();
+    if (!name) {
+      this.taskManager.notify("warn", "Template name cannot be empty.");
+      return;
+    }
+    const tasks = Array.from(templateEditorTasks?.querySelectorAll(".template-task-row") || []).map((row) => {
+      const td = row._taskData || {};
+      return {
+        title: row.querySelector(".template-task-title")?.value?.trim() || "",
+        status: td.status || "inbox",
+        contexts: td.contexts || [],
+        effortLevel: td.effortLevel || null,
+        timeRequired: td.timeRequired || null,
+        description: td.description?.trim() || null,
+      };
+    }).filter((t) => t.title);
+    const updates = {
+      name,
+      areaOfFocus: templateEditorArea?.value || null,
+      themeTag: (templateEditorTheme?.value || "").trim() || null,
+      statusTag: (templateEditorStatus?.value || "").trim() || "Active",
+      tasks,
+    };
+    if (this._editingTemplateId) {
+      this.taskManager.updateTemplate(this._editingTemplateId, updates);
+    } else {
+      this.taskManager.addTemplate(name, updates);
+    }
+    this.closeTemplateEditorModal();
+    this.renderProjects();
+  }
+
+  renderTemplateSection(container) {
+    const templates = this.taskManager.getTemplates();
+    const section = document.createElement("div");
+    section.className = "template-section";
+
+    const header = document.createElement("div");
+    header.className = "template-section-header";
+    const heading = document.createElement("strong");
+    heading.textContent = "Templates";
+    const newBtn = document.createElement("button");
+    newBtn.type = "button";
+    newBtn.className = "btn btn-light btn-small";
+    newBtn.textContent = "+ New template";
+    newBtn.addEventListener("click", () => this.openTemplateEditor());
+    header.append(heading, newBtn);
+    section.append(header);
+
+    if (!templates.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted small-text template-empty";
+      empty.textContent = "No templates yet. Create one to quickly spin up projects with pre-set tasks.";
+      section.append(empty);
+    } else {
+      templates.forEach((tmpl) => {
+        const row = document.createElement("div");
+        row.className = "template-row";
+        const info = document.createElement("div");
+        info.className = "template-row-info";
+        const name = document.createElement("strong");
+        name.textContent = tmpl.name;
+        const meta = document.createElement("span");
+        meta.className = "muted small-text";
+        const taskCount = (tmpl.tasks || []).length;
+        const chips = [tmpl.areaOfFocus, tmpl.themeTag].filter(Boolean).join(" · ");
+        meta.textContent = `${taskCount} task${taskCount !== 1 ? "s" : ""}${chips ? " · " + chips : ""}`;
+        info.append(name, meta);
+        const actions = document.createElement("div");
+        actions.className = "template-row-actions";
+        const useBtn = document.createElement("button");
+        useBtn.type = "button";
+        useBtn.className = "btn btn-primary btn-small";
+        useBtn.textContent = "Use";
+        useBtn.addEventListener("click", () => this.openUseTemplateModal(tmpl));
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn btn-light btn-small";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", () => this.openTemplateEditor(tmpl));
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-light btn-small";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.addEventListener("click", () => {
+          if (confirm(`Delete template "${tmpl.name}"?`)) {
+            this.taskManager.deleteTemplate(tmpl.id);
+            this.renderProjects();
+          }
+        });
+        actions.append(useBtn, editBtn, deleteBtn);
+        row.append(info, actions);
+        section.append(row);
+      });
+    }
+    container.append(section);
   }
 
   renderWaitingFor() {
@@ -4907,6 +5490,11 @@ export class UIController {
         description: "Mirror tasks with dates to a Google Calendar.",
         renderConfig: (configPanel) => this.renderGoogleCalendarConfig(configPanel),
       },
+      {
+        key: "confirmOnCompletion",
+        label: "Confirm on completion",
+        description: "Show a confirmation prompt before marking any task complete.",
+      },
     ];
     entries.forEach((entry) => {
       const item = document.createElement("li");
@@ -6015,7 +6603,7 @@ export class UIController {
       metaItems.push(this.createMetaSpan("MY DAY", "task-meta-pill task-meta-my-day"));
     }
     if (task.status !== STATUS.INBOX) {
-      metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status));
+      metaItems.push(this.createMetaSpan(STATUS_LABELS[task.status] || task.status, `task-meta-pill task-meta-status-${task.status}`));
     }
     if (task.contexts?.length) task.contexts.forEach((ctx) => metaItems.push(this.createMetaSpan(stripTagPrefix(ctx))));
     const projectName = this.getProjectName(task.projectId);
@@ -8435,8 +9023,8 @@ export class UIController {
     const descriptionText = task.description?.trim();
     const description = descriptionText ? document.createElement("div") : null;
     if (description) {
-      this.setEntityLinkedTextWithImages(description, descriptionText);
-      description.className = "muted";
+      this.renderMarkdownDescription(description, descriptionText);
+      description.className = "muted task-flyout-description";
     }
     const archiveEntryId = readOnly ? entry?.id || entry?.sourceId || task.id : null;
     const notesSection = this.createTaskNotesSection(task, {
@@ -8605,7 +9193,11 @@ export class UIController {
       completeButton.type = "button";
       completeButton.className = "btn btn-primary task-flyout-complete-btn";
       completeButton.textContent = "Complete";
-      completeButton.addEventListener("click", () => {
+      completeButton.addEventListener("click", async () => {
+        if (this.taskManager.getFeatureFlag("confirmOnCompletion")) {
+          const ok = await this.showConfirm(`Complete "${task.title}"?`, { okLabel: "Complete" });
+          if (!ok) return;
+        }
         this.taskManager.completeTask(task.id, { archive: "log" });
         this.closeTaskFlyout();
       });
@@ -8616,7 +9208,20 @@ export class UIController {
       completeArchiveButton.addEventListener("click", () => {
         this.openClosureNotes(task.id, "reference");
       });
-      completeSection.append(completeButton, completeArchiveButton);
+      if (task.recurrenceRule?.type) {
+        const skipButton = document.createElement("button");
+        skipButton.type = "button";
+        skipButton.className = "task-flyout-complete-secondary";
+        skipButton.textContent = "Skip this instance \u2192";
+        skipButton.title = "Advance to next recurrence without completing";
+        skipButton.addEventListener("click", () => {
+          this.taskManager.skipRecurringTaskInstance(task.id);
+          this.closeTaskFlyout();
+        });
+        completeSection.append(completeButton, skipButton, completeArchiveButton);
+      } else {
+        completeSection.append(completeButton, completeArchiveButton);
+      }
     }
 
     const sessionsSection = this.createSessionsSection(task, { readOnly });
@@ -9403,12 +10008,25 @@ export class UIController {
     noProjectOption.value = "";
     noProjectOption.textContent = "No project";
     projectSelect.append(noProjectOption);
-    this.getProjectCache().forEach((project) => {
-      const option = document.createElement("option");
-      option.value = project.id;
-      option.textContent = project.name + (project.someday ? " (Backburner)" : "");
-      projectSelect.append(option);
-    });
+    const allProjects = [...this.getProjectCache()].sort((a, b) => a.name.localeCompare(b.name));
+    const activeProjects = allProjects.filter((p) => !p.someday && p.statusTag !== "Completed" && p.statusTag !== "OnHold");
+    const onHoldProjects = allProjects.filter((p) => !p.someday && p.statusTag === "OnHold");
+    const backburnerProjects = allProjects.filter((p) => p.someday);
+    const appendGroup = (label, projects) => {
+      if (!projects.length) return;
+      const group = document.createElement("optgroup");
+      group.label = label;
+      projects.forEach((project) => {
+        const option = document.createElement("option");
+        option.value = project.id;
+        option.textContent = project.areaOfFocus ? `[${project.areaOfFocus}] ${project.name}` : project.name;
+        group.append(option);
+      });
+      projectSelect.append(group);
+    };
+    appendGroup("Active", activeProjects);
+    appendGroup("On Hold", onHoldProjects);
+    appendGroup("Backburner", backburnerProjects);
     projectSelect.value = task.projectId || "";
     const createProjectButton = document.createElement("button");
     createProjectButton.type = "button";
@@ -10100,6 +10718,67 @@ export class UIController {
     element.append(fragment);
   }
 
+  // Renders markdown-formatted text into element. Supports: **bold**, *italic*, `code`,
+  // [text](url), ![alt](/images/path), bare URLs, entity links, and newlines → <br>.
+  renderMarkdownDescription(element, text) {
+    if (!element) return;
+    const source = typeof text === "string" ? text : "";
+    element.textContent = "";
+    if (!source) return;
+    const fragment = document.createDocumentFragment();
+    const lines = source.split("\n");
+    lines.forEach((line, lineIdx) => {
+      if (lineIdx > 0) fragment.append(document.createElement("br"));
+      fragment.append(this._parseMarkdownLine(line));
+    });
+    element.append(fragment);
+  }
+
+  _parseMarkdownLine(text) {
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+    MARKDOWN_INLINE_PATTERN.lastIndex = 0;
+    while ((match = MARKDOWN_INLINE_PATTERN.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        fragment.append(this.createEntityLinkFragment(text.slice(lastIndex, match.index)));
+      }
+      if (match[0].startsWith("![")) {
+        const src = match[2];
+        if (src.startsWith("/images/")) {
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = match[1];
+          img.className = "note-image";
+          img.loading = "lazy";
+          fragment.append(img);
+        } else {
+          fragment.append(document.createTextNode(match[0]));
+        }
+      } else if (match[3] !== undefined || match[4] !== undefined) {
+        const el = document.createElement("strong");
+        el.textContent = match[3] ?? match[4];
+        fragment.append(el);
+      } else if (match[5] !== undefined || match[6] !== undefined) {
+        const el = document.createElement("em");
+        el.textContent = match[5] ?? match[6];
+        fragment.append(el);
+      } else if (match[7] !== undefined) {
+        const el = document.createElement("code");
+        el.className = "inline-code";
+        el.textContent = match[7];
+        fragment.append(el);
+      } else if (match[8] !== undefined) {
+        fragment.append(createURLLink(match[9], match[8]));
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      fragment.append(this.createEntityLinkFragment(text.slice(lastIndex)));
+    }
+    return fragment;
+  }
+
   async uploadImage(blob) {
     try {
       const response = await fetch("/upload", {
@@ -10130,7 +10809,10 @@ export class UIController {
       if (!part) return;
       const target = this.resolveEntityLinkTarget(part);
       if (!target) {
-        fragment.append(document.createTextNode(part));
+        part.split(URL_PATTERN).forEach((seg) => {
+          if (!seg) return;
+          fragment.append(URL_PATTERN.test(seg) ? createURLLink(seg) : document.createTextNode(seg));
+        });
         return;
       }
       const link = document.createElement("a");
@@ -10450,7 +11132,7 @@ export class UIController {
     });
   }
 
-  handleDrop(taskId, status, context, projectId) {
+  async handleDrop(taskId, status, context, projectId) {
     const task = this.taskManager.getTaskById(taskId);
     if (!task) {
       this.taskManager.notify("error", "Cannot drop missing task.");
@@ -10461,6 +11143,10 @@ export class UIController {
       return;
     }
     if (status === "complete") {
+      if (this.taskManager.getFeatureFlag("confirmOnCompletion")) {
+        const ok = await this.showConfirm(`Complete "${task.title}"?`, { okLabel: "Complete" });
+        if (!ok) return;
+      }
       this.taskManager.completeTask(taskId);
     } else if (status === STATUS.NEXT) {
       const updates = { status };
@@ -10861,7 +11547,7 @@ export class UIController {
     region.append(toast);
     setTimeout(() => {
       if (region.contains(toast)) region.removeChild(toast);
-    }, 3200);
+    }, action ? 5000 : 3200);
   }
 
   startConnectionChecks() {
@@ -11293,6 +11979,9 @@ function mapElements() {
     waitingList: document.querySelector('.panel-body[data-dropzone="waiting"]'),
     somedayList: document.querySelector('.panel-body[data-dropzone="someday"]'),
     exportMarkdown: byId("exportMarkdown"),
+    exportJSON: byId("exportJSON"),
+    importJSON: byId("importJSON"),
+    jsonFileInput: byId("jsonFileInput"),
     inboxCount: byId("inboxCount"),
     dueTodayCount: byId("dueTodayCount"),
     overdueCount: byId("overdueCount"),
@@ -11429,7 +12118,37 @@ function mapElements() {
     projectMergeSummary: byId("projectMergeSummary"),
     projectMergeConfirmBtn: byId("projectMergeConfirmBtn"),
     projectMergeCancelBtn: byId("projectMergeCancelBtn"),
+    useTemplateModal: byId("useTemplateModal"),
+    useTemplateModalBackdrop: byId("useTemplateModalBackdrop"),
+    closeUseTemplateModal: byId("closeUseTemplateModal"),
+    useTemplateName: byId("useTemplateName"),
+    useTemplateForm: byId("useTemplateForm"),
+    useTemplateProjectName: byId("useTemplateProjectName"),
+    useTemplateCancelBtn: byId("useTemplateCancelBtn"),
+    templateEditorModal: byId("templateEditorModal"),
+    templateEditorModalBackdrop: byId("templateEditorModalBackdrop"),
+    closeTemplateEditorModal: byId("closeTemplateEditorModal"),
+    templateEditorModalTitle: byId("templateEditorModalTitle"),
+    templateEditorForm: byId("templateEditorForm"),
+    templateEditorName: byId("templateEditorName"),
+    templateEditorArea: byId("templateEditorArea"),
+    templateEditorTheme: byId("templateEditorTheme"),
+    templateEditorStatus: byId("templateEditorStatus"),
+    templateEditorTasks: byId("templateEditorTasks"),
+    templateEditorAddTask: byId("templateEditorAddTask"),
+    templateEditorSaveBtn: byId("templateEditorSaveBtn"),
+    templateEditorCancelBtn: byId("templateEditorCancelBtn"),
   };
+}
+
+function createURLLink(href, label) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.textContent = label ?? href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.className = "inline-url-link";
+  return a;
 }
 
 function stripTagPrefix(value) {

@@ -174,7 +174,7 @@
               <span class="summary-value" id="summaryStatistics">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
-              <span class="summary-label">All Active</span>
+              <span class="summary-label">All Tasks</span>
               <span class="summary-value" id="summaryAllActive">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-backlog" data-panel-target="backlog" aria-controls="panel-backlog" aria-selected="false" hidden>
@@ -243,7 +243,7 @@
               </label>
               <label id="nextHideScheduledControl" class="toolbar-toggle" for="toggleHideScheduledNext">
                 <input id="toggleHideScheduledNext" type="checkbox" />
-                <span>Hide future scheduled tasks</span>
+                <span>Hide future recurring tasks</span>
               </label>
               <label id="nextGroupByLabel" class="filter-control" for="nextGroupBySelect">Group by</label>
               <select id="nextGroupBySelect">
@@ -330,7 +330,7 @@
           <input id="projectVision" name="projectVision" type="text" placeholder="Desired outcome (optional)" autocomplete="off" />
           <label class="visually-hidden" for="projectArea">Area of focus</label>
           <div class="area-select-group">
-            <select id="projectArea" name="projectArea" required></select>
+            <select id="projectArea" name="projectArea"></select>
             <button type="button" class="btn btn-light btn-small" id="projectAreaNewBtn">+ New</button>
           </div>
           <label class="visually-hidden" for="projectTheme">Theme</label>
@@ -801,6 +801,70 @@
         <button id="projectMergeCancelBtn" class="btn btn-light" type="button">Cancel</button>
         <button id="projectMergeConfirmBtn" class="btn btn-danger" type="button" disabled>Merge projects</button>
       </footer>
+    </div>
+  </div>
+
+  <div id="useTemplateModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="useTemplateModalTitle" hidden>
+    <div class="modal-backdrop" id="useTemplateModalBackdrop"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 id="useTemplateModalTitle">Create project from template</h2>
+        <button id="closeUseTemplateModal" class="btn btn-light" type="button" aria-label="Cancel">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small-text">A new project and its tasks will be created from <strong id="useTemplateName"></strong>.</p>
+        <form id="useTemplateForm">
+          <label class="project-complete-field" for="useTemplateProjectName">
+            <span class="project-complete-label">Project name</span>
+            <input id="useTemplateProjectName" type="text" autocomplete="off" placeholder="Project name" required />
+          </label>
+          <div class="clarify-option-buttons">
+            <button type="button" class="btn btn-light" id="useTemplateCancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create project</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="templateEditorModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templateEditorModalTitle" hidden>
+    <div class="modal-backdrop" id="templateEditorModalBackdrop"></div>
+    <div class="modal-dialog modal-dialog--wide" role="document">
+      <header class="modal-header">
+        <h2 id="templateEditorModalTitle">New template</h2>
+        <button id="closeTemplateEditorModal" class="btn btn-light" type="button" aria-label="Cancel">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <form id="templateEditorForm">
+          <label class="project-complete-field" for="templateEditorName">
+            <span class="project-complete-label">Template name</span>
+            <input id="templateEditorName" type="text" autocomplete="off" placeholder="Template name" required />
+          </label>
+          <div class="template-editor-row">
+            <label class="project-complete-field" for="templateEditorArea">
+              <span class="project-complete-label">Area of focus</span>
+              <select id="templateEditorArea"></select>
+            </label>
+            <label class="project-complete-field" for="templateEditorTheme">
+              <span class="project-complete-label">Theme</span>
+              <input id="templateEditorTheme" type="text" placeholder="Theme (optional)" list="projectThemeSuggestions" />
+            </label>
+            <label class="project-complete-field" for="templateEditorStatus">
+              <span class="project-complete-label">Status</span>
+              <input id="templateEditorStatus" type="text" placeholder="Status" list="projectStatusSuggestions" value="Active" />
+            </label>
+          </div>
+          <div class="project-complete-field">
+            <span class="project-complete-label">Tasks</span>
+            <div id="templateEditorTasks" class="template-tasks-list"></div>
+            <button type="button" class="btn btn-light btn-small" id="templateEditorAddTask">+ Add task</button>
+          </div>
+          <div class="clarify-option-buttons">
+            <button type="button" class="btn btn-light" id="templateEditorCancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="templateEditorSaveBtn">Save template</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 

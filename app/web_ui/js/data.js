@@ -169,6 +169,7 @@ const EMPTY_STATE = {
   completionLog: [],
   projects: [],
   completedProjects: [],
+  templates: [],
 };
 
 const defaultSettings = (projects = [], completedProjects = []) => ({
@@ -191,6 +192,7 @@ const defaultState = () => ({
   completionLog: [],
   projects: [],
   completedProjects: [],
+  templates: [],
   checklist: [
     { id: "c-1", label: "Get inbox to zero", done: false },
     { id: "c-2", label: "Review pending tasks by context", done: false },
@@ -224,6 +226,7 @@ function hydrateState(raw = {}) {
   nextState.completedProjects = (nextState.completedProjects || [])
     .map((project) => normalizeCompletedProject(project))
     .filter(Boolean);
+  nextState.templates = (nextState.templates || []).map(normalizeTemplate).filter(Boolean);
   nextState.settings = {
     theme: normalizeTheme(nextState.settings?.theme),
     customTheme: normalizeCustomTheme(nextState.settings?.customTheme),
@@ -829,8 +832,8 @@ export class TaskManager extends EventTarget {
     this.persistRemotely();
   }
 
-  notify(level, message) {
-    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message } }));
+  notify(level, message, { action } = {}) {
+    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message, action } }));
   }
 
   emitChange(options = {}) {
@@ -892,12 +895,13 @@ export class TaskManager extends EventTarget {
         if (area !== null && area !== areaLens) return false;
       }
       if (!includeFutureScheduled) {
+        const isRecurring = Boolean(task.recurrenceRule?.type);
         const today = new Date();
         const y = today.getUTCFullYear();
         const m = today.getUTCMonth();
         const d = today.getUTCDate();
         const todayCutoff = new Date(Date.UTC(y, m, d));
-        if (task.calendarDate) {
+        if (task.calendarDate && isRecurring) {
           const when = new Date(task.calendarDate);
           if (!Number.isNaN(when.getTime()) && when > todayCutoff) {
             return false;
@@ -1575,7 +1579,9 @@ export class TaskManager extends EventTarget {
     const completionMessage =
       archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`;
     const suffix = scheduled ? " Next occurrence scheduled." : "";
-    this.notify("info", `${completionMessage}${suffix}`);
+    this.notify("info", `${completionMessage}${suffix}`, {
+      action: { label: "Undo", onClick: () => this.restoreCompletedTask(task.id) },
+    });
     return snapshot;
   }
 
@@ -1598,12 +1604,7 @@ export class TaskManager extends EventTarget {
       status: STATUS.NEXT,
     };
     clone.calendarTime = sanitizeTime(template.calendarTime) || null;
-    const dueDateBase = clone.dueDate ? new Date(clone.dueDate) : null;
-    const calendarBase = clone.calendarDate ? new Date(clone.calendarDate) : null;
-    const completedDate = completedAt ? new Date(completedAt) : new Date();
-    const nextDue = dueDateBase ? advanceRecurrence(dueDateBase, rule) : null;
-    const nextCalendar = calendarBase ? advanceRecurrence(calendarBase, rule) : null;
-    const fallbackNext = !nextDue && !nextCalendar ? advanceRecurrence(completedDate, rule) : null;
+    const { nextDue, nextCalendar, fallbackNext } = computeNextRecurrenceDates(clone, rule, completedAt ? new Date(completedAt) : new Date());
     clone.dueDate = nextDue ? formatIsoDate(nextDue) : null;
     clone.calendarDate = nextCalendar ? formatIsoDate(nextCalendar) : fallbackNext ? formatIsoDate(fallbackNext) : null;
     clone.recurrenceRule = rule;
@@ -1619,6 +1620,28 @@ export class TaskManager extends EventTarget {
       }
     }
     return nextTask;
+  }
+
+  skipRecurringTaskInstance(id) {
+    const task = this.getTaskById(id);
+    if (!task) {
+      this.notify("error", "Cannot skip missing task.");
+      return null;
+    }
+    const rule = normalizeRecurrenceRule(task.recurrenceRule);
+    if (!rule) {
+      this.notify("warn", "Task has no recurrence rule to skip.");
+      return null;
+    }
+    const { nextDue, nextCalendar, fallbackNext } = computeNextRecurrenceDates(task, rule, new Date());
+    const updates = { myDayDate: null };
+    if (nextDue) updates.dueDate = formatIsoDate(nextDue);
+    if (nextCalendar) updates.calendarDate = formatIsoDate(nextCalendar);
+    else if (fallbackNext && !nextDue) updates.calendarDate = formatIsoDate(fallbackNext);
+    const updated = this.updateTask(id, updates);
+    const next = nextDue || nextCalendar || fallbackNext;
+    this.notify("info", `Skipped — next occurrence: ${next ? formatIsoDate(next) : "unknown"}.`);
+    return updated;
   }
 
   restoreCompletedTask(id) {
@@ -2004,6 +2027,179 @@ export class TaskManager extends EventTarget {
     this.emitChange();
     this.notify("info", "Removed project from Completed Projects.");
     return true;
+  }
+
+  getTemplates() {
+    return (this.state.templates || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Returns a template-shaped object derived from a project's active tasks.
+  // Does NOT save anything — pass the result to the template editor for review before saving.
+  buildTemplateFromProject(projectId) {
+    const project = this.state.projects.find((p) => p.id === projectId);
+    if (!project) return null;
+    const taskOrder = project.tasks || [];
+    const taskMap = new Map(this.state.tasks.map((t) => [t.id, t]));
+    const tasks = taskOrder
+      .map((id) => taskMap.get(id))
+      .filter(Boolean)
+      .map((t) => ({
+        title: t.title,
+        // "doing" is instance-specific — treat as "next" in a template
+        status: t.status === STATUS.DOING ? STATUS.NEXT : t.status,
+        contexts: t.contexts || [],
+        effortLevel: t.effortLevel || null,
+        timeRequired: t.timeRequired || null,
+        description: t.description || null,
+      }));
+    return {
+      // No id — openTemplateEditor treats id-less objects as "new template"
+      name: project.name,
+      areaOfFocus: project.areaOfFocus || null,
+      themeTag: project.themeTag || null,
+      statusTag: project.statusTag || PROJECT_STATUSES[0],
+      tasks,
+    };
+  }
+
+  addTemplate(name, { areaOfFocus = null, themeTag = null, statusTag = null, tasks = [] } = {}) {
+    const trimmed = (name || "").trim();
+    if (!trimmed) {
+      this.notify("warn", "Template name cannot be empty.");
+      return null;
+    }
+    const now = nowIso();
+    const template = normalizeTemplate({
+      id: generateId("tmpl"),
+      name: trimmed,
+      areaOfFocus: areaOfFocus || null,
+      themeTag: themeTag || null,
+      statusTag: statusTag || PROJECT_STATUSES[0],
+      tasks,
+      updatedAt: now,
+      createdAt: now,
+    });
+    if (!this.state.templates) this.state.templates = [];
+    this.state.templates.push(template);
+    this.emitChange();
+    this.notify("info", `Created template "${template.name}".`);
+    return template;
+  }
+
+  updateTemplate(templateId, updates = {}) {
+    if (!this.state.templates) this.state.templates = [];
+    const template = this.state.templates.find((t) => t.id === templateId);
+    if (!template) {
+      this.notify("error", "Template not found.");
+      return null;
+    }
+    if (updates.name !== undefined) {
+      const trimmed = (updates.name || "").trim();
+      if (!trimmed) {
+        this.notify("warn", "Template name cannot be empty.");
+        return null;
+      }
+      template.name = trimmed;
+    }
+    if (updates.areaOfFocus !== undefined) template.areaOfFocus = updates.areaOfFocus || null;
+    if (updates.themeTag !== undefined) template.themeTag = updates.themeTag || null;
+    if (updates.statusTag !== undefined) template.statusTag = updates.statusTag || PROJECT_STATUSES[0];
+    if (updates.tasks !== undefined) {
+      template.tasks = (updates.tasks || []).map(normalizeTemplateTask).filter(Boolean);
+    }
+    template.updatedAt = nowIso();
+    this.emitChange();
+    this.notify("info", `Updated template "${template.name}".`);
+    return template;
+  }
+
+  deleteTemplate(templateId) {
+    if (!this.state.templates) return;
+    const idx = this.state.templates.findIndex((t) => t.id === templateId);
+    if (idx === -1) {
+      this.notify("error", "Template not found.");
+      return;
+    }
+    const [tmpl] = this.state.templates.splice(idx, 1);
+    this.emitChange();
+    this.notify("info", `Deleted template "${tmpl.name}".`);
+  }
+
+  createProjectFromTemplate(templateId, projectName) {
+    if (!this.state.templates) {
+      this.notify("error", "Template not found.");
+      return null;
+    }
+    const template = this.state.templates.find((t) => t.id === templateId);
+    if (!template) {
+      this.notify("error", "Template not found.");
+      return null;
+    }
+    const trimmedName = (projectName || "").trim() || template.name;
+    // Create project without emitting change yet
+    const trimmed = trimmedName.trim();
+    if (!trimmed) {
+      this.notify("warn", "Project name cannot be empty.");
+      return null;
+    }
+    const now = nowIso();
+    const project = {
+      id: generateId("project"),
+      name: trimmed,
+      vision: "",
+      status: "active",
+      owner: "",
+      tags: [],
+      tasks: [],
+      isExpanded: true,
+      someday: false,
+      areaOfFocus: template.areaOfFocus || PROJECT_AREAS[0],
+      themeTag: template.themeTag || null,
+      statusTag: template.statusTag || PROJECT_STATUSES[0],
+      deadline: null,
+      updatedAt: now,
+    };
+    normalizeProjectTags(project);
+    this.state.projects.push(project);
+    // Create tasks directly without emitting per-task notifications
+    const createdAt = new Date().toISOString();
+    (template.tasks || []).forEach((tmplTask) => {
+      const taskId = generateId("task");
+      const task = {
+        id: taskId,
+        title: tmplTask.title.trim(),
+        description: (tmplTask.description || "").trim(),
+        status: tmplTask.status || STATUS.INBOX,
+        contexts: normalizeContextsField(tmplTask.contexts || []),
+        dueDate: null,
+        followUpDate: null,
+        myDayDate: null,
+        areaOfFocus: template.areaOfFocus || null,
+        projectId: project.id,
+        createdAt,
+        waitingFor: tmplTask.waitingFor || null,
+        calendarDate: null,
+        calendarTime: null,
+        completedAt: null,
+        closureNotes: null,
+        notes: [],
+        listItems: [],
+        updatedAt: now,
+        recurrenceRule: null,
+        slug: normalizeSlug(undefined, taskId),
+        originDevice: this.deviceInfo?.label || "Unknown device",
+        originDeviceId: this.deviceInfo?.id || null,
+        effortLevel: EFFORT_LEVELS.includes(tmplTask.effortLevel) ? tmplTask.effortLevel : null,
+        timeRequired: TIME_REQUIREMENTS.includes(tmplTask.timeRequired) ? tmplTask.timeRequired : null,
+        _fieldTimestamps: { scheduling: now, status: now, dueDate: now, followUpDate: now },
+      };
+      this.state.tasks.unshift(task);
+      project.tasks.unshift(taskId);
+    });
+    this.emitChange();
+    const taskCount = (template.tasks || []).length;
+    this.notify("info", `Created project "${project.name}" with ${taskCount} task${taskCount !== 1 ? "s" : ""} from template.`);
+    return project;
   }
 
   getContexts({ areaLens = null } = {}) {
@@ -3560,6 +3756,36 @@ function normalizeContextsField(value) {
   return result;
 }
 
+function normalizeTemplateTask(t) {
+  if (!t || typeof t !== "object") return null;
+  const title = (t.title || "").trim();
+  if (!title) return null;
+  return {
+    id: t.id || generateId("tmpl-task"),
+    title,
+    status: Object.values(STATUS).includes(t.status) ? t.status : STATUS.INBOX,
+    contexts: normalizeContextsField(t.contexts),
+    effortLevel: EFFORT_LEVELS.includes(t.effortLevel) ? t.effortLevel : null,
+    timeRequired: TIME_REQUIREMENTS.includes(t.timeRequired) ? t.timeRequired : null,
+    waitingFor: (t.waitingFor && typeof t.waitingFor === "string") ? t.waitingFor.trim() || null : null,
+    description: (t.description && typeof t.description === "string") ? t.description.trim() || null : null,
+  };
+}
+
+function normalizeTemplate(tmpl) {
+  if (!tmpl || typeof tmpl !== "object") return null;
+  return {
+    id: tmpl.id || generateId("tmpl"),
+    name: (tmpl.name || "").trim() || "Untitled Template",
+    areaOfFocus: tmpl.areaOfFocus || null,
+    themeTag: tmpl.themeTag || null,
+    statusTag: PROJECT_STATUSES.includes(tmpl.statusTag) ? tmpl.statusTag : PROJECT_STATUSES[0],
+    tasks: (tmpl.tasks || []).map(normalizeTemplateTask).filter(Boolean),
+    updatedAt: tmpl.updatedAt || nowIso(),
+    createdAt: tmpl.createdAt || nowIso(),
+  };
+}
+
 function sanitizePeopleTag(value) {
   if (!value) return null;
   const trimmed = value.trim();
@@ -3891,6 +4117,7 @@ function mergeStates(remoteState = {}, localState = {}) {
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
   merged.completedProjects = mergeCollections(localState.completedProjects, remoteState.completedProjects);
+  merged.templates = mergeCollections(localState.templates, remoteState.templates);
   merged.analytics = mergeAnalytics(localState.analytics || {}, remoteState.analytics || {});
   merged.settings = mergeSettings(localState.settings || {}, remoteState.settings || {});
   return merged;
@@ -4085,6 +4312,15 @@ function advanceRecurrence(date, rule) {
       return null;
   }
   return next;
+}
+
+function computeNextRecurrenceDates(task, rule, fallbackDate = null) {
+  const dueDateBase = task.dueDate ? new Date(task.dueDate) : null;
+  const calendarBase = task.calendarDate ? new Date(task.calendarDate) : null;
+  const nextDue = dueDateBase ? advanceRecurrence(dueDateBase, rule) : null;
+  const nextCalendar = calendarBase ? advanceRecurrence(calendarBase, rule) : null;
+  const fallbackNext = !nextDue && !nextCalendar && fallbackDate ? advanceRecurrence(fallbackDate, rule) : null;
+  return { nextDue, nextCalendar, fallbackNext };
 }
 
 function formatIsoDate(date) {

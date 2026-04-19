@@ -674,6 +674,7 @@
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open">Open details</button>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="open-project" hidden>Open project</button>
     <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="my-day">Add to My Day</button>
+    <button class="task-context-menu-item" type="button" role="menuitem" data-task-menu-action="skip-instance" hidden>Skip this instance →</button>
     <button class="task-context-menu-item is-danger" type="button" role="menuitem" data-task-menu-action="delete">Delete task</button>
   </div>
   <div id="taskNoteContextMenu" class="task-context-menu" role="menu" aria-label="Task note actions" aria-hidden="true" hidden>
@@ -1183,6 +1184,24 @@
       <footer class="modal-footer">
         <button id="areaDeleteModalCancel" class="btn btn-light" type="button">Cancel</button>
         <button id="areaDeleteModalOk" class="btn btn-danger" type="button">Delete</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Recurring task delete dialog -->
+  <div id="recurringDeleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="recurringDeleteModalHeading" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm" role="document">
+      <header class="modal-header">
+        <h2 id="recurringDeleteModalHeading">Delete recurring task</h2>
+      </header>
+      <div class="modal-body">
+        <p id="recurringDeleteModalMessage"></p>
+      </div>
+      <footer class="modal-footer">
+        <button id="recurringDeleteModalCancel" class="btn btn-light" type="button">Cancel</button>
+        <button id="recurringDeleteModalInstance" class="btn btn-primary" type="button">Delete this instance</button>
+        <button id="recurringDeleteModalSeries" class="btn btn-danger" type="button">Cancel recurring series</button>
       </footer>
     </div>
   </div>

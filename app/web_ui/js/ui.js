@@ -1605,23 +1605,27 @@ export class UIController {
 
   sortTasks(tasks) {
     const sorted = [...tasks];
+    const blockedIds = new Set(sorted.filter((t) => this.taskManager.isBlocked(t.id)).map((t) => t.id));
+    const blockedLast = (a, b) => (blockedIds.has(a.id) ? 1 : 0) - (blockedIds.has(b.id) ? 1 : 0);
     switch (this.taskSort) {
       case "updated-asc":
-        return sorted.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+        return sorted.sort((a, b) => blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
       case "updated-desc":
-        return sorted.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        return sorted.sort((a, b) => blockedLast(a, b) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
       case "title-asc":
-        return sorted.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+        return sorted.sort((a, b) => blockedLast(a, b) || (a.title || "").localeCompare(b.title || ""));
       case "title-desc":
-        return sorted.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+        return sorted.sort((a, b) => blockedLast(a, b) || (b.title || "").localeCompare(a.title || ""));
       case "due-asc":
         return sorted.sort((a, b) => {
+          const bl = blockedLast(a, b);
+          if (bl !== 0) return bl;
           const da = a.dueDate || a.calendarDate || "9999";
           const db = b.dueDate || b.calendarDate || "9999";
           return da.localeCompare(db);
         });
       case "stale-first":
-        return sorted.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+        return sorted.sort((a, b) => blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
       default: {
         const todayIso = new Date().toISOString().slice(0, 10);
         const taskRiskScore = (task) => {
@@ -1632,6 +1636,8 @@ export class UIController {
           return 0;
         };
         return sorted.sort((a, b) => {
+          const bl = blockedLast(a, b);
+          if (bl !== 0) return bl;
           const sa = taskRiskScore(a), sb = taskRiskScore(b);
           if (sa !== sb) return sb - sa;
           // stale tier: oldest-touched first
@@ -3396,10 +3402,11 @@ export class UIController {
       }
     };
     // Delay mousedown listener one tick so the opening click doesn't immediately close it
-    setTimeout(() => document.addEventListener("mousedown", onOutside), 0);
+    const mousedownTimerId = setTimeout(() => document.addEventListener("mousedown", onOutside), 0);
     document.addEventListener("keydown", onKey, { capture: true });
 
     this._popoverCleanup = () => {
+      clearTimeout(mousedownTimerId);
       document.removeEventListener("mousedown", onOutside);
       document.removeEventListener("keydown", onKey, { capture: true });
     };
@@ -6623,11 +6630,24 @@ export class UIController {
       }
     }
 
+    const blockers = this.taskManager.getBlockers(task.id);
+    if (blockers.length > 0) {
+      row.classList.add("task-row--blocked");
+      row.title = `Blocked by: ${blockers.map((t) => t.title).join(", ")}`;
+    }
+
     const main = document.createElement("div");
     main.className = "task-row-main";
 
     const title = document.createElement("span");
     title.className = "task-row-title";
+    if (blockers.length > 0) {
+      const lockIcon = document.createElement("span");
+      lockIcon.className = "task-row-blocked-icon";
+      lockIcon.setAttribute("aria-hidden", "true");
+      lockIcon.textContent = "🔒 ";
+      title.append(lockIcon);
+    }
     this.setEntityLinkedText(title, task.title || "Untitled task");
 
     const meta = document.createElement("div");
@@ -6777,9 +6797,25 @@ export class UIController {
         this.toggleTaskMyDay(task);
         return;
       }
+      if (action === "skip-instance") {
+        this.taskManager.skipRecurringTaskInstance(task.id);
+        return;
+      }
       if (action === "delete") {
-        const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
-        if (!confirmed) return;
+        if (task.recurrenceRule?.type) {
+          const choice = await this.showRecurringDeleteDialog(task);
+          if (!choice) return;
+          if (choice === "series") {
+            const confirmed = await this.showConfirm(
+              `This will permanently delete "${task.title}" and stop all future recurrences. This cannot be undone.`,
+              { title: "Cancel recurring series?", okLabel: "Yes, cancel the series", danger: true }
+            );
+            if (!confirmed) return;
+          }
+        } else {
+          const confirmed = await this.showConfirm(`Delete "${task.title}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
+          if (!confirmed) return;
+        }
         this.taskManager.deleteTask(task.id);
       }
     });
@@ -6954,6 +6990,12 @@ export class UIController {
       const hasProject = Boolean(task.projectId);
       openProjectAction.hidden = !hasProject;
       openProjectAction.disabled = !hasProject;
+    }
+    const skipInstanceAction = menu.querySelector('[data-task-menu-action="skip-instance"]');
+    if (skipInstanceAction) {
+      const isRecurring = Boolean(task.recurrenceRule?.type);
+      skipInstanceAction.hidden = !isRecurring;
+      skipInstanceAction.disabled = !isRecurring;
     }
 
     menu.hidden = false;
@@ -9262,8 +9304,9 @@ export class UIController {
     }
 
     const sessionsSection = this.createSessionsSection(task, { readOnly });
+    const prerequisiteSection = readOnly ? null : this.createPrerequisiteSection(task);
     if (!isCompleted) {
-      content.append(...[description, projectChip, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), sessionsSection, meta].filter(Boolean));
+      content.append(...[description, projectChip, completeSection, actionToolbar, listSection, notesSection, this.createFollowupSection(task), prerequisiteSection, sessionsSection, meta].filter(Boolean));
     } else {
       content.append(...[description, projectChip, actionToolbar, listSection, notesSection, sessionsSection, meta].filter(Boolean));
     }
@@ -9550,6 +9593,141 @@ export class UIController {
 
     form.append(startLabel, startInput, endLabel, endInput, btnRow);
     return form;
+  }
+
+  createPrerequisiteSection(task) {
+    const prereqIds = task.prerequisiteTaskIds || [];
+    const allPrereqs = prereqIds.map((id) => ({
+      id,
+      task: this.taskManager.getTaskById(id),
+    }));
+
+    const section = document.createElement("section");
+    section.className = "task-prereq-section";
+
+    const header = document.createElement("div");
+    header.className = "task-prereq-header";
+    const heading = document.createElement("h3");
+    heading.textContent = "Prerequisites";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-icon task-prereq-toggle";
+    toggleBtn.setAttribute("aria-label", "Toggle prerequisites");
+    const hasPrereqs = allPrereqs.length > 0;
+    toggleBtn.textContent = "🔗";
+    toggleBtn.classList.toggle("is-active", hasPrereqs);
+
+    const body = document.createElement("div");
+    body.className = "task-prereq-body";
+    body.hidden = !hasPrereqs;
+
+    toggleBtn.setAttribute("aria-expanded", String(hasPrereqs));
+    toggleBtn.addEventListener("click", () => {
+      const willExpand = body.hidden;
+      body.hidden = !willExpand;
+      toggleBtn.setAttribute("aria-expanded", String(willExpand));
+      toggleBtn.classList.toggle("is-active", willExpand);
+    });
+
+    header.append(heading, toggleBtn);
+    section.append(header, body);
+
+    // Chip list
+    const chipList = document.createElement("div");
+    chipList.className = "task-prereq-chips";
+
+    allPrereqs.forEach(({ id, task: prereq }) => {
+      const chip = document.createElement("span");
+      chip.className = "task-prereq-chip" + (prereq ? "" : " task-prereq-chip--missing");
+      const labelEl = document.createElement("span");
+      if (prereq?.completedAt) {
+        const s = document.createElement("s");
+        s.textContent = prereq.title;
+        labelEl.append(s);
+      } else {
+        labelEl.textContent = prereq ? prereq.title : `Unknown (${id.slice(0, 8)})`;
+      }
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "task-prereq-chip-remove";
+      removeBtn.setAttribute("aria-label", "Remove prerequisite");
+      removeBtn.textContent = "×";
+      removeBtn.addEventListener("click", () => {
+        this.taskManager.removePrerequisite(task.id, id);
+      });
+      chip.append(labelEl, removeBtn);
+      chipList.append(chip);
+    });
+
+    // Search input for adding prerequisites
+    const addRow = document.createElement("div");
+    addRow.className = "task-prereq-add-row";
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-link task-prereq-add-btn";
+    addBtn.textContent = "+ Add prerequisite";
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "task-prereq-search-wrap";
+    searchWrap.hidden = true;
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.className = "task-prereq-search";
+    searchInput.placeholder = "Search tasks…";
+
+    const resultsList = document.createElement("ul");
+    resultsList.className = "task-prereq-results";
+    resultsList.hidden = true;
+
+    searchInput.addEventListener("input", () => {
+      const term = searchInput.value;
+      const results = this.taskManager.searchTasksForReference(term, { excludeTaskId: task.id });
+      resultsList.innerHTML = "";
+      resultsList.hidden = results.length === 0;
+      results.forEach((result) => {
+        if ((result.prerequisiteTaskIds || []).includes(task.id)) return; // skip if reverse dep
+        const li = document.createElement("li");
+        li.className = "task-prereq-result-item";
+        li.textContent = result.title;
+        const statusSpan = document.createElement("span");
+        statusSpan.className = "task-prereq-result-status";
+        statusSpan.textContent = STATUS_LABELS[result.status] || result.status;
+        li.append(statusSpan);
+        li.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          const added = this.taskManager.addPrerequisite(task.id, result.id);
+          if (added) {
+            searchInput.value = "";
+            resultsList.hidden = true;
+            searchWrap.hidden = true;
+            addBtn.hidden = false;
+          }
+        });
+        resultsList.append(li);
+      });
+    });
+
+    searchInput.addEventListener("blur", () => {
+      setTimeout(() => {
+        resultsList.hidden = true;
+        searchWrap.hidden = true;
+        addBtn.hidden = false;
+      }, 150);
+    });
+
+    addBtn.addEventListener("click", () => {
+      addBtn.hidden = true;
+      searchWrap.hidden = false;
+      searchInput.focus();
+    });
+
+    searchWrap.append(searchInput, resultsList);
+    addRow.append(addBtn, searchWrap);
+
+    body.append(chipList, addRow);
+    return section;
   }
 
   createFollowupSection(task) {
@@ -11348,6 +11526,38 @@ export class UIController {
     });
   }
 
+  showRecurringDeleteDialog(task) {
+    return new Promise((resolve) => {
+      const modal = this.elements.recurringDeleteModal;
+      if (!modal) { resolve(window.confirm(`Delete "${task.title}"?`) ? "instance" : null); return; }
+      const msgEl = this.elements.recurringDeleteModalMessage;
+      const instanceBtn = this.elements.recurringDeleteModalInstance;
+      const seriesBtn = this.elements.recurringDeleteModalSeries;
+      const cancelBtn = this.elements.recurringDeleteModalCancel;
+      const recurrenceDesc = this.describeRecurrence(task.recurrenceRule) || "recurring";
+      if (msgEl) msgEl.textContent = `"${task.title}" repeats ${recurrenceDesc.toLowerCase()}. Would you like to delete just this instance, or cancel the entire recurring series?`;
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        instanceBtn?.removeEventListener("click", onInstance);
+        seriesBtn?.removeEventListener("click", onSeries);
+        cancelBtn?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onInstance = () => { cleanup(); resolve("instance"); };
+      const onSeries = () => { cleanup(); resolve("series"); };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } };
+      instanceBtn?.addEventListener("click", onInstance);
+      seriesBtn?.addEventListener("click", onSeries);
+      cancelBtn?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => instanceBtn?.focus(), 50);
+    });
+  }
+
   showConfirm(message, { title = "Confirm", okLabel = "Confirm", danger = false } = {}) {
     return new Promise((resolve) => {
       const modal = this.elements.confirmModal;
@@ -11966,6 +12176,12 @@ function mapElements() {
     areaDeleteModalNote: byId("areaDeleteModalNote"),
     areaDeleteModalOk: byId("areaDeleteModalOk"),
     areaDeleteModalCancel: byId("areaDeleteModalCancel"),
+    recurringDeleteModal: byId("recurringDeleteModal"),
+    recurringDeleteModalHeading: byId("recurringDeleteModalHeading"),
+    recurringDeleteModalMessage: byId("recurringDeleteModalMessage"),
+    recurringDeleteModalInstance: byId("recurringDeleteModalInstance"),
+    recurringDeleteModalSeries: byId("recurringDeleteModalSeries"),
+    recurringDeleteModalCancel: byId("recurringDeleteModalCancel"),
     confirmModal: byId("confirmModal"),
     confirmModalHeading: byId("confirmModalHeading"),
     confirmModalMessage: byId("confirmModalMessage"),

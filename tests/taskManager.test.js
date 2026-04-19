@@ -1472,6 +1472,150 @@ test("deleteDoingSession removes the entry and subtracts from totalDoingSeconds"
   assert.equal(after.totalDoingSeconds, 1800, "total reduced to 30 min");
 });
 
+// ── Prerequisite / chaining tests ──────────────────────────────────────────
+
+test("addTask initializes prerequisiteTaskIds as empty array", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Task A" });
+  assert.deepEqual(task.prerequisiteTaskIds, []);
+});
+
+test("normalizeTask defaults missing prerequisiteTaskIds to empty array", () => {
+  const { normalizeTask } = __testing;
+  const normalized = normalizeTask({ id: "x", title: "T", status: "inbox", createdAt: new Date().toISOString() });
+  assert.deepEqual(normalized.prerequisiteTaskIds, []);
+});
+
+test("addPrerequisite links two tasks and isBlocked returns true", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  const result = manager.addPrerequisite(taskB.id, taskA.id);
+  assert.equal(result, true);
+  assert.equal(manager.isBlocked(taskB.id), true, "Task B is blocked by Task A");
+  assert.equal(manager.isBlocked(taskA.id), false, "Task A has no blockers");
+});
+
+test("isBlocked returns false when all prerequisites are completed", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id);
+  manager.completeTask(taskA.id, { archive: "log" });
+  assert.equal(manager.isBlocked(taskB.id), false, "Task B is unblocked after A completes");
+});
+
+test("getBlockers returns active prerequisite tasks", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id);
+  const blockers = manager.getBlockers(taskB.id);
+  assert.equal(blockers.length, 1);
+  assert.equal(blockers[0].id, taskA.id);
+});
+
+test("removePrerequisite unlinks tasks", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id);
+  manager.removePrerequisite(taskB.id, taskA.id);
+  assert.equal(manager.isBlocked(taskB.id), false, "Task B is unblocked after removing prereq");
+});
+
+test("addPrerequisite prevents self-references", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A" });
+  const result = manager.addPrerequisite(taskA.id, taskA.id);
+  assert.equal(result, false, "self-reference rejected");
+  assert.deepEqual(manager.getTaskById(taskA.id).prerequisiteTaskIds, []);
+});
+
+test("addPrerequisite detects direct cycles (A→B, B→A)", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id); // B requires A
+  const result = manager.addPrerequisite(taskA.id, taskB.id); // A requires B — cycle!
+  assert.equal(result, false, "direct cycle rejected");
+});
+
+test("addPrerequisite detects transitive cycles (A→B→C, C→A)", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "A", status: "next" });
+  const taskB = manager.addTask({ title: "B", status: "next" });
+  const taskC = manager.addTask({ title: "C", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id); // B requires A
+  manager.addPrerequisite(taskC.id, taskB.id); // C requires B
+  const result = manager.addPrerequisite(taskA.id, taskC.id); // A requires C — cycle!
+  assert.equal(result, false, "transitive cycle rejected");
+});
+
+test("moveTask to DOING is blocked when prerequisites are incomplete", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id);
+  manager.moveTask(taskB.id, STATUS.DOING);
+  assert.equal(manager.getTaskById(taskB.id).status, STATUS.NEXT, "status unchanged — blocked");
+});
+
+test("moveTask to DOING succeeds after prerequisites are completed", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskB = manager.addTask({ title: "Task B", status: "next" });
+  manager.addPrerequisite(taskB.id, taskA.id);
+  manager.completeTask(taskA.id, { archive: "log" });
+  manager.moveTask(taskB.id, STATUS.DOING);
+  assert.equal(manager.getTaskById(taskB.id).status, STATUS.DOING, "can move to doing once unblocked");
+});
+
+test("getUnlockedByCompletion returns tasks that become fully unblocked", () => {
+  const manager = createManager();
+  const taskA = manager.addTask({ title: "Task A", status: "next" });
+  const taskC = manager.addTask({ title: "Task C", status: "next" });
+  const taskD = manager.addTask({ title: "Task D", status: "next" });
+  // D requires both A and C
+  manager.addPrerequisite(taskD.id, taskA.id);
+  manager.addPrerequisite(taskD.id, taskC.id);
+  // Completing A alone does not unblock D
+  const afterA = manager.getUnlockedByCompletion(taskA.id);
+  assert.equal(afterA.length, 0, "D still has C pending");
+  // Complete A in state so getTaskById won't find it
+  manager.completeTask(taskA.id, { archive: "log" });
+  // Now completing C should unblock D
+  const afterC = manager.getUnlockedByCompletion(taskC.id);
+  assert.equal(afterC.length, 1);
+  assert.equal(afterC[0].id, taskD.id);
+});
+
+test("prerequisiteTaskIds field group is included in MERGE_FIELD_GROUPS", () => {
+  const { MERGE_FIELD_GROUPS } = __testing;
+  assert.ok("prerequisites" in MERGE_FIELD_GROUPS, "prerequisites group exists");
+  assert.deepEqual(MERGE_FIELD_GROUPS.prerequisites, ["prerequisiteTaskIds"]);
+});
+
+test("mergeTasks preserves prerequisiteTaskIds via LWW per-field-group", () => {
+  const { mergeTasks } = __testing;
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 5000).toISOString();
+  const local = {
+    id: "task1", title: "Task B", status: "next",
+    prerequisiteTaskIds: ["task-a"],
+    _fieldTimestamps: { prerequisites: now },
+    updatedAt: now, createdAt: now,
+  };
+  const remote = {
+    id: "task1", title: "Task B", status: "next",
+    prerequisiteTaskIds: [],
+    _fieldTimestamps: { prerequisites: later }, // remote removed prereq more recently
+    updatedAt: later, createdAt: now,
+  };
+  const [merged] = mergeTasks([local], [remote]);
+  assert.deepEqual(merged.prerequisiteTaskIds, [], "remote wins — prereq removed");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

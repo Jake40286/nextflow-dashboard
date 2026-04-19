@@ -33,6 +33,7 @@ const MERGE_FIELD_GROUPS = {
   status: ["status"],
   dueDate: ["dueDate"],
   followUpDate: ["followUpDate"],
+  prerequisites: ["prerequisiteTaskIds"],
 };
 // Field groups for per-field-group merge logic in mergeSettings().
 // NOTE: theme/customTheme/customThemePalettes are intentionally excluded — they are
@@ -979,6 +980,78 @@ export class TaskManager extends EventTarget {
       .slice(0, 10);
   }
 
+  isBlocked(taskId) {
+    const task = this.getTaskById(taskId);
+    if (!task?.prerequisiteTaskIds?.length) return false;
+    return task.prerequisiteTaskIds.some((prereqId) => {
+      const prereq = this.getTaskById(prereqId);
+      return prereq != null; // prereq exists in active tasks = not yet completed
+    });
+  }
+
+  getBlockers(taskId) {
+    const task = this.getTaskById(taskId);
+    if (!task?.prerequisiteTaskIds?.length) return [];
+    return task.prerequisiteTaskIds
+      .map((id) => this.getTaskById(id))
+      .filter(Boolean);
+  }
+
+  getUnlockedByCompletion(completedTaskId) {
+    return this.state.tasks.filter((task) => {
+      if (!task.prerequisiteTaskIds?.includes(completedTaskId)) return false;
+      // All remaining prereqs (excluding the just-completed one) must also be done
+      return task.prerequisiteTaskIds.every((prereqId) => {
+        if (prereqId === completedTaskId) return true; // being completed now
+        return !this.getTaskById(prereqId); // not in active tasks = completed
+      });
+    });
+  }
+
+  _wouldCreateCycle(taskId, prereqTaskId) {
+    // Check if prereqTaskId already (transitively) requires taskId — adding
+    // the reverse edge would form a cycle.
+    const visited = new Set();
+    const stack = [prereqTaskId];
+    while (stack.length) {
+      const current = stack.pop();
+      if (current === taskId) return true;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const t = this.getTaskById(current);
+      if (t?.prerequisiteTaskIds) {
+        for (const id of t.prerequisiteTaskIds) stack.push(id);
+      }
+    }
+    return false;
+  }
+
+  addPrerequisite(taskId, prereqTaskId) {
+    if (taskId === prereqTaskId) {
+      this.notify("warn", "A task cannot be its own prerequisite.");
+      return false;
+    }
+    const task = this.getTaskById(taskId);
+    if (!task) { this.notify("error", "Task not found."); return false; }
+    const prereq = this.getTaskById(prereqTaskId);
+    if (!prereq) { this.notify("error", "Prerequisite task not found."); return false; }
+    const existing = task.prerequisiteTaskIds || [];
+    if (existing.includes(prereqTaskId)) return true; // already linked
+    if (this._wouldCreateCycle(taskId, prereqTaskId)) {
+      this.notify("warn", "Cannot add — this would create a circular dependency.");
+      return false;
+    }
+    this.updateTask(taskId, { prerequisiteTaskIds: [...existing, prereqTaskId] });
+    return true;
+  }
+
+  removePrerequisite(taskId, prereqTaskId) {
+    const task = this.getTaskById(taskId);
+    if (!task) return;
+    const existing = task.prerequisiteTaskIds || [];
+    this.updateTask(taskId, { prerequisiteTaskIds: existing.filter((id) => id !== prereqTaskId) });
+  }
+
   addTask(payload) {
     const id = generateId("task");
     const createdAt = new Date().toISOString();
@@ -1014,7 +1087,8 @@ export class TaskManager extends EventTarget {
       slug: normalizeSlug(payload.slug, id),
       originDevice: this.deviceInfo?.label || "Unknown device",
       originDeviceId: this.deviceInfo?.id || null,
-      _fieldTimestamps: { scheduling: nowIso(), status: nowIso(), dueDate: nowIso(), followUpDate: nowIso() },
+      prerequisiteTaskIds: Array.isArray(payload.prerequisiteTaskIds) ? [...payload.prerequisiteTaskIds] : [],
+      _fieldTimestamps: { scheduling: nowIso(), status: nowIso(), dueDate: nowIso(), followUpDate: nowIso(), prerequisites: nowIso() },
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -1097,6 +1171,7 @@ export class TaskManager extends EventTarget {
     }
     if ("dueDate" in nextUpdates) ft.dueDate = now;
     if ("followUpDate" in nextUpdates) ft.followUpDate = now;
+    if ("prerequisiteTaskIds" in nextUpdates) ft.prerequisites = now;
     task._fieldTimestamps = ft;
     OP_LOG_FIELDS.forEach((f) => {
       const prev = String(originalFields[f] ?? "");
@@ -1440,6 +1515,14 @@ export class TaskManager extends EventTarget {
       return;
     }
 
+    if (nextStatus === STATUS.DOING && this.isBlocked(id)) {
+      const blockers = this.getBlockers(id);
+      const names = blockers.slice(0, 2).map((t) => `"${t.title}"`).join(", ");
+      const suffix = blockers.length > 2 ? ` and ${blockers.length - 2} more` : "";
+      this.notify("warn", `Complete prerequisites first: ${names}${suffix}`);
+      return;
+    }
+
     const wasAlreadyDoing = task.status === STATUS.DOING;
     task.status = nextStatus;
     task.completedAt = null;
@@ -1574,8 +1657,13 @@ export class TaskManager extends EventTarget {
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
+    // Check before scheduling (which may mutate tasks) which tasks become unblocked
+    const nowUnblocked = this.getUnlockedByCompletion(id);
     const scheduled = this.scheduleRecurringTask(task, completedAt);
     this.emitChange();
+    for (const t of nowUnblocked) {
+      this.notify("info", `"${t.title}" is now unblocked.`);
+    }
     const completionMessage =
       archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`;
     const suffix = scheduled ? " Next occurrence scheduled." : "";
@@ -2079,7 +2167,6 @@ export class TaskManager extends EventTarget {
       updatedAt: now,
       createdAt: now,
     });
-    if (!this.state.templates) this.state.templates = [];
     this.state.templates.push(template);
     this.emitChange();
     this.notify("info", `Created template "${template.name}".`);
@@ -2087,7 +2174,6 @@ export class TaskManager extends EventTarget {
   }
 
   updateTemplate(templateId, updates = {}) {
-    if (!this.state.templates) this.state.templates = [];
     const template = this.state.templates.find((t) => t.id === templateId);
     if (!template) {
       this.notify("error", "Template not found.");
@@ -2114,7 +2200,6 @@ export class TaskManager extends EventTarget {
   }
 
   deleteTemplate(templateId) {
-    if (!this.state.templates) return;
     const idx = this.state.templates.findIndex((t) => t.id === templateId);
     if (idx === -1) {
       this.notify("error", "Template not found.");
@@ -2126,26 +2211,20 @@ export class TaskManager extends EventTarget {
   }
 
   createProjectFromTemplate(templateId, projectName) {
-    if (!this.state.templates) {
-      this.notify("error", "Template not found.");
-      return null;
-    }
     const template = this.state.templates.find((t) => t.id === templateId);
     if (!template) {
       this.notify("error", "Template not found.");
       return null;
     }
-    const trimmedName = (projectName || "").trim() || template.name;
-    // Create project without emitting change yet
-    const trimmed = trimmedName.trim();
-    if (!trimmed) {
+    const trimmedName = ((projectName || "").trim() || template.name).trim();
+    if (!trimmedName) {
       this.notify("warn", "Project name cannot be empty.");
       return null;
     }
     const now = nowIso();
     const project = {
       id: generateId("project"),
-      name: trimmed,
+      name: trimmedName,
       vision: "",
       status: "active",
       owner: "",
@@ -3602,6 +3681,7 @@ function normalizeTask(task) {
     closureNotes: task.closureNotes ?? null,
     notes: normalizeTaskNotes(task.notes, { fallbackCreatedAt: noteFallback }),
     listItems: normalizeListItems(task.listItems),
+    prerequisiteTaskIds: Array.isArray(task.prerequisiteTaskIds) ? [...task.prerequisiteTaskIds] : [],
     updatedAt: task.updatedAt || task.createdAt || nowIso(),
   };
   return normalizeTaskTags(normalized);
@@ -4345,6 +4425,7 @@ export const __testing = {
   readOpLogEntries,
   MERGE_FIELD_GROUPS,
   SETTINGS_MERGE_GROUPS,
+  normalizeTask,
   // Tombstone helpers exposed for testing
   _mergeTombstones: (a = {}, b = {}) => {
     const result = { ...a };

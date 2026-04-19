@@ -2041,6 +2041,19 @@ body.is-admin .alerts {
   background: color-mix(in srgb, #b81838 22%, var(--surface));
 }
 
+.task-row--blocked {
+  opacity: 0.55;
+}
+
+.task-row--blocked:hover {
+  opacity: 0.75;
+}
+
+.task-row-blocked-icon {
+  font-style: normal;
+  font-size: 0.85em;
+}
+
 .task-row-main {
   min-width: 0;
   display: grid;
@@ -4014,6 +4027,142 @@ body.is-admin .alerts {
 
 .task-reference-suggestions .suggestion-item:hover {
   background: var(--surface-2);
+}
+
+/* ── Prerequisite section ──────────────────────────────────────────────── */
+
+.task-prereq-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-prereq-section:has(.task-prereq-body:not([hidden])) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.task-prereq-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.task-prereq-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+  flex: 1;
+}
+
+.task-prereq-toggle {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+
+.task-prereq-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.task-prereq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.task-prereq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.task-prereq-chip--missing {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.task-prereq-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.task-prereq-chip-remove:hover {
+  color: var(--text);
+}
+
+.task-prereq-add-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.task-prereq-add-btn {
+  font-size: 0.85rem;
+  padding: 0;
+}
+
+.task-prereq-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.task-prereq-search {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.task-prereq-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--canvas) 0%, transparent);
+}
+
+.task-prereq-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+
+.task-prereq-result-item:last-child {
+  border-bottom: none;
+}
+
+.task-prereq-result-item:hover {
+  background: var(--surface-2);
+}
+
+.task-prereq-result-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: var(--space-2);
 }
 
 .task-section-divider {

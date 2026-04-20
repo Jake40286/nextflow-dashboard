@@ -54,16 +54,6 @@ export default {
         pill.className = "feedback-filter-pill";
         pill.dataset.tag = tag;
         pill.textContent = `#${tag}\u00a0${tagCounts.get(tag)}`;
-        pill.addEventListener("click", () => {
-          if (activeTags.has(tag)) {
-            activeTags.delete(tag);
-            pill.classList.remove("is-active");
-          } else {
-            activeTags.add(tag);
-            pill.classList.add("is-active");
-          }
-          for (const fn of Object.values(renderColFns)) fn?.();
-        });
         filterBar.append(pill);
       }
     }
@@ -94,6 +84,9 @@ export default {
     let dragType = null;
     const renderColFns = {};
 
+    // Lookup map: feedbackId → { item, colType, renderCol } — used by delegated handlers
+    const itemMap = new Map();
+
     const persistOrder = async (type) => {
       const items = colItems[type].open;
       await Promise.all(
@@ -108,78 +101,15 @@ export default {
     };
 
     const buildCard = (item, colType, renderCol) => {
+      itemMap.set(item.id, { item, colType, renderCol });
+
       const card = document.createElement("div");
       card.className = "feedback-card" + (item.resolved ? " is-resolved" : "");
       card.dataset.id = item.id;
+      card.dataset.feedbackId = item.id;
 
       if (!item.resolved) {
         card.draggable = true;
-        card.addEventListener("dragstart", (e) => {
-          dragId = item.id;
-          dragType = colType;
-          e.dataTransfer.effectAllowed = "move";
-          requestAnimationFrame(() => card.classList.add("is-dragging"));
-        });
-        card.addEventListener("dragend", () => {
-          card.classList.remove("is-dragging");
-          // Remove any lingering indicators
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          board.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-        });
-        card.addEventListener("dragover", (e) => {
-          if (!dragId || dragId === item.id) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          // Show indicator above or below based on pointer position
-          const rect = card.getBoundingClientRect();
-          const mid = rect.top + rect.height / 2;
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          const indicator = document.createElement("div");
-          indicator.className = "dnd-drop-indicator";
-          if (e.clientY < mid) {
-            card.before(indicator);
-          } else {
-            card.after(indicator);
-          }
-        });
-        card.addEventListener("drop", (e) => {
-          e.preventDefault();
-          if (!dragId || dragId === item.id) return;
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          const rect = card.getBoundingClientRect();
-          const insertBefore = e.clientY < rect.top + rect.height / 2;
-          if (dragType === colType) {
-            // Same-column reorder
-            const items = colItems[colType].open;
-            const fromIdx = items.findIndex((i) => i.id === dragId);
-            const toIdx = items.findIndex((i) => i.id === item.id);
-            if (fromIdx === -1 || toIdx === -1) return;
-            const [moved] = items.splice(fromIdx, 1);
-            const finalIdx = insertBefore ? toIdx : toIdx + (fromIdx < toIdx ? 0 : 1);
-            items.splice(Math.max(0, finalIdx > fromIdx && !insertBefore ? finalIdx - 1 : finalIdx), 0, moved);
-            renderCol();
-            persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
-          } else {
-            // Cross-column move
-            const srcItems = colItems[dragType].open;
-            const dstItems = colItems[colType].open;
-            const fromIdx = srcItems.findIndex((i) => i.id === dragId);
-            if (fromIdx === -1) return;
-            const toIdx = dstItems.findIndex((i) => i.id === item.id);
-            if (toIdx === -1) return;
-            const [moved] = srcItems.splice(fromIdx, 1);
-            moved.type = colType;
-            const insertIdx = insertBefore ? toIdx : toIdx + 1;
-            dstItems.splice(insertIdx, 0, moved);
-            renderColFns[dragType]?.();
-            renderCol();
-            fetch("/feedback/" + moved.id, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: colType }),
-            }).then(() => persistOrder(colType)).catch(() => this.showToast("error", "Could not move item."));
-          }
-        });
       }
 
       const raw = item.description || "";
@@ -239,19 +169,17 @@ export default {
       };
       renderCardTags(itemTags);
 
+      // Store renderCardTags so the delegated save handler can call it
+      card._renderCardTags = renderCardTags;
+
       const meta = document.createElement("div");
       meta.className = "feedback-card-meta";
       const shortId = document.createElement("span");
+      shortId.className = "feedback-short-id";
+      shortId.dataset.action = "copy-id";
       shortId.textContent = "#" + item.id.slice(0, 6);
       shortId.title = "Click to copy ID";
       shortId.style.cursor = "pointer";
-      shortId.addEventListener("click", () => {
-        navigator.clipboard.writeText(item.id).then(() => {
-          const orig = shortId.textContent;
-          shortId.textContent = "copied!";
-          setTimeout(() => { shortId.textContent = orig; }, 1200);
-        });
-      });
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "";
       meta.append(shortId);
       if (dateStr) {
@@ -266,33 +194,21 @@ export default {
 
       // Order controls (unresolved items only)
       if (!item.resolved) {
-        const getIdx = () => colItems[colType].open.findIndex((i) => i.id === item.id);
         const openItems = colItems[colType].open;
+        const currentIdx = openItems.findIndex((i) => i.id === item.id);
 
-        const makeOrderBtn = (symbol, title, handler) => {
+        const makeOrderBtn = (symbol, title, action) => {
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "btn btn-icon feedback-order-btn";
           btn.title = title;
           btn.textContent = symbol;
-          btn.addEventListener("click", () => {
-            handler();
-            renderCol();
-            persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
-          });
+          btn.dataset.action = action;
           return btn;
         };
 
-        const moveTopBtn = makeOrderBtn("⇑", "Move to top", () => {
-          const idx = getIdx();
-          if (idx > 0) { const [m] = openItems.splice(idx, 1); openItems.unshift(m); }
-        });
-        const moveBottomBtn = makeOrderBtn("⇓", "Bury to bottom", () => {
-          const idx = getIdx();
-          if (idx < openItems.length - 1) { const [m] = openItems.splice(idx, 1); openItems.push(m); }
-        });
-
-        const currentIdx = getIdx();
+        const moveTopBtn = makeOrderBtn("⇑", "Move to top", "move-top");
+        const moveBottomBtn = makeOrderBtn("⇓", "Bury to bottom", "move-bottom");
         moveTopBtn.disabled = currentIdx === 0;
         moveBottomBtn.disabled = currentIdx === openItems.length - 1;
 
@@ -304,14 +220,205 @@ export default {
 
       // Resolve / Confirm Resolved / Re-open
       if (item.resolved) {
-        // Confirm Resolved button
         const confirmBtn = document.createElement("button");
         confirmBtn.type = "button";
         confirmBtn.className = "btn btn-light btn-small" + (item.confirmedResolved ? " feedback-btn-confirmed" : "");
         confirmBtn.textContent = item.confirmedResolved ? "Confirmed" : "Confirm Resolved";
         confirmBtn.disabled = !!item.confirmedResolved;
-        confirmBtn.addEventListener("click", async () => {
-          confirmBtn.disabled = true;
+        confirmBtn.dataset.action = "confirm-resolved";
+        actions.append(confirmBtn);
+
+        const reopenBtn = document.createElement("button");
+        reopenBtn.type = "button";
+        reopenBtn.className = "btn btn-light btn-small";
+        reopenBtn.textContent = "Re-open";
+        reopenBtn.dataset.action = "reopen";
+        actions.append(reopenBtn);
+      } else {
+        const resolveBtn = document.createElement("button");
+        resolveBtn.type = "button";
+        resolveBtn.className = "btn btn-light btn-small";
+        resolveBtn.textContent = "Resolve";
+        resolveBtn.dataset.action = "resolve";
+        actions.append(resolveBtn);
+      }
+
+      // Edit (inline)
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn btn-light btn-small";
+      editBtn.textContent = "Edit";
+      editBtn.dataset.action = "edit";
+      actions.append(editBtn);
+
+      // Merge (only for open items)
+      if (!item.resolved) {
+        const mergeBtn = document.createElement("button");
+        mergeBtn.type = "button";
+        mergeBtn.className = "btn btn-light btn-small";
+        mergeBtn.textContent = "Merge";
+        mergeBtn.dataset.action = "merge";
+        actions.append(mergeBtn);
+      }
+
+      // Delete
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn btn-light btn-small";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.dataset.action = "delete";
+      actions.append(deleteBtn);
+
+      card.append(actions);
+      return card;
+    };
+
+    // Delegated event handlers — set up once per board render
+    if (!board._delegationSetup) {
+      board._delegationSetup = true;
+
+      // Filter pill clicks
+      board.addEventListener("click", (e) => {
+        const pill = e.target.closest(".feedback-filter-pill[data-tag]");
+        if (!pill) return;
+        const tag = pill.dataset.tag;
+        if (activeTags.has(tag)) {
+          activeTags.delete(tag);
+          pill.classList.remove("is-active");
+        } else {
+          activeTags.add(tag);
+          pill.classList.add("is-active");
+        }
+        for (const fn of Object.values(renderColFns)) fn?.();
+      });
+
+      // Drag events on cards
+      board.addEventListener("dragstart", (e) => {
+        const card = e.target.closest(".feedback-card");
+        if (!card) return;
+        dragId = card.dataset.feedbackId;
+        const entry = itemMap.get(dragId);
+        dragType = entry?.colType ?? null;
+        e.dataTransfer.effectAllowed = "move";
+        requestAnimationFrame(() => card.classList.add("is-dragging"));
+      });
+
+      board.addEventListener("dragend", (e) => {
+        const card = e.target.closest(".feedback-card");
+        if (!card) return;
+        card.classList.remove("is-dragging");
+        board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
+        board.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+      });
+
+      board.addEventListener("dragover", (e) => {
+        const card = e.target.closest(".feedback-card");
+        if (!card) return;
+        const cardId = card.dataset.feedbackId;
+        if (!dragId || dragId === cardId) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = card.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
+        const indicator = document.createElement("div");
+        indicator.className = "dnd-drop-indicator";
+        if (e.clientY < mid) {
+          card.before(indicator);
+        } else {
+          card.after(indicator);
+        }
+      });
+
+      board.addEventListener("drop", (e) => {
+        const card = e.target.closest(".feedback-card");
+        if (!card) return;
+        const cardId = card.dataset.feedbackId;
+        if (!dragId || dragId === cardId) return;
+        e.preventDefault();
+        board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
+        const entry = itemMap.get(cardId);
+        if (!entry) return;
+        const { item, colType, renderCol } = entry;
+        const rect = card.getBoundingClientRect();
+        const insertBefore = e.clientY < rect.top + rect.height / 2;
+        if (dragType === colType) {
+          const items = colItems[colType].open;
+          const fromIdx = items.findIndex((i) => i.id === dragId);
+          const toIdx = items.findIndex((i) => i.id === item.id);
+          if (fromIdx === -1 || toIdx === -1) return;
+          const [moved] = items.splice(fromIdx, 1);
+          const finalIdx = insertBefore ? toIdx : toIdx + (fromIdx < toIdx ? 0 : 1);
+          items.splice(Math.max(0, finalIdx > fromIdx && !insertBefore ? finalIdx - 1 : finalIdx), 0, moved);
+          renderCol();
+          persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
+        } else {
+          const srcItems = colItems[dragType].open;
+          const dstItems = colItems[colType].open;
+          const fromIdx = srcItems.findIndex((i) => i.id === dragId);
+          if (fromIdx === -1) return;
+          const toIdx = dstItems.findIndex((i) => i.id === item.id);
+          if (toIdx === -1) return;
+          const [moved] = srcItems.splice(fromIdx, 1);
+          moved.type = colType;
+          const insertIdx = insertBefore ? toIdx : toIdx + 1;
+          dstItems.splice(insertIdx, 0, moved);
+          renderColFns[dragType]?.();
+          renderCol();
+          fetch("/feedback/" + moved.id, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: colType }),
+          }).then(() => persistOrder(colType)).catch(() => this.showToast("error", "Could not move item."));
+        }
+      });
+
+      // Action button clicks
+      board.addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        const action = btn.dataset.action;
+
+        // copy-id is on a span inside meta, not inside actions
+        if (action === "copy-id") {
+          const card = btn.closest(".feedback-card");
+          const feedbackId = card?.dataset.feedbackId;
+          if (!feedbackId) return;
+          navigator.clipboard.writeText(feedbackId).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = "copied!";
+            setTimeout(() => { btn.textContent = orig; }, 1200);
+          });
+          return;
+        }
+
+        const card = btn.closest(".feedback-card");
+        const feedbackId = card?.dataset.feedbackId;
+        if (!feedbackId) return;
+        const entry = itemMap.get(feedbackId);
+        if (!entry) return;
+        const { item, colType, renderCol } = entry;
+
+        if (action === "move-top") {
+          const items = colItems[colType].open;
+          const idx = items.findIndex((i) => i.id === item.id);
+          if (idx > 0) { const [m] = items.splice(idx, 1); items.unshift(m); }
+          renderCol();
+          persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
+          return;
+        }
+
+        if (action === "move-bottom") {
+          const items = colItems[colType].open;
+          const idx = items.findIndex((i) => i.id === item.id);
+          if (idx < items.length - 1) { const [m] = items.splice(idx, 1); items.push(m); }
+          renderCol();
+          persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
+          return;
+        }
+
+        if (action === "confirm-resolved") {
+          btn.disabled = true;
           try {
             const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
@@ -320,20 +427,17 @@ export default {
             });
             if (!res.ok) throw new Error();
             item.confirmedResolved = true;
-            confirmBtn.textContent = "Confirmed";
-            confirmBtn.classList.add("feedback-btn-confirmed");
+            btn.textContent = "Confirmed";
+            btn.classList.add("feedback-btn-confirmed");
           } catch {
-            confirmBtn.disabled = false;
+            btn.disabled = false;
             this.showToast("error", "Could not confirm item.");
           }
-        });
-        // Re-open button
-        const reopenBtn = document.createElement("button");
-        reopenBtn.type = "button";
-        reopenBtn.className = "btn btn-light btn-small";
-        reopenBtn.textContent = "Re-open";
-        reopenBtn.addEventListener("click", async () => {
-          reopenBtn.disabled = true;
+          return;
+        }
+
+        if (action === "reopen") {
+          btn.disabled = true;
           try {
             const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
@@ -347,18 +451,14 @@ export default {
             if (idx !== -1) { resolved.splice(idx, 1); open.push(item); }
             renderCol();
           } catch {
-            reopenBtn.disabled = false;
+            btn.disabled = false;
             this.showToast("error", "Could not re-open item.");
           }
-        });
-        actions.append(confirmBtn, reopenBtn);
-      } else {
-        const resolveBtn = document.createElement("button");
-        resolveBtn.type = "button";
-        resolveBtn.className = "btn btn-light btn-small";
-        resolveBtn.textContent = "Resolve";
-        resolveBtn.addEventListener("click", async () => {
-          resolveBtn.disabled = true;
+          return;
+        }
+
+        if (action === "resolve") {
+          btn.disabled = true;
           try {
             const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
@@ -372,59 +472,74 @@ export default {
             if (idx !== -1) { open.splice(idx, 1); resolved.push(item); }
             renderCol();
           } catch {
-            resolveBtn.disabled = false;
+            btn.disabled = false;
             this.showToast("error", "Could not resolve item.");
           }
-        });
-        actions.append(resolveBtn);
-      }
+          return;
+        }
 
-      // Edit (inline)
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "btn btn-light btn-small";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", () => {
-        card.draggable = false;
-        desc.hidden = true;
-        if (tagsEl) tagsEl.hidden = true;
-        meta.hidden = true;
-        actions.hidden = true;
+        if (action === "edit") {
+          card.draggable = false;
+          const desc = card.querySelector(".feedback-card-desc");
+          const tagsEl = card.querySelector(".feedback-card-tags");
+          const meta = card.querySelector(".feedback-card-meta");
+          const actions = card.querySelector(".feedback-card-actions");
+          desc.hidden = true;
+          if (tagsEl) tagsEl.hidden = true;
+          meta.hidden = true;
+          actions.hidden = true;
 
-        const form = document.createElement("div");
-        form.className = "feedback-card-edit-form";
-        const ta = document.createElement("textarea");
-        ta.value = item.description;
-        ta.rows = 3;
-        const formActions = document.createElement("div");
-        formActions.className = "feedback-add-form-actions";
-        const saveBtn = document.createElement("button");
-        saveBtn.type = "button";
-        saveBtn.className = "btn btn-light btn-small";
-        saveBtn.textContent = "Save";
-        const cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "btn btn-light btn-small";
-        cancelBtn.textContent = "Cancel";
-        formActions.append(saveBtn, cancelBtn);
-        form.append(ta, formActions);
-        card.append(form);
-        ta.focus();
+          const form = document.createElement("div");
+          form.className = "feedback-card-edit-form";
+          const ta = document.createElement("textarea");
+          ta.value = item.description;
+          ta.rows = 3;
+          const formActions = document.createElement("div");
+          formActions.className = "feedback-add-form-actions";
+          const saveBtn = document.createElement("button");
+          saveBtn.type = "button";
+          saveBtn.className = "btn btn-light btn-small";
+          saveBtn.textContent = "Save";
+          saveBtn.dataset.action = "save-edit";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn btn-light btn-small";
+          cancelBtn.textContent = "Cancel";
+          cancelBtn.dataset.action = "cancel-edit";
+          formActions.append(saveBtn, cancelBtn);
+          form.append(ta, formActions);
+          card.append(form);
+          // Store textarea reference on form for the save handler
+          form._ta = ta;
+          ta.focus();
+          return;
+        }
 
-        cancelBtn.addEventListener("click", () => {
+        if (action === "cancel-edit") {
+          const form = card.querySelector(".feedback-card-edit-form");
+          if (!form) return;
           form.remove();
+          const desc = card.querySelector(".feedback-card-desc");
+          const tagsEl = card.querySelector(".feedback-card-tags");
+          const meta = card.querySelector(".feedback-card-meta");
+          const actions = card.querySelector(".feedback-card-actions");
           desc.hidden = false;
           if (tagsEl) tagsEl.hidden = false;
           meta.hidden = false;
           actions.hidden = false;
           if (!item.resolved) card.draggable = true;
-        });
+          return;
+        }
 
-        saveBtn.addEventListener("click", async () => {
+        if (action === "save-edit") {
+          const form = card.querySelector(".feedback-card-edit-form");
+          if (!form) return;
+          const ta = form._ta || form.querySelector("textarea");
           const newDesc = ta.value.trim();
           if (!newDesc) return;
-          saveBtn.disabled = true;
-          cancelBtn.disabled = true;
+          btn.disabled = true;
+          const cancelBtn = form.querySelector("[data-action='cancel-edit']");
+          if (cancelBtn) cancelBtn.disabled = true;
           try {
             const res = await fetch("/feedback/" + item.id, {
               method: "PATCH",
@@ -437,6 +552,7 @@ export default {
             const updatedFirstNewline = newDesc.indexOf("\n");
             const updatedRawBody = hasUpdatedTitle && updatedFirstNewline !== -1 ? newDesc.slice(updatedFirstNewline + 1) : hasUpdatedTitle ? "" : newDesc;
             const { tags: updatedTags, text: updatedText } = extractTags(updatedRawBody);
+            const desc = card.querySelector(".feedback-card-desc");
             desc.innerHTML = "";
             if (hasUpdatedTitle) {
               const updatedRawTitle = newDesc.slice(2, updatedFirstNewline === -1 ? undefined : updatedFirstNewline).trim();
@@ -453,29 +569,23 @@ export default {
             } else {
               desc.textContent = updatedText;
             }
-            renderCardTags(updatedTags);
+            if (card._renderCardTags) card._renderCardTags(updatedTags);
             form.remove();
             desc.hidden = false;
+            const meta = card.querySelector(".feedback-card-meta");
+            const actions = card.querySelector(".feedback-card-actions");
             meta.hidden = false;
             actions.hidden = false;
             if (!item.resolved) card.draggable = true;
           } catch {
-            saveBtn.disabled = false;
-            cancelBtn.disabled = false;
+            btn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
             this.showToast("error", "Could not update item.");
           }
-        });
-      });
-      actions.append(editBtn);
+          return;
+        }
 
-      // Merge (only for open items)
-      if (!item.resolved) {
-        const mergeBtn = document.createElement("button");
-        mergeBtn.type = "button";
-        mergeBtn.className = "btn btn-light btn-small";
-        mergeBtn.textContent = "Merge";
-        mergeBtn.addEventListener("click", () => {
-          // Enter merge-source mode: highlight this card, show "Merge into" on others
+        if (action === "merge") {
           board.querySelectorAll(".feedback-card[data-merge-target]").forEach((el) => {
             el.removeAttribute("data-merge-target");
             el.querySelector(".merge-into-btn")?.remove();
@@ -490,17 +600,10 @@ export default {
           cancelMerge.type = "button";
           cancelMerge.className = "btn btn-light btn-small merge-cancel-btn";
           cancelMerge.textContent = "Cancel";
-          cancelMerge.addEventListener("click", () => {
-            card.removeAttribute("data-merge-source");
-            cancelMerge.remove();
-            board.querySelectorAll("[data-merge-target]").forEach((el) => {
-              el.removeAttribute("data-merge-target");
-              el.querySelector(".merge-into-btn")?.remove();
-            });
-          });
-          actions.append(cancelMerge);
+          cancelMerge.dataset.action = "cancel-merge";
+          const actionsEl = card.querySelector(".feedback-card-actions");
+          actionsEl?.append(cancelMerge);
 
-          // Show "Merge into this" on all other open cards
           board.querySelectorAll(".feedback-card:not([data-merge-source])").forEach((otherCard) => {
             const otherId = otherCard.dataset.id;
             if (!otherId || otherCard.classList.contains("is-resolved")) return;
@@ -509,64 +612,76 @@ export default {
             intoBtn.type = "button";
             intoBtn.className = "btn btn-light btn-small merge-into-btn";
             intoBtn.textContent = "← Merge into this";
-            intoBtn.addEventListener("click", async () => {
-              intoBtn.disabled = true;
-              try {
-                const res = await fetch("/feedback/merge", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ primaryId: otherId, mergeIds: [item.id] }),
-                });
-                if (!res.ok) throw new Error();
-                this.renderBacklog();
-              } catch {
-                intoBtn.disabled = false;
-                this.showToast("error", "Could not merge items.");
-              }
-            });
+            intoBtn.dataset.action = "merge-into";
+            intoBtn.dataset.targetId = otherId;
             otherCard.querySelector(".feedback-card-actions")?.append(intoBtn);
           });
-        });
-        actions.append(mergeBtn);
-      }
-
-      // Delete
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "btn btn-light btn-small";
-      deleteBtn.textContent = "Delete";
-      let awaitingConfirm = false;
-      let confirmTimer = null;
-      deleteBtn.addEventListener("click", async () => {
-        if (!awaitingConfirm) {
-          awaitingConfirm = true;
-          deleteBtn.textContent = "Sure?";
-          confirmTimer = setTimeout(() => { awaitingConfirm = false; deleteBtn.textContent = "Delete"; }, 3000);
           return;
         }
-        clearTimeout(confirmTimer);
-        deleteBtn.disabled = true;
-        try {
-          const res = await fetch("/feedback/" + item.id, { method: "DELETE" });
-          if (!res.ok) throw new Error();
-          const { open, resolved } = colItems[colType];
-          const openIdx = open.findIndex((i) => i.id === item.id);
-          if (openIdx !== -1) open.splice(openIdx, 1);
-          const resolvedIdx = resolved.findIndex((i) => i.id === item.id);
-          if (resolvedIdx !== -1) resolved.splice(resolvedIdx, 1);
-          renderCol();
-        } catch {
-          deleteBtn.disabled = false;
-          awaitingConfirm = false;
-          deleteBtn.textContent = "Delete";
-          this.showToast("error", "Could not delete item.");
+
+        if (action === "cancel-merge") {
+          card.removeAttribute("data-merge-source");
+          btn.remove();
+          board.querySelectorAll("[data-merge-target]").forEach((el) => {
+            el.removeAttribute("data-merge-target");
+            el.querySelector(".merge-into-btn")?.remove();
+          });
+          return;
+        }
+
+        if (action === "merge-into") {
+          const targetId = btn.dataset.targetId;
+          if (!targetId) return;
+          const sourceCard = board.querySelector("[data-merge-source]");
+          const sourceId = sourceCard?.dataset.feedbackId;
+          if (!sourceId) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch("/feedback/merge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ primaryId: targetId, mergeIds: [sourceId] }),
+            });
+            if (!res.ok) throw new Error();
+            this.renderBacklog();
+          } catch {
+            btn.disabled = false;
+            this.showToast("error", "Could not merge items.");
+          }
+          return;
+        }
+
+        if (action === "delete") {
+          if (!btn._awaitingConfirm) {
+            btn._awaitingConfirm = true;
+            btn.textContent = "Sure?";
+            btn._confirmTimer = setTimeout(() => {
+              btn._awaitingConfirm = false;
+              btn.textContent = "Delete";
+            }, 3000);
+            return;
+          }
+          clearTimeout(btn._confirmTimer);
+          btn.disabled = true;
+          try {
+            const res = await fetch("/feedback/" + item.id, { method: "DELETE" });
+            if (!res.ok) throw new Error();
+            const { open, resolved } = colItems[colType];
+            const openIdx = open.findIndex((i) => i.id === item.id);
+            if (openIdx !== -1) open.splice(openIdx, 1);
+            const resolvedIdx = resolved.findIndex((i) => i.id === item.id);
+            if (resolvedIdx !== -1) resolved.splice(resolvedIdx, 1);
+            renderCol();
+          } catch {
+            btn.disabled = false;
+            btn._awaitingConfirm = false;
+            btn.textContent = "Delete";
+            this.showToast("error", "Could not delete item.");
+          }
+          return;
         }
       });
-      actions.append(deleteBtn);
-
-      card.append(actions);
-      return card;
-    };
+    }
 
     for (const { type, label } of COLS) {
       const col = document.createElement("div");

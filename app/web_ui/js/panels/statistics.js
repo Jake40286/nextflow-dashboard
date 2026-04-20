@@ -1,4 +1,5 @@
 // Statistics panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS, STATUS_LABELS, formatFriendlyDate } from "../data.js";
 export default {
   renderStatistics() {
     const {
@@ -372,6 +373,26 @@ export default {
       container.append(empty);
       return;
     }
+    if (onItemClick) {
+      container._statsRows = rows;
+      container._statsOnItemClick = onItemClick;
+      if (!container._delegationSetup) {
+        container._delegationSetup = true;
+        container.addEventListener("click", (event) => {
+          const item = event.target.closest("[data-row-index]");
+          if (!item || !container._statsOnItemClick) return;
+          const row = container._statsRows?.[Number(item.dataset.rowIndex)];
+          if (row) container._statsOnItemClick(row);
+        });
+        container.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const item = event.target.closest("[data-row-index]");
+          if (!item || !container._statsOnItemClick) return;
+          const row = container._statsRows?.[Number(item.dataset.rowIndex)];
+          if (row) { event.preventDefault(); container._statsOnItemClick(row); }
+        });
+      }
+    }
     const maxValue = Math.max(
       ...rows.map((row) => {
         const value = Number(row.value);
@@ -391,8 +412,7 @@ export default {
         item.classList.add("is-clickable");
         item.setAttribute("role", "button");
         item.setAttribute("tabindex", "0");
-        item.addEventListener("click", () => onItemClick(row));
-        item.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onItemClick(row); } });
+        item.dataset.rowIndex = String(rows.indexOf(row));
       }
       const main = document.createElement("div");
       main.className = "statistics-row-main";

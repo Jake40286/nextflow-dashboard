@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/someday.js
 // Someday panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS } from "../data.js";
 export default {
   renderSomeday() {
     const tasks = this.sortTasks(this.taskManager.getTasks({
@@ -7,7 +8,7 @@ export default {
       status: STATUS.SOMEDAY,
     }));
     const container = this.elements.somedayList;
-    renderTaskList(container, tasks, (task) => this.createTaskCard(task));
+    this.renderTaskList(container, tasks, (task) => this.createTaskCard(task));
     this.attachDropzone(container, STATUS.SOMEDAY);
 
     // Parked projects section — rendered outside the dropzone

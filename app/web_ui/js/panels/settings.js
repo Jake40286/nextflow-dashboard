@@ -1,4 +1,5 @@
 // Settings panel render methods — mixed into UIController.prototype by ui.js
+import { THEME_OPTIONS, STATUS_LABELS, formatFriendlyDate } from "../data.js";
 export default {
   renderSettings() {
     try {

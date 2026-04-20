@@ -220,6 +220,7 @@ export class UIController {
     this.setupEntityMentionAutocomplete();
     this.setupSummaryTabs();
     this.setupAssociationFlyout();
+    this.setupTaskRowDelegation();
     this.setupTaskContextMenu();
     this.setupTaskNoteContextMenu();
     this.setupTaskListItemContextMenu();
@@ -3243,55 +3244,88 @@ export class UIController {
       row.classList.add("is-selected");
     }
 
-    checkbox.addEventListener("click", (event) => {
-      event.stopPropagation();
-      this.toggleTaskSelection(task.id);
-    });
-
     row.append(selectSlot, main, caret);
+    return row;
+  }
 
-    const openDetails = () => {
-      if (row.classList.contains("is-dragging")) return;
-      // If any tasks are already selected, clicking a row toggles it instead of opening it
-      if (this.selectedTaskIds.size > 0) {
-        this.toggleTaskSelection(task.id);
+  _activateTaskRow(taskId, row) {
+    if (row.classList.contains("is-dragging")) return;
+    if (this.selectedTaskIds.size > 0) {
+      this.toggleTaskSelection(taskId);
+      return;
+    }
+    this.closeTaskContextMenu();
+    this.closeCalendarDayContextMenu();
+    const task = this.taskManager.getTaskById(taskId);
+    if (!task) return;
+    if (task.status === STATUS.INBOX) {
+      this.openClarifyModal(taskId);
+    } else {
+      this.openTaskFlyout(taskId);
+    }
+  }
+
+  setupTaskRowDelegation() {
+    const workspace = this.elements.workspace;
+    if (!workspace) return;
+
+    workspace.addEventListener("click", (event) => {
+      const checkbox = event.target.closest(".task-row-select input[type=checkbox]");
+      if (checkbox) {
+        event.stopPropagation();
+        const row = checkbox.closest(".task-row");
+        if (row?.dataset.taskId) this.toggleTaskSelection(row.dataset.taskId);
         return;
       }
-      this.closeTaskContextMenu();
-      this.closeCalendarDayContextMenu();
-      if (task.status === STATUS.INBOX) {
-        this.openClarifyModal(task.id);
-      } else {
-        this.openTaskFlyout(task.id);
-      }
-    };
-    row.addEventListener("click", () => openDetails());
-    row.addEventListener("keydown", (event) => {
+      const row = event.target.closest(".task-row");
+      if (!row) return;
+      const taskId = row.dataset.taskId;
+      if (!taskId) return;
+      this._activateTaskRow(taskId, row);
+    });
+
+    workspace.addEventListener("keydown", (event) => {
+      const row = event.target.closest(".task-row");
+      if (!row) return;
+      const taskId = row.dataset.taskId;
+      if (!taskId) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        openDetails();
+        this._activateTaskRow(taskId, row);
         return;
       }
       if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
         event.preventDefault();
-        this.openTaskContextMenuForTask(task.id, row);
+        this.openTaskContextMenuForTask(taskId, row);
       }
     });
-    row.addEventListener("contextmenu", (event) => {
-      if (row.classList.contains("is-dragging")) return;
+
+    workspace.addEventListener("contextmenu", (event) => {
+      const row = event.target.closest(".task-row");
+      if (!row || row.classList.contains("is-dragging")) return;
+      const taskId = row.dataset.taskId;
+      if (!taskId) return;
       event.preventDefault();
-      this.openTaskContextMenu(task.id, event.clientX, event.clientY);
+      this.openTaskContextMenu(taskId, event.clientX, event.clientY);
     });
 
-    enableDrag(row, task.id);
-    row.addEventListener("dragstart", () => {
-      this.draggingTaskId = task.id;
+    workspace.addEventListener("dragstart", (event) => {
+      const row = event.target.closest(".task-row");
+      if (!row) return;
+      const taskId = row.dataset.taskId;
+      if (!taskId) return;
+      event.dataTransfer?.setData("text/task-id", taskId);
+      event.dataTransfer?.setData("text/plain", taskId);
+      row.classList.add("is-dragging");
+      this.draggingTaskId = taskId;
     });
-    row.addEventListener("dragend", () => {
+
+    workspace.addEventListener("dragend", (event) => {
+      const row = event.target.closest(".task-row");
+      if (!row) return;
+      row.classList.remove("is-dragging", "is-drop-before", "is-drop-after");
       this.draggingTaskId = null;
-      row.classList.remove("is-drop-before", "is-drop-after");
     });
-    return row;
   }
 
   setupTaskContextMenu() {
@@ -8544,6 +8578,7 @@ function relativeLuminance(rgb) {
 function mapElements() {
   const byId = (id) => document.getElementById(id);
   return {
+    workspace: document.querySelector(".workspace"),
     appRoot: document.querySelector(".app"),
     associationFlyout: byId("associationFlyout"),
     associationFlyoutToggle: byId("associationFlyoutToggle"),
@@ -9056,17 +9091,6 @@ function storeActiveAreaPreference(area) {
   } catch {
     /* noop */
   }
-}
-
-function enableDrag(element, taskId) {
-  element.addEventListener("dragstart", (event) => {
-    event.dataTransfer?.setData("text/task-id", taskId);
-    event.dataTransfer?.setData("text/plain", taskId);
-    element.classList.add("is-dragging");
-  });
-  element.addEventListener("dragend", () => {
-    element.classList.remove("is-dragging");
-  });
 }
 
 function fillDatalist(element, values) {

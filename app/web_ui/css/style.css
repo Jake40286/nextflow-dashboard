@@ -923,6 +923,10 @@ body.is-admin .alerts {
   margin-top: var(--space-2);
 }
 
+#nextGroupLimitInput {
+  max-width: 6rem;
+}
+
 .multi-select {
   position: relative;
   border: 1px solid var(--line);
@@ -4658,11 +4662,15 @@ body.is-admin .alerts {
   appearance: none;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  padding: 8px 13px;
+  padding: 10px 13px;
   font: inherit;
   font-weight: 600;
   line-height: 1.1;
   cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: transform var(--transition-fast), border var(--transition-fast), background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -4700,9 +4708,10 @@ body.is-admin .alerts {
   border-color: transparent;
   background: transparent;
   color: var(--text-muted);
-  padding: 0 6px;
+  padding: 0 10px;
   font-size: 1.1rem;
   line-height: 1;
+  min-height: 44px;
 }
 
 .btn-icon:hover {
@@ -4743,8 +4752,9 @@ body.is-admin .alerts {
 }
 
 .btn-small {
-  padding: 5px 10px;
+  padding: 7px 12px;
   font-size: 0.8rem;
+  min-height: 36px;
 }
 
 input,

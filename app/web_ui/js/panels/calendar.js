@@ -52,6 +52,43 @@ export default {
       entryMap.get(dateKey).push(entry);
     });
 
+    if (!grid._delegationSetup) {
+      grid._delegationSetup = true;
+      grid.addEventListener("contextmenu", (event) => {
+        const cell = event.target.closest("[data-date]");
+        if (!cell) return;
+        event.preventDefault();
+        this.openCalendarDayContextMenu(cell.dataset.date, event.clientX, event.clientY);
+      });
+      grid.addEventListener("click", (event) => {
+        const item = event.target.closest(".calendar-grid-item");
+        if (!item?._calendarEntry) return;
+        this.handleCalendarItemClick(item._calendarEntry);
+      });
+      grid.addEventListener("dragover", (event) => {
+        const cell = event.target.closest("[data-date]");
+        if (!cell) return;
+        event.preventDefault();
+        cell.classList.add("is-drag-over");
+      });
+      grid.addEventListener("dragleave", (event) => {
+        const cell = event.target.closest("[data-date]");
+        if (!cell) return;
+        if (!cell.contains(event.relatedTarget)) {
+          cell.classList.remove("is-drag-over");
+        }
+      });
+      grid.addEventListener("drop", (event) => {
+        const cell = event.target.closest("[data-date]");
+        if (!cell) return;
+        event.preventDefault();
+        cell.classList.remove("is-drag-over");
+        const taskId = event.dataTransfer?.getData("text/task-id");
+        if (taskId) {
+          this.handleCalendarDrop(taskId, cell.dataset.date);
+        }
+      });
+    }
     grid.innerHTML = "";
     const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     weekdayNames.forEach((day) => {
@@ -79,10 +116,6 @@ export default {
         dayContainer.classList.add("calendar-grid-cell--today");
       }
       dayContainer.dataset.date = dateKey;
-      dayContainer.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        this.openCalendarDayContextMenu(dateKey, event.clientX, event.clientY);
-      });
       const header = document.createElement("div");
       header.className = isToday ? "calendar-grid-day calendar-grid-day--today" : "calendar-grid-day";
       header.textContent = dayNumber;
@@ -107,11 +140,11 @@ export default {
           const typePrefix = entry.isFollowUp ? "↩ " : "";
           item.textContent = `${typePrefix}${timeLabel ? `${timeLabel} • ` : ""}${entry.title}`;
           item.dataset.taskId = entry.taskId;
+          item._calendarEntry = entry;
           if (!entry.isCompleted) {
             item.draggable = true;
             enableDrag(item, entry.taskId);
           }
-          item.addEventListener("click", () => this.handleCalendarItemClick(entry));
           list.append(item);
         });
         dayContainer.append(list);
@@ -128,23 +161,7 @@ export default {
       helper.setupDropzone(element, {
         onDrop: (taskId) => this.handleCalendarDrop(taskId, dateKey),
       });
-      return;
     }
-    element.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      element.classList.add("is-drag-over");
-    });
-    element.addEventListener("dragleave", () => {
-      element.classList.remove("is-drag-over");
-    });
-    element.addEventListener("drop", (event) => {
-      event.preventDefault();
-      element.classList.remove("is-drag-over");
-      const taskId = event.dataTransfer?.getData("text/task-id");
-      if (taskId) {
-        this.handleCalendarDrop(taskId, dateKey);
-      }
-    });
   },
 
   handleCalendarDrop(taskId, dateKey) {

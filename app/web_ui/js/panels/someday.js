@@ -66,10 +66,7 @@ export default {
         activateBtn.type = "button";
         activateBtn.className = "btn btn-light btn-small";
         activateBtn.textContent = "Activate";
-        activateBtn.addEventListener("click", (event) => {
-          event.stopPropagation();
-          this.taskManager.activateProject(project.id);
-        });
+        activateBtn.dataset.action = "activate";
         meta.append(activateBtn);
         row.append(meta);
 
@@ -79,16 +76,30 @@ export default {
         chevron.textContent = "›";
         row.append(chevron);
 
-        const openFlyout = () => this.openProjectFlyout(project.id);
-        row.addEventListener("click", openFlyout);
-        row.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openFlyout();
-          }
-        });
-
         section.append(row);
+      });
+    }
+
+    if (!panelContent._delegationSetup) {
+      panelContent._delegationSetup = true;
+
+      panelContent.addEventListener("click", (event) => {
+        const row = event.target.closest("[data-project-id]");
+        if (!row?.dataset.projectId) return;
+        if (event.target.closest("[data-action='activate']")) {
+          event.stopPropagation();
+          this.taskManager.activateProject(row.dataset.projectId);
+          return;
+        }
+        this.openProjectFlyout(row.dataset.projectId);
+      });
+
+      panelContent.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const row = event.target.closest("[data-project-id]");
+        if (!row?.dataset.projectId) return;
+        event.preventDefault();
+        this.openProjectFlyout(row.dataset.projectId);
       });
     }
 

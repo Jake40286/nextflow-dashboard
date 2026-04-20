@@ -1,4 +1,5 @@
 // Statistics panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS, STATUS_LABELS, formatFriendlyDate } from "../data.js";
 export default {
   renderStatistics() {
     const {

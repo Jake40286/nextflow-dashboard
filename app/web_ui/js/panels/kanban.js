@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/kanban.js
 // Kanban panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS, STATUS_LABELS } from "../data.js";
 export default {
   renderKanban() {
     const board = this.elements.kanbanBoard;

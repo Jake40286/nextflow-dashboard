@@ -30,6 +30,7 @@ const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
 const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
 const KANBAN_GROUP_BY_KEY = "nextflow-kanban-group-by";
 const ACTIVE_AREA_KEY = "nextflow-active-area";
+const SIDEBAR_EXPANDED_KEY = "nextflow-sidebar-expanded";
 
 // One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
 (function migrateUiStorageKeys() {
@@ -242,6 +243,7 @@ export class UIController {
       if (feedbackWidget) feedbackWidget.hidden = false;
       this.setupFeedbackWidget();
     }
+    this.setupSidebarToggle();
     this.setupMultiEditBar();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
@@ -3447,6 +3449,19 @@ export class UIController {
     });
     this.taskManager.notify("info", `Updated ${ids.length} task${ids.length === 1 ? "" : "s"}.`);
     this.clearSelection();
+  }
+
+  setupSidebarToggle() {
+    const { sidebar, sidebarToggle } = this.elements;
+    if (!sidebar || !sidebarToggle) return;
+    const isCollapsed = localStorage.getItem(SIDEBAR_EXPANDED_KEY) !== "true";
+    sidebar.classList.toggle("sidebar-collapsed", isCollapsed);
+    sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+    sidebarToggle.addEventListener("click", () => {
+      const collapsed = sidebar.classList.toggle("sidebar-collapsed");
+      sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+      try { localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(!collapsed)); } catch (_) {}
+    });
   }
 
   setupMultiEditBar() {
@@ -8395,6 +8410,10 @@ export class UIController {
   }
 }
 
+UIController.prototype.renderTaskList = renderTaskList;
+UIController.prototype.populateAreaSelect = populateAreaSelect;
+UIController.prototype.enableDrag = enableDrag;
+
 Object.assign(UIController.prototype,
   InboxPanel,
   MyDayPanel,
@@ -8732,6 +8751,8 @@ function mapElements() {
     topbarOverdueBtn: byId("topbarOverdueBtn"),
     topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
+    sidebar: document.querySelector(".sidebar"),
+    sidebarToggle: document.querySelector(".sidebar-toggle"),
     contextSuggestions: document.getElementById("contextSuggestions"),
     effortSuggestions: document.getElementById("effortSuggestions"),
     timeSuggestions: document.getElementById("timeSuggestions"),

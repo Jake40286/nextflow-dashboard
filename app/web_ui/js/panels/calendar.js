@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/calendar.js
 // Calendar panel render methods — mixed into UIController.prototype by ui.js
+import { formatFriendlyDate } from "../data.js";
 export default {
   renderCalendar() {
     if (this.elements.calendarShowCompleted) {
@@ -143,7 +144,7 @@ export default {
           item._calendarEntry = entry;
           if (!entry.isCompleted) {
             item.draggable = true;
-            enableDrag(item, entry.taskId);
+            this.enableDrag(item, entry.taskId);
           }
           list.append(item);
         });

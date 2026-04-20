@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/projects.js
 // Projects panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS, formatFriendlyDate } from "../data.js";
 export default {
   renderProjects() {
     const container = this.elements.projectList;
@@ -59,7 +60,7 @@ export default {
     }
     const currentAreaVal = this.elements.projectAreaSelect?.value;
     const defaultAreaVal = currentAreaVal || (areas.length > 0 ? areas[0] : "");
-    populateAreaSelect(this.elements.projectAreaSelect, areas, defaultAreaVal);
+    this.populateAreaSelect(this.elements.projectAreaSelect, areas, defaultAreaVal);
 
     let parkedDividerInserted = false;
     visibleProjects.forEach((project) => {

@@ -109,7 +109,14 @@ export default {
           item.dataset.taskId = entry.taskId;
           if (!entry.isCompleted) {
             item.draggable = true;
-            enableDrag(item, entry.taskId);
+            item.addEventListener("dragstart", (event) => {
+              event.dataTransfer?.setData("text/task-id", entry.taskId);
+              event.dataTransfer?.setData("text/plain", entry.taskId);
+              item.classList.add("is-dragging");
+            });
+            item.addEventListener("dragend", () => {
+              item.classList.remove("is-dragging");
+            });
           }
           item.addEventListener("click", () => this.handleCalendarItemClick(entry));
           list.append(item);

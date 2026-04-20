@@ -3401,13 +3401,13 @@ export class UIController {
         anchorEl.focus();
       }
     };
-    // Delay mousedown listener one tick so the opening click doesn't immediately close it
-    const mousedownTimerId = setTimeout(() => document.addEventListener("mousedown", onOutside), 0);
+    // Delay pointerdown listener one tick so the opening click doesn't immediately close it
+    const pointerdownTimerId = setTimeout(() => document.addEventListener("pointerdown", onOutside), 0);
     document.addEventListener("keydown", onKey, { capture: true });
 
     this._popoverCleanup = () => {
-      clearTimeout(mousedownTimerId);
-      document.removeEventListener("mousedown", onOutside);
+      clearTimeout(pointerdownTimerId);
+      document.removeEventListener("pointerdown", onOutside);
       document.removeEventListener("keydown", onKey, { capture: true });
     };
   }
@@ -8604,7 +8604,7 @@ export class UIController {
       const item = document.createElement("div");
       item.className = "suggestion-item";
       item.textContent = name;
-      item.addEventListener("mousedown", (e) => {
+      item.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         input.value = name;
         dropdown.hidden = true;
@@ -9695,7 +9695,7 @@ export class UIController {
         statusSpan.className = "task-prereq-result-status";
         statusSpan.textContent = STATUS_LABELS[result.status] || result.status;
         li.append(statusSpan);
-        li.addEventListener("mousedown", (e) => {
+        li.addEventListener("pointerdown", (e) => {
           e.preventDefault();
           const added = this.taskManager.addPrerequisite(task.id, result.id);
           if (added) {
@@ -9852,8 +9852,8 @@ export class UIController {
             suggestionList.style.display = "none";
             suggestionList.innerHTML = "";
           });
-          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
-          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          item.addEventListener("pointerover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("pointerout", () => { item.style.background = "transparent"; });
           suggestionList.append(item);
         });
       } else if (selectedType === "person") {
@@ -9874,8 +9874,8 @@ export class UIController {
             suggestionList.style.display = "none";
             suggestionList.innerHTML = "";
           });
-          item.addEventListener("mouseover", () => { item.style.background = "var(--surface-2)"; });
-          item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+          item.addEventListener("pointerover", () => { item.style.background = "var(--surface-2)"; });
+          item.addEventListener("pointerout", () => { item.style.background = "transparent"; });
           suggestionList.append(item);
         });
       }

@@ -202,23 +202,6 @@
           </div>
         </section>
 
-        <section class="card integrations-card" aria-labelledby="integrationsHeading">
-          <header class="card-header">
-            <h2 id="integrationsHeading">Integrations</h2>
-          </header>
-          <ul class="integration-list">
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="email">Email capture <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="calendar">Calendar sync <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="notes">Notes linking <span class="badge">Soon</span></button>
-            </li>
-          </ul>
-        </section>
-
       </aside>
 
       <div id="areaScopeRow" class="area-scope-row" role="group" aria-label="Area of focus scope"></div>
@@ -1004,7 +987,9 @@
               <button id="clarifyTwoMinuteYes" class="btn btn-light clarify-choice" type="button">Yes — do it now</button>
             </div>
             <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
-              <p class="muted small-text">Done! Expecting a response?</p>
+              <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
+              <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
+              <p class="muted small-text">Expecting a response?</p>
               <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
               <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
               <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
@@ -1014,11 +999,9 @@
                 <option value="custom">Custom date</option>
               </select>
               <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
-              <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
-              <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
               <div class="clarify-option-buttons">
-                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Delegated</button>
-                <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
+                <button id="clarifyTwoMinuteExpectNo" class="btn btn-primary" type="button">Done — mark complete</button>
+                <button id="clarifyTwoMinuteExpectYes" class="btn btn-light" type="button">Yes — create Delegated</button>
               </div>
             </div>
           </div>

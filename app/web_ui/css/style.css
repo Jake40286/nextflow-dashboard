@@ -929,8 +929,7 @@ body.is-admin .alerts {
   border-color: var(--line-strong);
 }
 
-.summary-card,
-.integrations-card {
+.summary-card {
   position: relative;
 }
 
@@ -1073,14 +1072,6 @@ body.is-admin .alerts {
 .multi-select-options input[type="checkbox"] {
   width: auto;
   margin: 0;
-}
-
-.integration-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: var(--space-2);
 }
 
 .markdown-card p {
@@ -2566,8 +2557,7 @@ body.is-admin .alerts {
 .report-details-list,
 .settings-list,
 .calendar-list,
-.checklist,
-.integration-list {
+.checklist {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -5100,6 +5090,16 @@ textarea:focus-visible,
   color: var(--text-muted);
   letter-spacing: 0;
   text-transform: none;
+}
+
+.feedback-resolve-all-btn {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  min-height: unset;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 .feedback-card {

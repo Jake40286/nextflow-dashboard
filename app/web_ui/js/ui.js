@@ -257,7 +257,6 @@ export class UIController {
       searchTasks,
       clearFilters,
       calendarDate,
-      integrationsCard,
       reportGrouping,
       reportYear,
       statsLookback,
@@ -469,12 +468,6 @@ export class UIController {
     });
     pickRandomTask?.addEventListener("click", () => {
       this.pickRandomTask(randomContext?.value || "all");
-    });
-
-    integrationsCard.querySelectorAll("[data-placeholder]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this.taskManager.notify("info", "Integration is coming soon. Stay tuned!");
-      });
     });
 
     manualSyncButton?.addEventListener("click", () => {
@@ -3835,7 +3828,10 @@ export class UIController {
     toggleBtn.setAttribute("aria-label", "Toggle list");
     toggleBtn.setAttribute("aria-expanded", "false");
     toggleBtn.textContent = "☰";
-    toggleBtn.addEventListener("click", () => {
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
       const willExpand = body.hidden;
       setExpanded(willExpand);
       if (willExpand && !readOnly) {
@@ -5205,12 +5201,14 @@ export class UIController {
 
   async handleClarifyConvertToProject() {
     if (!this.clarifyState.taskId) return;
-    const projectName = await this.showPrompt("New project name:");
+    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
+    const projectName = await this.showPrompt("New project name:", task?.title || "");
     if (!projectName || !projectName.trim()) {
       return;
     }
     const trimmedName = projectName.trim();
-    const project = this.taskManager.addProject(trimmedName);
+    const areaOfFocus = this.clarifyState.areaOfFocus || task?.areaOfFocus || "";
+    const project = this.taskManager.addProject(trimmedName, "", areaOfFocus ? { areaOfFocus } : {});
     if (project) {
       this.clarifyState.projectId = project.id;
       this.clarifyState.projectName = project.name;
@@ -5346,10 +5344,7 @@ export class UIController {
     if (followup) {
       followup.hidden = false;
     }
-    const responseInput = this.elements.clarifyTwoMinuteResponseInput;
-    if (responseInput) {
-      responseInput.focus();
-    }
+    this.elements.clarifyTwoMinuteClosureNotes?.focus();
   }
 
   resolveFollowupDate(choice = "24h", customValue = "") {
@@ -6517,7 +6512,10 @@ export class UIController {
     toggleBtn.setAttribute("aria-expanded", String(hasNotes));
     toggleBtn.classList.toggle("is-active", hasNotes);
     toggleBtn.textContent = "✎";
-    toggleBtn.addEventListener("click", () => {
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
       const willExpand = body.hidden;
       body.hidden = !willExpand;
       toggleBtn.setAttribute("aria-expanded", String(willExpand));
@@ -8750,7 +8748,6 @@ function mapElements() {
     topbarDueTodayBtn: byId("topbarDueTodayBtn"),
     topbarOverdueBtn: byId("topbarOverdueBtn"),
     topbarSettings: byId("topbarSettings"),
-    integrationsCard: document.querySelector(".integrations-card"),
     sidebar: document.querySelector(".sidebar"),
     sidebarToggle: document.querySelector(".sidebar-toggle"),
     contextSuggestions: document.getElementById("contextSuggestions"),

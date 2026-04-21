@@ -579,7 +579,39 @@ export default {
       labelEl.textContent = label;
       const badge = document.createElement("span");
       badge.className = "feedback-count-badge";
-      header.append(labelEl, badge);
+      const resolveAllBtn = document.createElement("button");
+      resolveAllBtn.type = "button";
+      resolveAllBtn.className = "btn btn-light btn-small feedback-resolve-all-btn";
+      resolveAllBtn.textContent = "Resolve All";
+      resolveAllBtn.hidden = true;
+      resolveAllBtn.addEventListener("click", async () => {
+        resolveAllBtn.disabled = true;
+        const toResolve = colItems[type].open.slice();
+        if (!toResolve.length) { resolveAllBtn.disabled = false; return; }
+        try {
+          await Promise.all(
+            toResolve.map((item) =>
+              fetch("/feedback/" + item.id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ resolved: true }),
+              }).then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status} for ${item.id}`); })
+            )
+          );
+          const { open, resolved } = colItems[type];
+          for (const item of toResolve) {
+            item.resolved = true;
+            const idx = open.findIndex((i) => i.id === item.id);
+            if (idx !== -1) { open.splice(idx, 1); resolved.push(item); }
+          }
+          renderColFns[type]?.();
+          this.showToast("info", `Resolved ${toResolve.length} item${toResolve.length === 1 ? "" : "s"}.`);
+        } catch {
+          resolveAllBtn.disabled = false;
+          this.showToast("error", "Could not resolve all items.");
+        }
+      });
+      header.append(labelEl, badge, resolveAllBtn);
       col.append(header);
 
       // Cards container
@@ -707,6 +739,8 @@ export default {
           ? open.filter((item) => extractTags(item.description).tags.some((t) => activeTags.has(t)))
           : open;
         badge.textContent = filteredOpen.length;
+        resolveAllBtn.hidden = open.length === 0;
+        resolveAllBtn.disabled = false;
         cardsEl.innerHTML = "";
         filteredOpen.forEach((item) => cardsEl.append(buildCard(item, type, renderCol)));
         if (resolved.length) {

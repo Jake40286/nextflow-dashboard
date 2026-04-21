@@ -122,7 +122,26 @@
     </div>
 
     <main class="layout" id="dashboardLayout">
+      <nav class="summary-strip" aria-label="Dashboard sections">
+        <button type="button" class="summary-pill" role="tab" data-panel-target="inbox" data-status-target="inbox" aria-controls="panel-inbox" aria-selected="false" tabindex="-1">Inbox</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="next" data-status-target="next" aria-controls="panel-next" aria-selected="false" tabindex="-1">Next</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="kanban" data-status-target="doing" aria-controls="panel-kanban" aria-selected="false" tabindex="-1">Doing</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="my-day" aria-controls="panel-my-day" aria-selected="false" tabindex="-1">Today</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="kanban" aria-controls="panel-kanban" aria-selected="false" tabindex="-1">Board</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false" tabindex="-1">Waiting</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="someday" data-status-target="someday" aria-controls="panel-someday" aria-selected="false" tabindex="-1">Someday</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="projects" aria-controls="panel-projects" aria-selected="false" tabindex="-1">Projects</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1">Calendar</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="statistics" aria-controls="panel-statistics" aria-selected="false" tabindex="-1">Stats</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false" tabindex="-1">All</button>
+      </nav>
+
       <aside class="sidebar" aria-label="Summary and filters">
+        <button class="sidebar-toggle" type="button" aria-expanded="false">
+          Summary
+          <span class="sidebar-toggle-icon" aria-hidden="true">▾</span>
+        </button>
         <section class="card summary-card" aria-labelledby="summaryHeading">
           <header class="card-header">
             <h2 id="summaryHeading">Summary</h2>
@@ -183,27 +202,11 @@
           </div>
         </section>
 
-        <section class="card integrations-card" aria-labelledby="integrationsHeading">
-          <header class="card-header">
-            <h2 id="integrationsHeading">Integrations</h2>
-          </header>
-          <ul class="integration-list">
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="email">Email capture <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="calendar">Calendar sync <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="notes">Notes linking <span class="badge">Soon</span></button>
-            </li>
-          </ul>
-        </section>
-
       </aside>
 
-    <section class="workspace" aria-label="Workflow">
       <div id="areaScopeRow" class="area-scope-row" role="group" aria-label="Area of focus scope"></div>
+
+    <section class="workspace" aria-label="Workflow">
       <header class="workspace-toolbar">
         <div class="workspace-toolbar-head">
           <div class="workspace-current" aria-live="polite">
@@ -984,7 +987,9 @@
               <button id="clarifyTwoMinuteYes" class="btn btn-light clarify-choice" type="button">Yes — do it now</button>
             </div>
             <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
-              <p class="muted small-text">Done! Expecting a response?</p>
+              <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
+              <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
+              <p class="muted small-text">Expecting a response?</p>
               <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
               <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
               <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
@@ -994,11 +999,9 @@
                 <option value="custom">Custom date</option>
               </select>
               <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
-              <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
-              <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
               <div class="clarify-option-buttons">
-                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Delegated</button>
-                <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
+                <button id="clarifyTwoMinuteExpectNo" class="btn btn-primary" type="button">Done — mark complete</button>
+                <button id="clarifyTwoMinuteExpectYes" class="btn btn-light" type="button">Yes — create Delegated</button>
               </div>
             </div>
           </div>

@@ -1803,7 +1803,7 @@ export class TaskManager extends EventTarget {
     const previousFeatureFlags = this.getFeatureFlags();
     const previousContextOptions = this.getContexts();
     const previousPeopleOptions = this.getPeopleTags();
-    this.load();
+    this.loadFromLocal();
     if (!this.state.settings) {
       this.state.settings = {
         theme: previousTheme,

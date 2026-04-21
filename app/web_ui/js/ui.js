@@ -30,6 +30,7 @@ const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
 const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
 const KANBAN_GROUP_BY_KEY = "nextflow-kanban-group-by";
 const ACTIVE_AREA_KEY = "nextflow-active-area";
+const SIDEBAR_EXPANDED_KEY = "nextflow-sidebar-expanded";
 
 // One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
 (function migrateUiStorageKeys() {
@@ -242,6 +243,7 @@ export class UIController {
       if (feedbackWidget) feedbackWidget.hidden = false;
       this.setupFeedbackWidget();
     }
+    this.setupSidebarToggle();
     this.setupMultiEditBar();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
@@ -255,7 +257,6 @@ export class UIController {
       searchTasks,
       clearFilters,
       calendarDate,
-      integrationsCard,
       reportGrouping,
       reportYear,
       statsLookback,
@@ -467,12 +468,6 @@ export class UIController {
     });
     pickRandomTask?.addEventListener("click", () => {
       this.pickRandomTask(randomContext?.value || "all");
-    });
-
-    integrationsCard.querySelectorAll("[data-placeholder]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this.taskManager.notify("info", "Integration is coming soon. Stay tuned!");
-      });
     });
 
     manualSyncButton?.addEventListener("click", () => {
@@ -3449,6 +3444,19 @@ export class UIController {
     this.clearSelection();
   }
 
+  setupSidebarToggle() {
+    const { sidebar, sidebarToggle } = this.elements;
+    if (!sidebar || !sidebarToggle) return;
+    const isCollapsed = localStorage.getItem(SIDEBAR_EXPANDED_KEY) !== "true";
+    sidebar.classList.toggle("sidebar-collapsed", isCollapsed);
+    sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+    sidebarToggle.addEventListener("click", () => {
+      const collapsed = sidebar.classList.toggle("sidebar-collapsed");
+      sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+      try { localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(!collapsed)); } catch (_) {}
+    });
+  }
+
   setupMultiEditBar() {
     const { multiEditStatus, multiEditProject, multiEditArea, multiEditClear, multiEditBar } = this.elements;
     if (!multiEditBar) return;
@@ -3820,7 +3828,10 @@ export class UIController {
     toggleBtn.setAttribute("aria-label", "Toggle list");
     toggleBtn.setAttribute("aria-expanded", "false");
     toggleBtn.textContent = "☰";
-    toggleBtn.addEventListener("click", () => {
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
       const willExpand = body.hidden;
       setExpanded(willExpand);
       if (willExpand && !readOnly) {
@@ -5190,12 +5201,14 @@ export class UIController {
 
   async handleClarifyConvertToProject() {
     if (!this.clarifyState.taskId) return;
-    const projectName = await this.showPrompt("New project name:");
+    const task = this.taskManager.getTaskById(this.clarifyState.taskId);
+    const projectName = await this.showPrompt("New project name:", task?.title || "");
     if (!projectName || !projectName.trim()) {
       return;
     }
     const trimmedName = projectName.trim();
-    const project = this.taskManager.addProject(trimmedName);
+    const areaOfFocus = this.clarifyState.areaOfFocus || task?.areaOfFocus || "";
+    const project = this.taskManager.addProject(trimmedName, "", areaOfFocus ? { areaOfFocus } : {});
     if (project) {
       this.clarifyState.projectId = project.id;
       this.clarifyState.projectName = project.name;
@@ -5331,10 +5344,7 @@ export class UIController {
     if (followup) {
       followup.hidden = false;
     }
-    const responseInput = this.elements.clarifyTwoMinuteResponseInput;
-    if (responseInput) {
-      responseInput.focus();
-    }
+    this.elements.clarifyTwoMinuteClosureNotes?.focus();
   }
 
   resolveFollowupDate(choice = "24h", customValue = "") {
@@ -6502,7 +6512,10 @@ export class UIController {
     toggleBtn.setAttribute("aria-expanded", String(hasNotes));
     toggleBtn.classList.toggle("is-active", hasNotes);
     toggleBtn.textContent = "✎";
-    toggleBtn.addEventListener("click", () => {
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
       const willExpand = body.hidden;
       body.hidden = !willExpand;
       toggleBtn.setAttribute("aria-expanded", String(willExpand));
@@ -8395,6 +8408,10 @@ export class UIController {
   }
 }
 
+UIController.prototype.renderTaskList = renderTaskList;
+UIController.prototype.populateAreaSelect = populateAreaSelect;
+UIController.prototype.enableDrag = enableDrag;
+
 Object.assign(UIController.prototype,
   InboxPanel,
   MyDayPanel,
@@ -8731,7 +8748,8 @@ function mapElements() {
     topbarDueTodayBtn: byId("topbarDueTodayBtn"),
     topbarOverdueBtn: byId("topbarOverdueBtn"),
     topbarSettings: byId("topbarSettings"),
-    integrationsCard: document.querySelector(".integrations-card"),
+    sidebar: document.querySelector(".sidebar"),
+    sidebarToggle: document.querySelector(".sidebar-toggle"),
     contextSuggestions: document.getElementById("contextSuggestions"),
     effortSuggestions: document.getElementById("effortSuggestions"),
     timeSuggestions: document.getElementById("timeSuggestions"),

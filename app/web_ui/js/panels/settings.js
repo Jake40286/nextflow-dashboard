@@ -1,4 +1,5 @@
 // Settings panel render methods — mixed into UIController.prototype by ui.js
+import { THEME_OPTIONS, STATUS_LABELS, formatFriendlyDate } from "../data.js";
 export default {
   renderSettings() {
     try {
@@ -686,6 +687,8 @@ export default {
       deleteButton.dataset.settingsAction = "delete";
       deleteButton.dataset.settingsType = type;
       deleteButton.dataset.settingsValue = value;
+
+      actions.append(renameButton, deleteButton);
 
       // Area assignment chips — rendered inline between label and actions
       // Show chips for all contexts/people items when areas exist, even if the

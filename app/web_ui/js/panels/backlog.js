@@ -582,33 +582,30 @@ export default {
       const resolveAllBtn = document.createElement("button");
       resolveAllBtn.type = "button";
       resolveAllBtn.className = "btn btn-light btn-small feedback-resolve-all-btn";
-      resolveAllBtn.textContent = "Resolve All";
+      resolveAllBtn.textContent = "Confirm Resolved";
       resolveAllBtn.hidden = true;
       resolveAllBtn.addEventListener("click", async () => {
         resolveAllBtn.disabled = true;
-        const toResolve = colItems[type].open.slice();
-        if (!toResolve.length) { resolveAllBtn.disabled = false; return; }
+        const toConfirm = colItems[type].resolved.filter((i) => !i.confirmedResolved);
+        if (!toConfirm.length) { resolveAllBtn.disabled = false; return; }
         try {
           await Promise.all(
-            toResolve.map((item) =>
+            toConfirm.map((item) =>
               fetch("/feedback/" + item.id, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ resolved: true }),
+                body: JSON.stringify({ confirmedResolved: true }),
               }).then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status} for ${item.id}`); })
             )
           );
-          const { open, resolved } = colItems[type];
-          for (const item of toResolve) {
-            item.resolved = true;
-            const idx = open.findIndex((i) => i.id === item.id);
-            if (idx !== -1) { open.splice(idx, 1); resolved.push(item); }
+          for (const item of toConfirm) {
+            item.confirmedResolved = true;
           }
           renderColFns[type]?.();
-          this.showToast("info", `Resolved ${toResolve.length} item${toResolve.length === 1 ? "" : "s"}.`);
+          this.showToast("info", `Confirmed ${toConfirm.length} item${toConfirm.length === 1 ? "" : "s"}.`);
         } catch {
           resolveAllBtn.disabled = false;
-          this.showToast("error", "Could not resolve all items.");
+          this.showToast("error", "Could not confirm resolved items.");
         }
       });
       header.append(labelEl, badge, resolveAllBtn);
@@ -739,7 +736,7 @@ export default {
           ? open.filter((item) => extractTags(item.description).tags.some((t) => activeTags.has(t)))
           : open;
         badge.textContent = filteredOpen.length;
-        resolveAllBtn.hidden = open.length === 0;
+        resolveAllBtn.hidden = !resolved.some((i) => !i.confirmedResolved);
         resolveAllBtn.disabled = false;
         cardsEl.innerHTML = "";
         filteredOpen.forEach((item) => cardsEl.append(buildCard(item, type, renderCol)));

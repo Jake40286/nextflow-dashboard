@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git workflow (REQUIRED for all agents)
+
+**Never commit directly to `main`.** Always create a feature branch first:
+
+```bash
+git checkout -b feature/<short-description>
+# make changes, then:
+git add <files>
+git commit -m "..."
+git push -u origin HEAD
+gh pr create --title "..." --body "..."
+```
+
+Direct pushes to `main` are blocked by a pre-push hook and GitHub branch protection.
+
 ## Commands
 
 ```bash

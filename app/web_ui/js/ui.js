@@ -4427,11 +4427,7 @@ export class UIController {
       clarifyTwoMinuteYes,
       clarifyTwoMinuteNo,
       clarifyTwoMinuteFollowup,
-      clarifyFollowupTiming,
-      clarifyFollowupCustomDate,
-      clarifyTwoMinuteExpectYes,
       clarifyTwoMinuteExpectNo,
-      clarifyTwoMinuteResponseInput,
       clarifyWhoSelf,
       clarifyWhoDelegate,
       clarifyDelegateNameInput,
@@ -4522,9 +4518,7 @@ export class UIController {
       const normalFields = document.getElementById("clarifyNormalActionFields");
       if (normalFields) normalFields.hidden = true;
     });
-    clarifyTwoMinuteExpectYes?.addEventListener("click", () => this.handleTwoMinuteFollowup(true));
-    clarifyTwoMinuteExpectNo?.addEventListener("click", () => this.handleTwoMinuteFollowup(false));
-    clarifyFollowupTiming?.addEventListener("change", () => this.toggleCustomFollowupDate());
+    clarifyTwoMinuteExpectNo?.addEventListener("click", () => this.handleTwoMinuteFollowup());
 
     // Who section
     clarifyWhoSelf?.addEventListener("click", () => {
@@ -4994,9 +4988,6 @@ export class UIController {
     if (this.elements.clarifyDelegateNameInput) {
       this.elements.clarifyDelegateNameInput.value = "";
     }
-    if (this.elements.clarifyTwoMinuteResponseInput) {
-      this.elements.clarifyTwoMinuteResponseInput.value = "";
-    }
     if (this.elements.clarifyTwoMinuteClosureNotes) {
       this.elements.clarifyTwoMinuteClosureNotes.value = "";
     }
@@ -5340,7 +5331,6 @@ export class UIController {
   handleClarifyTwoMinuteYes() {
     if (!this.clarifyState.taskId) return;
     const followup = this.elements.clarifyTwoMinuteFollowup;
-    this.resetFollowupTiming();
     if (followup) {
       followup.hidden = false;
     }
@@ -5361,55 +5351,11 @@ export class UIController {
     return null;
   }
 
-  toggleCustomFollowupDate() {
-    const timingSelect = this.elements.clarifyFollowupTiming;
-    const customInput = this.elements.clarifyFollowupCustomDate;
-    const isCustom = timingSelect?.value === "custom";
-    if (!customInput) return;
-    customInput.hidden = !isCustom;
-    if (!isCustom) {
-      customInput.value = "";
-    } else {
-      customInput.focus();
-    }
-  }
-
-  resetFollowupTiming() {
-    const timingSelect = this.elements.clarifyFollowupTiming;
-    const customInput = this.elements.clarifyFollowupCustomDate;
-    if (timingSelect) {
-      timingSelect.value = "24h";
-    }
-    if (customInput) {
-      customInput.value = "";
-      customInput.hidden = true;
-    }
-  }
-
-  handleTwoMinuteFollowup(expectResponse) {
+  handleTwoMinuteFollowup() {
     if (!this.clarifyState.taskId) return;
     const task = this.taskManager.getTaskById(this.clarifyState.taskId);
     if (!task) {
       this.closeClarifyModal();
-      return;
-    }
-    if (expectResponse) {
-      const choice = this.elements.clarifyFollowupTiming?.value || "24h";
-      const customValue = this.elements.clarifyFollowupCustomDate?.value || "";
-      const followUpDueDate = this.resolveFollowupDate(choice, customValue);
-      if (!followUpDueDate) {
-        this.taskManager.notify("warn", "Choose a follow-up timeframe.");
-        return;
-      }
-      this.clarifyState.expectResponse = true;
-      this.clarifyState.statusTarget = STATUS.WAITING;
-      this.clarifyState.waitingFor =
-        this.elements.clarifyTwoMinuteResponseInput?.value?.trim() || "Pending response";
-      this.clarifyState.dueType = "followUp";
-      this.clarifyState.followUpDate = followUpDueDate;
-      this.clarifyState.dueDate = "";
-      this.clarifyState.calendarDate = "";
-      this.finalizeClarifyRouting();
       return;
     }
     const closureNotes = this.elements.clarifyTwoMinuteClosureNotes?.value?.trim() || task.closureNotes;
@@ -8779,9 +8725,6 @@ function mapElements() {
     clarifyTwoMinuteYes: byId("clarifyTwoMinuteYes"),
     clarifyTwoMinuteNo: byId("clarifyTwoMinuteNo"),
     clarifyTwoMinuteFollowup: byId("clarifyTwoMinuteFollowup"),
-    clarifyFollowupTiming: byId("clarifyFollowupTiming"),
-    clarifyFollowupCustomDate: byId("clarifyFollowupCustomDate"),
-    clarifyTwoMinuteExpectYes: byId("clarifyTwoMinuteExpectYes"),
     clarifyTwoMinuteExpectNo: byId("clarifyTwoMinuteExpectNo"),
     nextGroupBySelect: byId("nextGroupBySelect"),
     nextGroupByLabel: byId("nextGroupByLabel"),
@@ -8791,7 +8734,6 @@ function mapElements() {
     kanbanGroupByLabel: byId("kanbanGroupByLabel"),
     kanbanSubheading: byId("kanbanSubheading"),
     nextPanelSubheading: byId("nextPanelSubheading"),
-    clarifyTwoMinuteResponseInput: byId("clarifyTwoMinuteResponseInput"),
     clarifyTwoMinuteClosureNotes: byId("clarifyTwoMinuteClosureNotes"),
     clarifyWhoSelf: byId("clarifyWhoSelf"),
     clarifyWhoDelegate: byId("clarifyWhoDelegate"),

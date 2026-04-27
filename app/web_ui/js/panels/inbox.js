@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/inbox.js
 // Inbox panel render methods — mixed into UIController.prototype by ui.js
+import { STATUS } from "../data.js";
 export default {
   renderInbox() {
     const tasks = this.sortTasks(this.taskManager.getTasks({
@@ -16,7 +17,7 @@ export default {
       this.attachDropzone(container, STATUS.INBOX);
       return;
     }
-    renderTaskList(container, tasks, (task) => this.createTaskCard(task));
+    this.renderTaskList(container, tasks, (task) => this.createTaskCard(task));
     this.attachDropzone(container, STATUS.INBOX);
   },
 };

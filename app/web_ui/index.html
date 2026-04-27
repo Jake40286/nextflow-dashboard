@@ -122,7 +122,26 @@
     </div>
 
     <main class="layout" id="dashboardLayout">
+      <nav class="summary-strip" aria-label="Dashboard sections">
+        <button type="button" class="summary-pill" role="tab" data-panel-target="inbox" data-status-target="inbox" aria-controls="panel-inbox" aria-selected="false" tabindex="-1">Inbox</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="next" data-status-target="next" aria-controls="panel-next" aria-selected="false" tabindex="-1">Next</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="kanban" data-status-target="doing" aria-controls="panel-kanban" aria-selected="false" tabindex="-1">Doing</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="my-day" aria-controls="panel-my-day" aria-selected="false" tabindex="-1">Today</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="kanban" aria-controls="panel-kanban" aria-selected="false" tabindex="-1">Board</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="waiting" data-status-target="waiting" aria-controls="panel-waiting" aria-selected="false" tabindex="-1">Waiting</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="someday" data-status-target="someday" aria-controls="panel-someday" aria-selected="false" tabindex="-1">Someday</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="projects" aria-controls="panel-projects" aria-selected="false" tabindex="-1">Projects</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1">Calendar</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="statistics" aria-controls="panel-statistics" aria-selected="false" tabindex="-1">Stats</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false" tabindex="-1">All</button>
+      </nav>
+
       <aside class="sidebar" aria-label="Summary and filters">
+        <button class="sidebar-toggle" type="button" aria-expanded="false">
+          Summary
+          <span class="sidebar-toggle-icon" aria-hidden="true">▾</span>
+        </button>
         <section class="card summary-card" aria-labelledby="summaryHeading">
           <header class="card-header">
             <h2 id="summaryHeading">Summary</h2>
@@ -202,8 +221,9 @@
 
       </aside>
 
-    <section class="workspace" aria-label="Workflow">
       <div id="areaScopeRow" class="area-scope-row" role="group" aria-label="Area of focus scope"></div>
+
+    <section class="workspace" aria-label="Workflow">
       <header class="workspace-toolbar">
         <div class="workspace-toolbar-head">
           <div class="workspace-current" aria-live="polite">
@@ -286,6 +306,12 @@
 
       <section class="workspace-view is-active" data-panel="inbox" role="tabpanel" aria-labelledby="summary-tab-inbox" id="panel-inbox">
         <div class="panel-content">
+          <div class="panel-toolbar">
+            <button id="processInboxBtn" class="btn btn-primary" type="button" hidden>
+              Process Inbox <span id="processInboxCount" class="meta-value">0</span>
+            </button>
+            <span class="muted small-text panel-toolbar-hint">Press <kbd>P</kbd> to start</span>
+          </div>
           <div class="panel-body" role="list" data-dropzone="inbox"></div>
         </div>
       </section>
@@ -933,6 +959,7 @@
     <div class="modal-dialog" role="document">
       <header class="modal-header">
         <h2 id="clarifyModalTitle">Process inbox item</h2>
+        <span id="clarifyProgress" class="clarify-progress muted small-text" hidden></span>
         <button id="closeClarifyModal" class="btn btn-light" type="button" aria-label="Close clarify dialog">Close</button>
       </header>
       <div class="modal-body clarify-modal-body">

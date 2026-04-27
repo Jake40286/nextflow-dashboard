@@ -30,6 +30,7 @@ const NEXT_GROUP_BY_KEY = "nextflow-next-group-by";
 const NEXT_GROUP_LIMIT_KEY = "nextflow-next-group-limit";
 const KANBAN_GROUP_BY_KEY = "nextflow-kanban-group-by";
 const ACTIVE_AREA_KEY = "nextflow-active-area";
+const SIDEBAR_EXPANDED_KEY = "nextflow-sidebar-expanded";
 
 // One-time migration from gtd-dashboard-* preference keys to nextflow-* keys.
 (function migrateUiStorageKeys() {
@@ -170,6 +171,7 @@ export class UIController {
     this.projectCache = null;
     this.projectLookup = new Map();
     this.clarifyState = { taskId: null, actionable: null, currentStep: "describe", actionPlanInitialized: false };
+    this.processSession = null;
     this.handleClarifyKeydown = null;
     this.lastClarifyFocus = null;
     this.clarifyDestinationButtons = [];
@@ -229,6 +231,7 @@ export class UIController {
     this.setupProjectFlyout();
     this.setupBackNavigation();
     this.bindClarifyModal();
+    this.elements.processInboxBtn?.addEventListener("click", () => this.startProcessSession());
     this.bindProjectCompletionModal();
     this.bindProjectMergeModal();
     this.bindTemplateModals();
@@ -242,6 +245,7 @@ export class UIController {
       if (feedbackWidget) feedbackWidget.hidden = false;
       this.setupFeedbackWidget();
     }
+    this.setupSidebarToggle();
     this.setupMultiEditBar();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
@@ -3122,6 +3126,12 @@ export class UIController {
     if (this.elements.overdueCount) {
       this.elements.overdueCount.textContent = summary.overdue;
     }
+    if (this.elements.processInboxBtn) {
+      this.elements.processInboxBtn.hidden = summary.inbox <= 0;
+    }
+    if (this.elements.processInboxCount) {
+      this.elements.processInboxCount.textContent = summary.inbox;
+    }
     this.updateActivePanelMeta();
   }
 
@@ -3447,6 +3457,19 @@ export class UIController {
     });
     this.taskManager.notify("info", `Updated ${ids.length} task${ids.length === 1 ? "" : "s"}.`);
     this.clearSelection();
+  }
+
+  setupSidebarToggle() {
+    const { sidebar, sidebarToggle } = this.elements;
+    if (!sidebar || !sidebarToggle) return;
+    const isCollapsed = localStorage.getItem(SIDEBAR_EXPANDED_KEY) !== "true";
+    sidebar.classList.toggle("sidebar-collapsed", isCollapsed);
+    sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+    sidebarToggle.addEventListener("click", () => {
+      const collapsed = sidebar.classList.toggle("sidebar-collapsed");
+      sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+      try { localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(!collapsed)); } catch (_) {}
+    });
   }
 
   setupMultiEditBar() {
@@ -4784,6 +4807,102 @@ export class UIController {
     });
   }
 
+  _completeClarifyStep() {
+    this._clarifyCompleting = true;
+    this._clearClarifyDraft(this.clarifyState.taskId);
+    if (this.processSession) {
+      this.advanceProcessSession();
+    } else {
+      this.closeClarifyModal();
+      this.setActivePanel("inbox");
+    }
+  }
+
+  startProcessSession() {
+    const queue = this.taskManager.getInboxQueue();
+    if (!queue.length) {
+      this.taskManager.notify("info", "Inbox is already clear.");
+      return;
+    }
+    this.processSession = {
+      queue,
+      cursor: 0,
+      startedAt: Date.now(),
+      completedIds: new Set(),
+    };
+    this.setActivePanel("inbox");
+    this.openClarifyModal(queue[0]);
+  }
+
+  advanceProcessSession() {
+    const session = this.processSession;
+    if (!session) return;
+    if (this.clarifyState.taskId) {
+      session.completedIds.add(this.clarifyState.taskId);
+    }
+    session.cursor += 1;
+    while (session.cursor < session.queue.length) {
+      const nextId = session.queue[session.cursor];
+      const task = this.taskManager.getTaskById(nextId);
+      if (task && !task.completedAt && task.status === STATUS.INBOX) {
+        this.openClarifyModal(nextId);
+        return;
+      }
+      session.cursor += 1;
+    }
+    this.showInboxZeroCelebration();
+  }
+
+  endProcessSession() {
+    this.processSession = null;
+    this._updateClarifyProgress();
+  }
+
+  _updateClarifyProgress() {
+    const el = this.elements.clarifyProgress;
+    if (!el) return;
+    const session = this.processSession;
+    if (!session) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = `Item ${session.cursor + 1} of ${session.queue.length}`;
+  }
+
+  showInboxZeroCelebration() {
+    const modal = this.elements.clarifyModal;
+    const session = this.processSession;
+    this.processSession = null;
+    this._updateClarifyProgress();
+    if (!modal) {
+      this.taskManager.notify("info", "Inbox cleared.");
+      return;
+    }
+    const body = modal.querySelector(".modal-body");
+    if (!body) {
+      this.closeClarifyModal();
+      return;
+    }
+    const count = session ? session.completedIds.size : 0;
+    body.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "inbox-zero clarify-celebration";
+    card.innerHTML = `
+      <strong>✓ Inbox cleared</strong>
+      <span class="muted small-text">${count} item${count === 1 ? "" : "s"} processed.</span>
+      <button type="button" class="btn btn-primary" id="clarifyCelebrationClose">Close</button>
+    `;
+    body.append(card);
+    card.querySelector("#clarifyCelebrationClose")?.addEventListener("click", () => {
+      this.closeClarifyModal();
+    });
+    if (!modal.classList.contains("is-open")) {
+      this.setClarifyModalOpen(true);
+    }
+  }
+
   openClarifyModal(taskId) {
     const modal = this.elements.clarifyModal;
     if (!modal) {
@@ -4845,6 +4964,7 @@ export class UIController {
       document.getElementById("clarifyActionSingle")?.classList.remove("is-selected");
     }
 
+    this._updateClarifyProgress();
     this.setClarifyModalOpen(true);
   }
 
@@ -4924,6 +5044,9 @@ export class UIController {
   closeClarifyModal({ fromPopstate = false } = {}) {
     const wasOpen = this.elements.clarifyModal?.classList.contains("is-open");
     this.setClarifyModalOpen(false);
+    if (this.processSession) {
+      this.endProcessSession();
+    }
     if (wasOpen && !fromPopstate && history.state?.nextflowLayer === "clarify") {
       this._historyNavPending = true;
       history.back();
@@ -5173,10 +5296,7 @@ export class UIController {
       this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
       this.taskManager.notify("info", "Moved to Backburner.");
     }
-    this._clarifyCompleting = true;
-    this._clearClarifyDraft(this.clarifyState.taskId);
-    this.closeClarifyModal();
-    this.setActivePanel("inbox");
+    this._completeClarifyStep();
   }
 
   handleClarifySingleAction() {
@@ -5405,10 +5525,7 @@ export class UIController {
     const closureNotes = this.elements.clarifyTwoMinuteClosureNotes?.value?.trim() || task.closureNotes;
     this.taskManager.completeTask(task.id, { archive: "reference", closureNotes });
     this.taskManager.notify("info", "Completed in under two minutes.");
-    this._clarifyCompleting = true;
-    this._clearClarifyDraft(this.clarifyState.taskId);
-    this.closeClarifyModal();
-    this.setActivePanel("inbox");
+    this._completeClarifyStep();
   }
 
   handleClarifyDelegation(name) {
@@ -5507,10 +5624,7 @@ export class UIController {
       ? `Routed to ${destinations.join(" + ")}.`
       : `Routed to ${destinations[0] || "Pending Tasks"}.`;
     this.taskManager.notify("info", routeMessage);
-    this._clarifyCompleting = true;
-    this._clearClarifyDraft(this.clarifyState.taskId);
-    this.closeClarifyModal();
-    this.setActivePanel("inbox");
+    this._completeClarifyStep();
   }
 
   setClarifyFinalMessage(updates) {
@@ -8395,6 +8509,10 @@ export class UIController {
   }
 }
 
+UIController.prototype.renderTaskList = renderTaskList;
+UIController.prototype.populateAreaSelect = populateAreaSelect;
+UIController.prototype.enableDrag = enableDrag;
+
 Object.assign(UIController.prototype,
   InboxPanel,
   MyDayPanel,
@@ -8678,6 +8796,9 @@ function mapElements() {
     activePanelHeading: byId("activePanelHeading"),
     activePanelCount: byId("activePanelCount"),
     inboxList: document.querySelector('.panel-body[data-dropzone="inbox"]'),
+    processInboxBtn: byId("processInboxBtn"),
+    processInboxCount: byId("processInboxCount"),
+    clarifyProgress: byId("clarifyProgress"),
     myDayList: byId("myDayList"),
     contextBoard: document.querySelector("[data-context-board]"),
     kanbanBoard: document.querySelector("[data-kanban-board]"),
@@ -8732,6 +8853,8 @@ function mapElements() {
     topbarOverdueBtn: byId("topbarOverdueBtn"),
     topbarSettings: byId("topbarSettings"),
     integrationsCard: document.querySelector(".integrations-card"),
+    sidebar: document.querySelector(".sidebar"),
+    sidebarToggle: document.querySelector(".sidebar-toggle"),
     contextSuggestions: document.getElementById("contextSuggestions"),
     effortSuggestions: document.getElementById("effortSuggestions"),
     timeSuggestions: document.getElementById("timeSuggestions"),

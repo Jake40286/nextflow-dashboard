@@ -1803,7 +1803,7 @@ export class TaskManager extends EventTarget {
     const previousFeatureFlags = this.getFeatureFlags();
     const previousContextOptions = this.getContexts();
     const previousPeopleOptions = this.getPeopleTags();
-    this.load();
+    this.loadFromLocal();
     if (!this.state.settings) {
       this.state.settings = {
         theme: previousTheme,
@@ -2926,6 +2926,18 @@ export class TaskManager extends EventTarget {
     const actionDesc = to ? `Reassigned to "${to}".` : "References cleared.";
     this.notify("info", `Deleted area "${from}". ${actionDesc}`);
     return true;
+  }
+
+  getInboxQueue() {
+    return this.state.tasks
+      .filter((task) => !task.completedAt && task.status === STATUS.INBOX)
+      .slice()
+      .sort((a, b) => {
+        const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return aTs - bTs;
+      })
+      .map((task) => task.id);
   }
 
   getSummary() {

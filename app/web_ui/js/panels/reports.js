@@ -1,5 +1,6 @@
 // app/web_ui/js/panels/reports.js
 // Reports panel render methods — mixed into UIController.prototype by ui.js
+import { formatFriendlyDate } from "../data.js";
 export default {
   renderReports() {
     const { reportList, reportEmpty, reportGrouping, reportYear } = this.elements;

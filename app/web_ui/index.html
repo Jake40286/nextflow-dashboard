@@ -947,6 +947,12 @@
       </header>
       <div class="modal-body clarify-modal-body">
 
+        <!-- Description preview (read-only, clamped) — visible across all states -->
+        <div id="clarifyPreviewDescription" class="clarify-preview-description" hidden>
+          <div id="clarifyPreviewDescriptionText" class="clarify-preview-description-text is-clamped" aria-label="Task description"></div>
+          <button type="button" id="clarifyPreviewDescriptionToggle" class="btn-link clarify-preview-description-toggle" hidden>Show more</button>
+        </div>
+
         <!-- Capture text + actionable question -->
         <div class="clarify-field" id="clarifyActionableQuestion">
           <p class="muted small-text">Item</p>
@@ -964,8 +970,7 @@
           <div class="clarify-summary-block">
             <label class="clarify-summary-label">Title</label>
             <div id="clarifyTitleSummary" class="clarify-summary-field" contenteditable="true" role="textbox" aria-label="Task title" spellcheck="true"></div>
-            <label class="clarify-summary-label">Description</label>
-            <div id="clarifyDescSummary" class="clarify-summary-field clarify-summary-desc" contenteditable="true" role="textbox" aria-label="Task description" spellcheck="true"></div>
+            <div id="clarifyDescSummary" class="clarify-summary-field clarify-summary-desc" contenteditable="true" role="textbox" aria-label="Task description" spellcheck="true" hidden></div>
           </div>
         </div>
 
@@ -1018,6 +1023,13 @@
 
             <!-- Project? -->
             <div class="clarify-field clarify-field-section clarify-segment" id="clarifyProjectSection" data-segment="project" hidden>
+              <div class="clarify-project-option">
+                <label for="clarifyAreaInput" class="clarify-question">Area of focus <span class="muted small-text">(required)</span></label>
+                <div class="area-select-group">
+                  <select id="clarifyAreaInput" required></select>
+                  <button type="button" class="btn btn-light btn-small" id="clarifyAreaNewBtn">+ New</button>
+                </div>
+              </div>
               <p class="clarify-question">Part of a project?</p>
               <div class="clarify-option-buttons">
                 <button id="clarifyActionSingle" class="btn btn-light clarify-choice is-selected" type="button">Single action</button>
@@ -1039,6 +1051,10 @@
               <p class="clarify-question">When?</p>
               <div class="clarify-project-option">
                 <label><input id="clarifyDateOptionNone" type="radio" name="clarifyDateOption" value="none" checked /> No date</label>
+              </div>
+              <div class="clarify-project-option">
+                <label><input id="clarifyDateOptionMyDay" type="radio" name="clarifyDateOption" value="myDay" /> Today (My Day)</label>
+                <span class="muted small-text clarify-date-hint">On your list for today</span>
               </div>
               <div class="clarify-project-option">
                 <label><input id="clarifyDateOptionSpecific" type="radio" name="clarifyDateOption" value="specific" /> Specific date / time</label>
@@ -1083,13 +1099,6 @@
             <div class="clarify-field clarify-field-section clarify-segment" id="clarifyDetailsSection" data-segment="details" hidden>
               <p class="clarify-question">Details</p>
               <div class="clarify-project-option">
-                <label for="clarifyAreaInput">Area of focus</label>
-                <div class="area-select-group">
-                  <select id="clarifyAreaInput"></select>
-                  <button type="button" class="btn btn-light btn-small" id="clarifyAreaNewBtn">+ New</button>
-                </div>
-              </div>
-              <div class="clarify-project-option">
                 <label>Physical Context</label>
                 <div class="clarify-context-control">
                   <div id="clarifyContextList" class="clarify-context-list"></div>
@@ -1129,6 +1138,7 @@
 
         <!-- Sticky footer with Route button -->
         <footer class="clarify-footer" id="clarifyFooter" hidden>
+          <button id="clarifyAddDetailsLink" class="btn-link" type="button">+ Add details (optional)</button>
           <button id="clarifyDoneButton" class="btn btn-primary" type="button">Route task →</button>
         </footer>
 

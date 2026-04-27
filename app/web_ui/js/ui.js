@@ -420,6 +420,15 @@ export class UIController {
       }
     });
 
+    this.elements.clarifyPreviewDescriptionToggle?.addEventListener("click", () => {
+      const body = this.elements.clarifyPreviewDescriptionText;
+      const toggle = this.elements.clarifyPreviewDescriptionToggle;
+      if (!body || !toggle) return;
+      const expanded = body.classList.toggle("is-expanded");
+      body.classList.toggle("is-clamped", !expanded);
+      toggle.textContent = expanded ? "Show less" : "Show more";
+    });
+
     toggleMissingNextAction?.addEventListener("change", () => {
       this.showMissingNextOnly = toggleMissingNextAction.checked;
       this.renderProjects();
@@ -4582,6 +4591,8 @@ export class UIController {
       if (clarifyProjectPicker) clarifyProjectPicker.hidden = true;
       this.clarifyState.projectId = null;
       this.clarifyState.projectName = "";
+      this.clarifyState.singleActionChosen = true;
+      this._tryAdvanceFromProjectSegment();
     });
     clarifyActionAddExisting?.addEventListener("click", () => {
       selectChoice(projectChoices, clarifyActionAddExisting);
@@ -4615,6 +4626,7 @@ export class UIController {
       const row = document.getElementById("clarifyDelegateRow");
       if (row) row.hidden = true;
       this._applyDelegateBranchVisibility(false);
+      this.showClarifySegment("project");
     });
     clarifyWhoDelegate?.addEventListener("click", () => {
       selectChoice(whoChoices, clarifyWhoDelegate);
@@ -4643,6 +4655,8 @@ export class UIController {
       if (this.elements.clarifyProjectSelect) this.elements.clarifyProjectSelect.value = project.id;
       newProjectInput.value = "";
       this.taskManager.notify("info", `Created project "${project.name}".`);
+      this.clarifyState.singleActionChosen = false;
+      this._tryAdvanceFromProjectSegment();
     };
     newProjectInput?.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -4661,6 +4675,12 @@ export class UIController {
       this.clarifyState.waitingFor = clarifyDelegateNameInput.value.trim();
       this._showClarifyDelegateSuggestions(clarifyDelegateNameInput);
     });
+    clarifyDelegateNameInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && clarifyDelegateNameInput.value.trim()) {
+        event.preventDefault();
+        this.showClarifySegment("project");
+      }
+    });
     clarifyDelegateNameInput?.addEventListener("blur", () => {
       window.setTimeout(() => {
         const dropdown = document.getElementById("clarifyDelegateDropdown");
@@ -4670,6 +4690,7 @@ export class UIController {
 
     // Date radios — show/hide date inputs inline and sync state
     const clarifyDateOptionFollowUp = this.elements.clarifyDateOptionFollowUp;
+    const clarifyDateOptionMyDay = this.elements.clarifyDateOptionMyDay;
     const updateDateInputs = () => {
       const specificFields = document.getElementById("clarifySpecificDateFields");
       const dueDateFields = document.getElementById("clarifyDueDateFields");
@@ -4683,6 +4704,12 @@ export class UIController {
         this.clarifyState.dueType = "due";
       } else if (clarifyDateOptionFollowUp?.checked) {
         this.clarifyState.dueType = "followUp";
+      } else if (clarifyDateOptionMyDay?.checked) {
+        this.clarifyState.dueType = "myDay";
+        this.clarifyState.calendarDate = "";
+        this.clarifyState.calendarTime = "";
+        this.clarifyState.dueDate = "";
+        this.clarifyState.followUpDate = "";
       } else {
         this.clarifyState.dueType = "none";
         this.clarifyState.calendarDate = "";
@@ -4692,7 +4719,7 @@ export class UIController {
       }
       this._applyRecurrenceGate();
     };
-    [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone, clarifyDateOptionFollowUp].forEach((radio) => {
+    [clarifyDateOptionSpecific, clarifyDateOptionDue, clarifyDateOptionNone, clarifyDateOptionMyDay, clarifyDateOptionFollowUp].forEach((radio) => {
       radio?.addEventListener("change", updateDateInputs);
     });
     this.elements.clarifyFollowUpDateInput?.addEventListener("change", () => {
@@ -4711,6 +4738,10 @@ export class UIController {
       const id = clarifyProjectSelect.value;
       this.clarifyState.projectId = id && id !== "none" ? id : null;
       this.clarifyState.projectName = this.clarifyState.projectId ? (this.getProjectName(this.clarifyState.projectId) || "") : "";
+      if (this.clarifyState.projectId && this.clarifyState.activeSegment === "project") {
+        this.clarifyState.singleActionChosen = false;
+        this._tryAdvanceFromProjectSegment();
+      }
     });
 
     // Recurrence — enable/disable interval input and sync state
@@ -4734,6 +4765,9 @@ export class UIController {
     });
     this.elements.clarifyAreaInput?.addEventListener("change", () => {
       this.clarifyState.areaOfFocus = this.elements.clarifyAreaInput.value.trim() || "";
+      if (this.clarifyState.areaOfFocus && this.clarifyState.activeSegment === "project") {
+        this._tryAdvanceFromProjectSegment();
+      }
     });
 
     // Add context
@@ -4748,9 +4782,22 @@ export class UIController {
       clarifyPreviewText.addEventListener("blur", () => this.handleClarifyPreviewEdit(true));
     }
 
+    // Optional "Add details" link — jumps to Details segment
+    this.elements.clarifyAddDetailsLink?.addEventListener("click", () => {
+      this.showClarifySegment("details");
+    });
+
     // Route task — Done button
     const doneButton = document.getElementById("clarifyDoneButton");
     doneButton?.addEventListener("click", () => {
+      // Area of focus is required on the Action path
+      const aof = this.elements.clarifyAreaInput?.value.trim() || "";
+      if (!aof) {
+        this.taskManager.notify("warn", "Pick an area of focus before routing.");
+        this.showClarifySegment("project");
+        this.elements.clarifyAreaInput?.focus();
+        return;
+      }
       // Read project selection
       const projectId = clarifyProjectSelect?.value;
       if (
@@ -4885,6 +4932,9 @@ export class UIController {
       actionPlanInitialized: false,
       expectResponse: false,
       recurrenceRule: null,
+      areaOfFocus: "",
+      singleActionChosen: false,
+      hasReachedWhen: false,
     };
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
@@ -5169,6 +5219,7 @@ export class UIController {
       this.clarifyState.previewText = task.title || "";
       this.clarifyState.projectId = task.projectId || null;
       this.clarifyState.projectName = task.projectId ? (this.getProjectName(task.projectId) || "") : "";
+      this.clarifyState.singleActionChosen = false;
     }
 
     this.populateClarifyPreview(task);
@@ -5251,6 +5302,8 @@ export class UIController {
       }
       const dueDateFields = document.getElementById("clarifyDueDateFields");
       if (dueDateFields) dueDateFields.hidden = false;
+    } else if (s.dueType === "myDay" && this.elements.clarifyDateOptionMyDay) {
+      this.elements.clarifyDateOptionMyDay.checked = true;
     }
 
     // Restore project picker visibility if a project was chosen
@@ -5350,7 +5403,17 @@ export class UIController {
       btn.setAttribute("aria-selected", String(isActive));
     });
     this.clarifyState.activeSegment = name;
+    if (name === "when") this.clarifyState.hasReachedWhen = true;
+    this._updateClarifyAddDetailsLinkVisibility();
     this.renderClaritySummary();
+  }
+
+  _updateClarifyAddDetailsLinkVisibility() {
+    const link = this.elements.clarifyAddDetailsLink;
+    if (!link) return;
+    const isDelegate = this.clarifyState.whoChoice === "delegate";
+    const onWhen = this.clarifyState.activeSegment === "when";
+    link.hidden = isDelegate || !onWhen;
   }
 
   renderClaritySummary() {
@@ -5379,6 +5442,8 @@ export class UIController {
       parts.push(`due ${s.dueDate}`);
     } else if (s.dueType === "followUp" && s.followUpDate) {
       parts.push(`follow up ${s.followUpDate}`);
+    } else if (s.dueType === "myDay") {
+      parts.push("Today");
     }
     rail.textContent = parts.join(" · ");
   }
@@ -5397,6 +5462,7 @@ export class UIController {
     document.querySelectorAll(".clarify-preview").forEach((el) => {
       el.textContent = task.title || "(No title)";
     });
+    this._renderClarifyPreviewDescription(task?.description || "");
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
     }
@@ -5465,6 +5531,33 @@ export class UIController {
         const isActive = btn.dataset.clarifyStep === "time";
         btn.classList.toggle("is-active", isActive);
         btn.setAttribute("aria-selected", String(isActive));
+      });
+    }
+  }
+
+  _renderClarifyPreviewDescription(text) {
+    const wrap = this.elements.clarifyPreviewDescription;
+    const body = this.elements.clarifyPreviewDescriptionText;
+    const toggle = this.elements.clarifyPreviewDescriptionToggle;
+    if (!wrap || !body) return;
+    const value = (text || "").trim();
+    if (!value) {
+      wrap.hidden = true;
+      body.textContent = "";
+      body.classList.remove("is-clamped", "is-expanded");
+      if (toggle) toggle.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    body.textContent = value;
+    body.classList.remove("is-expanded");
+    body.classList.add("is-clamped");
+    if (toggle) {
+      toggle.textContent = "Show more";
+      requestAnimationFrame(() => {
+        const overflowing = body.scrollHeight - body.clientHeight > 1;
+        toggle.hidden = !overflowing;
+        if (!overflowing) body.classList.remove("is-clamped");
       });
     }
   }
@@ -5639,6 +5732,18 @@ export class UIController {
     this._completeClarifyStep(destination === "trash" ? "deleted" : "deferred");
   }
 
+  _tryAdvanceFromProjectSegment() {
+    if (this.clarifyState.hasReachedWhen) return;
+    const aof = this.elements.clarifyAreaInput?.value.trim();
+    const hasProjectChoice = this.clarifyState.singleActionChosen || !!this.clarifyState.projectId;
+    if (aof && hasProjectChoice) {
+      this.showClarifySegment("when");
+    } else if (!aof && hasProjectChoice) {
+      this.taskManager.notify("warn", "Pick an area of focus to continue.");
+      this.elements.clarifyAreaInput?.focus();
+    }
+  }
+
   handleClarifySingleAction() {
     if (!this.clarifyState.taskId) return;
     this.clarifyState.projectId = null;
@@ -5650,19 +5755,21 @@ export class UIController {
 
   _applyDelegateBranchVisibility(isDelegate) {
     const followUpRow = this.elements.clarifyFollowUpRow;
-    const detailsSection = this.elements.clarifyDetailsSection;
     if (followUpRow) followUpRow.hidden = !isDelegate;
-    if (detailsSection) detailsSection.hidden = !!isDelegate;
+    const detailsPill = this.elements.clarifyModal?.querySelector('[data-clarify-step="details"]');
+    if (detailsPill) detailsPill.hidden = !!isDelegate;
+    this._updateClarifyAddDetailsLinkVisibility();
+    const dateLabels = [
+      this.elements.clarifyDateOptionSpecific,
+      this.elements.clarifyDateOptionDue,
+      this.elements.clarifyDateOptionMyDay,
+    ].map((radio) => radio?.closest(".clarify-project-option"));
+    dateLabels.forEach((label) => { if (label) label.hidden = isDelegate; });
     if (isDelegate) {
-      // Hide specific/due rows in favor of follow-up
       const specificFields = document.getElementById("clarifySpecificDateFields");
       const dueDateFields = document.getElementById("clarifyDueDateFields");
       if (specificFields) specificFields.hidden = true;
       if (dueDateFields) dueDateFields.hidden = true;
-      const specificLabel = this.elements.clarifyDateOptionSpecific?.closest(".clarify-project-option");
-      const dueLabel = this.elements.clarifyDateOptionDue?.closest(".clarify-project-option");
-      if (specificLabel) specificLabel.hidden = true;
-      if (dueLabel) dueLabel.hidden = true;
       // Pre-select follow-up + default to today + 14 days
       if (this.elements.clarifyDateOptionFollowUp) {
         this.elements.clarifyDateOptionFollowUp.checked = true;
@@ -5677,11 +5784,6 @@ export class UIController {
       }
       if (this.elements.clarifyFollowUpFields) this.elements.clarifyFollowUpFields.hidden = false;
       this.clarifyState.dueType = "followUp";
-    } else {
-      const specificLabel = this.elements.clarifyDateOptionSpecific?.closest(".clarify-project-option");
-      const dueLabel = this.elements.clarifyDateOptionDue?.closest(".clarify-project-option");
-      if (specificLabel) specificLabel.hidden = false;
-      if (dueLabel) dueLabel.hidden = false;
     }
     this._applyRecurrenceGate();
   }
@@ -5955,6 +6057,7 @@ export class UIController {
       calendarDate: null,
       dueDate: null,
       followUpDate: null,
+      myDayDate: null,
       waitingFor: statusTarget === STATUS.WAITING ? this.clarifyState.waitingFor || task.waitingFor || null : null,
       status: statusTarget,
       recurrenceRule,
@@ -5967,6 +6070,10 @@ export class UIController {
       updates.dueDate = this.clarifyState.dueDate;
     } else if (this.clarifyState.dueType === "followUp" && this.clarifyState.followUpDate) {
       updates.followUpDate = this.clarifyState.followUpDate;
+    } else if (this.clarifyState.dueType === "myDay") {
+      const todayKey = this.getTodayDateKey();
+      updates.myDayDate = todayKey;
+      updates.calendarDate = todayKey;
     }
     const prevSnapshot = {};
     Object.keys(updates).forEach((key) => {
@@ -5992,6 +6099,7 @@ export class UIController {
     else if (updates.status === STATUS.DOING) primary = "Doing";
     else if (updates.status === STATUS.SOMEDAY) primary = "Later";
     else if (updates.status === STATUS.INBOX) primary = "Inbox";
+    else if (updates.myDayDate) primary = "My Day";
     else if (updates.calendarDate) primary = "Calendar";
     else if (updates.dueDate) primary = "Pending Tasks (due)";
     else primary = "Next";
@@ -9311,7 +9419,11 @@ function mapElements() {
     clarifyDateOptionSpecific: byId("clarifyDateOptionSpecific"),
     clarifyDateOptionDue: byId("clarifyDateOptionDue"),
     clarifyDateOptionNone: byId("clarifyDateOptionNone"),
+    clarifyDateOptionMyDay: byId("clarifyDateOptionMyDay"),
     clarifyDateOptionFollowUp: byId("clarifyDateOptionFollowUp"),
+    clarifyPreviewDescription: byId("clarifyPreviewDescription"),
+    clarifyPreviewDescriptionText: byId("clarifyPreviewDescriptionText"),
+    clarifyPreviewDescriptionToggle: byId("clarifyPreviewDescriptionToggle"),
     clarifyFollowUpRow: byId("clarifyFollowUpRow"),
     clarifyFollowUpFields: byId("clarifyFollowUpFields"),
     clarifyFollowUpDateInput: byId("clarifyFollowUpDateInput"),
@@ -9344,6 +9456,7 @@ function mapElements() {
     clarifyFinalMessage: byId("clarifyFinalMessage"),
     clarifyFinalReturn: byId("clarifyFinalReturn"),
     clarifyDoneButton: byId("clarifyDoneButton"),
+    clarifyAddDetailsLink: byId("clarifyAddDetailsLink"),
     closureModal: document.getElementById("closureModal"),
     closureBackdrop: document.querySelector("#closureModal .modal-backdrop"),
     closeClosureModal: byId("closeClosureModal"),

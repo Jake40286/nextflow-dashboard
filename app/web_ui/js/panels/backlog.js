@@ -4,6 +4,9 @@ export default {
   async renderBacklog() {
     const board = document.getElementById("feedbackBoard");
     if (!board) return;
+    // Abort any DnD listeners from a previous render so re-renders don't leak.
+    this._backlogDndAbort?.abort();
+    this._backlogDndAbort = new AbortController();
     board.innerHTML = '<p class="muted small-text" style="padding:var(--space-3)">Loading…</p>';
 
     let allItems;
@@ -94,6 +97,120 @@ export default {
     let dragType = null;
     const renderColFns = {};
 
+    // Board-level DnD delegation — one set of listeners regardless of card/column count.
+    // Aborted at the start of every renderBacklog() call so re-renders don't leak.
+    const dndSignal = this._backlogDndAbort.signal;
+    const clearIndicators = () => {
+      board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
+    };
+    board.addEventListener("dragstart", (e) => {
+      const card = e.target.closest(".feedback-card");
+      if (!card || card.classList.contains("is-resolved") || !card.draggable) return;
+      dragId = card.dataset.id;
+      dragType = card.dataset.colType;
+      e.dataTransfer.effectAllowed = "move";
+      requestAnimationFrame(() => card.classList.add("is-dragging"));
+    }, { signal: dndSignal });
+    board.addEventListener("dragend", (e) => {
+      const card = e.target.closest(".feedback-card");
+      card?.classList.remove("is-dragging");
+      clearIndicators();
+      board.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+      dragId = null;
+      dragType = null;
+    }, { signal: dndSignal });
+    board.addEventListener("dragover", (e) => {
+      if (!dragId) return;
+      const overCard = e.target.closest(".feedback-card");
+      const col = e.target.closest(".feedback-column");
+      if (!col) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      clearIndicators();
+      if (overCard && overCard.dataset.id !== dragId) {
+        const rect = overCard.getBoundingClientRect();
+        const indicator = document.createElement("div");
+        indicator.className = "dnd-drop-indicator";
+        if (e.clientY < rect.top + rect.height / 2) overCard.before(indicator);
+        else overCard.after(indicator);
+      } else if (!overCard) {
+        // Empty space below cards in a column: indicate append
+        const cardsEl = col.querySelector(".feedback-cards");
+        if (cardsEl) {
+          const indicator = document.createElement("div");
+          indicator.className = "dnd-drop-indicator";
+          cardsEl.append(indicator);
+        }
+      }
+    }, { signal: dndSignal });
+    board.addEventListener("drop", (e) => {
+      if (!dragId) return;
+      const col = e.target.closest(".feedback-column");
+      if (!col) return;
+      e.preventDefault();
+      clearIndicators();
+      const colType = col.dataset.colType;
+      const overCard = e.target.closest(".feedback-card");
+      if (overCard && overCard.dataset.id !== dragId) {
+        const rect = overCard.getBoundingClientRect();
+        const insertBefore = e.clientY < rect.top + rect.height / 2;
+        if (dragType === colType) {
+          const items = colItems[colType].open;
+          const fromIdx = items.findIndex((i) => i.id === dragId);
+          const toIdx = items.findIndex((i) => i.id === overCard.dataset.id);
+          if (fromIdx === -1 || toIdx === -1) return;
+          const [moved] = items.splice(fromIdx, 1);
+          const finalIdx = insertBefore ? toIdx : toIdx + (fromIdx < toIdx ? 0 : 1);
+          items.splice(Math.max(0, finalIdx > fromIdx && !insertBefore ? finalIdx - 1 : finalIdx), 0, moved);
+          renderColFns[colType]?.();
+          persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
+        } else {
+          const srcItems = colItems[dragType].open;
+          const dstItems = colItems[colType].open;
+          const fromIdx = srcItems.findIndex((i) => i.id === dragId);
+          if (fromIdx === -1) return;
+          const toIdx = dstItems.findIndex((i) => i.id === overCard.dataset.id);
+          if (toIdx === -1) return;
+          const [moved] = srcItems.splice(fromIdx, 1);
+          moved.type = colType;
+          dstItems.splice(insertBefore ? toIdx : toIdx + 1, 0, moved);
+          renderColFns[dragType]?.();
+          renderColFns[colType]?.();
+          fetch("/feedback/" + moved.id, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: colType }),
+          }).then(() => persistOrder(colType)).catch(() => this.showToast("error", "Could not move item."));
+        }
+      } else if (!overCard) {
+        // Drop in empty space: append to end of column
+        if (dragType === colType) {
+          const items = colItems[colType].open;
+          const fromIdx = items.findIndex((i) => i.id === dragId);
+          if (fromIdx === -1) return;
+          const [moved] = items.splice(fromIdx, 1);
+          items.push(moved);
+          renderColFns[colType]?.();
+          persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
+        } else {
+          const srcItems = colItems[dragType].open;
+          const dstItems = colItems[colType].open;
+          const fromIdx = srcItems.findIndex((i) => i.id === dragId);
+          if (fromIdx === -1) return;
+          const [moved] = srcItems.splice(fromIdx, 1);
+          moved.type = colType;
+          dstItems.push(moved);
+          renderColFns[dragType]?.();
+          renderColFns[colType]?.();
+          fetch("/feedback/" + moved.id, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: colType }),
+          }).then(() => persistOrder(colType)).catch(() => this.showToast("error", "Could not move item."));
+        }
+      }
+    }, { signal: dndSignal });
+
     const persistOrder = async (type) => {
       const items = colItems[type].open;
       await Promise.all(
@@ -111,76 +228,8 @@ export default {
       const card = document.createElement("div");
       card.className = "feedback-card" + (item.resolved ? " is-resolved" : "");
       card.dataset.id = item.id;
-
-      if (!item.resolved) {
-        card.draggable = true;
-        card.addEventListener("dragstart", (e) => {
-          dragId = item.id;
-          dragType = colType;
-          e.dataTransfer.effectAllowed = "move";
-          requestAnimationFrame(() => card.classList.add("is-dragging"));
-        });
-        card.addEventListener("dragend", () => {
-          card.classList.remove("is-dragging");
-          // Remove any lingering indicators
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          board.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-        });
-        card.addEventListener("dragover", (e) => {
-          if (!dragId || dragId === item.id) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          // Show indicator above or below based on pointer position
-          const rect = card.getBoundingClientRect();
-          const mid = rect.top + rect.height / 2;
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          const indicator = document.createElement("div");
-          indicator.className = "dnd-drop-indicator";
-          if (e.clientY < mid) {
-            card.before(indicator);
-          } else {
-            card.after(indicator);
-          }
-        });
-        card.addEventListener("drop", (e) => {
-          e.preventDefault();
-          if (!dragId || dragId === item.id) return;
-          board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-          const rect = card.getBoundingClientRect();
-          const insertBefore = e.clientY < rect.top + rect.height / 2;
-          if (dragType === colType) {
-            // Same-column reorder
-            const items = colItems[colType].open;
-            const fromIdx = items.findIndex((i) => i.id === dragId);
-            const toIdx = items.findIndex((i) => i.id === item.id);
-            if (fromIdx === -1 || toIdx === -1) return;
-            const [moved] = items.splice(fromIdx, 1);
-            const finalIdx = insertBefore ? toIdx : toIdx + (fromIdx < toIdx ? 0 : 1);
-            items.splice(Math.max(0, finalIdx > fromIdx && !insertBefore ? finalIdx - 1 : finalIdx), 0, moved);
-            renderCol();
-            persistOrder(colType).catch(() => this.showToast("error", "Could not save order."));
-          } else {
-            // Cross-column move
-            const srcItems = colItems[dragType].open;
-            const dstItems = colItems[colType].open;
-            const fromIdx = srcItems.findIndex((i) => i.id === dragId);
-            if (fromIdx === -1) return;
-            const toIdx = dstItems.findIndex((i) => i.id === item.id);
-            if (toIdx === -1) return;
-            const [moved] = srcItems.splice(fromIdx, 1);
-            moved.type = colType;
-            const insertIdx = insertBefore ? toIdx : toIdx + 1;
-            dstItems.splice(insertIdx, 0, moved);
-            renderColFns[dragType]?.();
-            renderCol();
-            fetch("/feedback/" + moved.id, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: colType }),
-            }).then(() => persistOrder(colType)).catch(() => this.showToast("error", "Could not move item."));
-          }
-        });
-      }
+      card.dataset.colType = colType;
+      if (!item.resolved) card.draggable = true;
 
       const raw = item.description || "";
       const hasTitle = raw.startsWith("# ");
@@ -614,49 +663,6 @@ export default {
       // Cards container
       const cardsEl = document.createElement("div");
       cardsEl.className = "feedback-cards";
-
-      // Column-level dragover/drop (handles dropping onto empty space below cards)
-      col.addEventListener("dragover", (e) => {
-        if (!dragId || e.target.closest(".feedback-card")) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-        const indicator = document.createElement("div");
-        indicator.className = "dnd-drop-indicator";
-        cardsEl.append(indicator);
-      });
-      col.addEventListener("drop", (e) => {
-        if (!dragId || e.target.closest(".feedback-card")) return;
-        e.preventDefault();
-        board.querySelectorAll(".dnd-drop-indicator").forEach((el) => el.remove());
-        if (dragType === type) {
-          // Same-column: append to end
-          const items = colItems[type].open;
-          const fromIdx = items.findIndex((i) => i.id === dragId);
-          if (fromIdx === -1) return;
-          const [moved] = items.splice(fromIdx, 1);
-          items.push(moved);
-          renderColFns[type]?.();
-          persistOrder(type).catch(() => this.showToast("error", "Could not save order."));
-        } else {
-          // Cross-column: move to end of destination
-          const srcItems = colItems[dragType].open;
-          const dstItems = colItems[type].open;
-          const fromIdx = srcItems.findIndex((i) => i.id === dragId);
-          if (fromIdx === -1) return;
-          const [moved] = srcItems.splice(fromIdx, 1);
-          moved.type = type;
-          dstItems.push(moved);
-          renderColFns[dragType]?.();
-          renderColFns[type]?.();
-          fetch("/feedback/" + moved.id, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type }),
-          }).then(() => persistOrder(type)).catch(() => this.showToast("error", "Could not move item."));
-        }
-      });
-
       col.append(cardsEl);
 
       // "Add card" button + inline form

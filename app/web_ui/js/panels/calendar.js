@@ -144,7 +144,14 @@ export default {
           item._calendarEntry = entry;
           if (!entry.isCompleted) {
             item.draggable = true;
-            this.enableDrag(item, entry.taskId);
+            item.addEventListener("dragstart", (event) => {
+              event.dataTransfer?.setData("text/task-id", entry.taskId);
+              event.dataTransfer?.setData("text/plain", entry.taskId);
+              item.classList.add("is-dragging");
+            });
+            item.addEventListener("dragend", () => {
+              item.classList.remove("is-dragging");
+            });
           }
           list.append(item);
         });

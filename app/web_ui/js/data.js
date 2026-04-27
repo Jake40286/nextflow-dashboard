@@ -833,8 +833,9 @@ export class TaskManager extends EventTarget {
     this.persistRemotely();
   }
 
-  notify(level, message, { action } = {}) {
-    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message, action } }));
+  notify(level, message, { action, actions } = {}) {
+    const normalized = actions ?? (action ? [action] : null);
+    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message, action, actions: normalized } }));
   }
 
   emitChange(options = {}) {
@@ -2926,6 +2927,18 @@ export class TaskManager extends EventTarget {
     const actionDesc = to ? `Reassigned to "${to}".` : "References cleared.";
     this.notify("info", `Deleted area "${from}". ${actionDesc}`);
     return true;
+  }
+
+  getInboxQueue() {
+    return this.state.tasks
+      .filter((task) => !task.completedAt && task.status === STATUS.INBOX)
+      .slice()
+      .sort((a, b) => {
+        const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return aTs - bTs;
+      })
+      .map((task) => task.id);
   }
 
   getSummary() {

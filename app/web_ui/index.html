@@ -66,9 +66,9 @@
           <span class="meta-label">Review</span>
           <span id="reviewTopbarStatus" class="meta-value">—</span>
         </button>
-        <button id="openHelp" class="btn btn-light" type="button" aria-haspopup="dialog" aria-controls="helpModal">How it works</button>
       </div>
     </header>
+    <button id="openHelp" class="help-float-btn" type="button" aria-haspopup="dialog" aria-controls="helpModal" aria-label="How it works">?</button>
 
     <div class="alerts" role="status" aria-live="assertive"></div>
 
@@ -200,23 +200,6 @@
               <span class="summary-label">Backlog</span>
             </button>
           </div>
-        </section>
-
-        <section class="card integrations-card" aria-labelledby="integrationsHeading">
-          <header class="card-header">
-            <h2 id="integrationsHeading">Integrations</h2>
-          </header>
-          <ul class="integration-list">
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="email">Email capture <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="calendar">Calendar sync <span class="badge">Soon</span></button>
-            </li>
-            <li>
-              <button class="btn btn-pill" type="button" data-placeholder="notes">Notes linking <span class="badge">Soon</span></button>
-            </li>
-          </ul>
         </section>
 
       </aside>
@@ -1007,21 +990,10 @@
               <button id="clarifyTwoMinuteYes" class="btn btn-light clarify-choice" type="button">Yes — do it now</button>
             </div>
             <div id="clarifyTwoMinuteFollowup" class="clarify-followup" hidden>
-              <p class="muted small-text">Done! Expecting a response?</p>
-              <label class="visually-hidden" for="clarifyTwoMinuteResponseInput">Waiting on</label>
-              <input id="clarifyTwoMinuteResponseInput" type="text" placeholder="Who/what are you waiting on?" autocomplete="off" />
-              <label class="visually-hidden" for="clarifyFollowupTiming">Follow-up timing</label>
-              <select id="clarifyFollowupTiming">
-                <option value="24h">Follow up tomorrow</option>
-                <option value="7d">Follow up in 7 days</option>
-                <option value="custom">Custom date</option>
-              </select>
-              <input id="clarifyFollowupCustomDate" type="date" aria-label="Custom follow-up date" hidden />
               <label class="visually-hidden" for="clarifyTwoMinuteClosureNotes">Closure notes</label>
               <textarea id="clarifyTwoMinuteClosureNotes" rows="2" placeholder="Wrap-up notes (optional)" autocomplete="off"></textarea>
               <div class="clarify-option-buttons">
-                <button id="clarifyTwoMinuteExpectYes" class="btn btn-primary" type="button">Yes — create Delegated</button>
-                <button id="clarifyTwoMinuteExpectNo" class="btn btn-light" type="button">No — mark complete</button>
+                <button id="clarifyTwoMinuteExpectNo" class="btn btn-primary" type="button">Done — mark complete</button>
               </div>
             </div>
           </div>
@@ -1173,13 +1145,12 @@
       </header>
       <div class="modal-body">
         <ol>
-          <li><strong>Capture</strong> new ideas in the Inbox using the quick add bar.</li>
-          <li><strong>Clarify</strong> each item by editing it—set the desired status, context, due dates, and project.</li>
-          <li><strong>Organize</strong> tasks into Pending Tasks, Delegated, or Backburner by dragging or editing.</li>
-          <li><strong>Review</strong> projects regularly: ensure every active project has a clear outcome and at least one next action.</li>
-          <li><strong>Engage</strong> with the active tab that matters now—filter by context, run the Pomodoro timer, and check off progress.</li>
+          <li><strong>Capture</strong> — Add everything to Inbox using the quick-add bar. Aim to clear the inbox at least daily, preferably at smaller intervals.</li>
+          <li><strong>Process</strong> — Clarify each item: assign it to Next, Waiting, Someday, or a Project (for multi-step tasks that align with one objective), then set context, effort, and due date.</li>
+          <li><strong>Execute</strong> — Work from Next, Today, or Board. Filter by @context to match what fits your time and energy.</li>
+          <li><strong>Track</strong> — Use Waiting for delegated items (note who/what you're waiting on) and Someday for ideas that aren't ready yet.</li>
+          <li><strong>Review</strong> — Run a Weekly Review to sweep Inbox to zero and make sure every Project has a next action.</li>
         </ol>
-        <p class="muted small-text">Need more detail? Use Export JSON for a full backup, or Export .md to review active tasks in Obsidian.</p>
       </div>
     </div>
   </div>

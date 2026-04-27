@@ -579,7 +579,36 @@ export default {
       labelEl.textContent = label;
       const badge = document.createElement("span");
       badge.className = "feedback-count-badge";
-      header.append(labelEl, badge);
+      const resolveAllBtn = document.createElement("button");
+      resolveAllBtn.type = "button";
+      resolveAllBtn.className = "btn btn-light btn-small feedback-resolve-all-btn";
+      resolveAllBtn.textContent = "Confirm Resolved";
+      resolveAllBtn.hidden = true;
+      resolveAllBtn.addEventListener("click", async () => {
+        resolveAllBtn.disabled = true;
+        const toConfirm = colItems[type].resolved.filter((i) => !i.confirmedResolved);
+        if (!toConfirm.length) { resolveAllBtn.disabled = false; return; }
+        try {
+          await Promise.all(
+            toConfirm.map((item) =>
+              fetch("/feedback/" + item.id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ confirmedResolved: true }),
+              }).then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status} for ${item.id}`); })
+            )
+          );
+          for (const item of toConfirm) {
+            item.confirmedResolved = true;
+          }
+          renderColFns[type]?.();
+          this.showToast("info", `Confirmed ${toConfirm.length} item${toConfirm.length === 1 ? "" : "s"}.`);
+        } catch {
+          resolveAllBtn.disabled = false;
+          this.showToast("error", "Could not confirm resolved items.");
+        }
+      });
+      header.append(labelEl, badge, resolveAllBtn);
       col.append(header);
 
       // Cards container
@@ -707,6 +736,8 @@ export default {
           ? open.filter((item) => extractTags(item.description).tags.some((t) => activeTags.has(t)))
           : open;
         badge.textContent = filteredOpen.length;
+        resolveAllBtn.hidden = !resolved.some((i) => !i.confirmedResolved);
+        resolveAllBtn.disabled = false;
         cardsEl.innerHTML = "";
         filteredOpen.forEach((item) => cardsEl.append(buildCard(item, type, renderCol)));
         if (resolved.length) {

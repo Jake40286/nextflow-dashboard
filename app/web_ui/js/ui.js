@@ -3281,10 +3281,12 @@ export class UIController {
   }
 
   setupTaskRowDelegation() {
-    const workspace = this.elements.workspace;
-    if (!workspace) return;
+    const roots = [this.elements.workspace, this.elements.projectFlyout].filter(Boolean);
+    roots.forEach((root) => this._attachTaskRowDelegation(root));
+  }
 
-    workspace.addEventListener("click", (event) => {
+  _attachTaskRowDelegation(root) {
+    root.addEventListener("click", (event) => {
       const checkbox = event.target.closest(".task-row-select input[type=checkbox]");
       if (checkbox) {
         event.stopPropagation();
@@ -3297,7 +3299,7 @@ export class UIController {
       this._activateTaskRow(row.dataset.taskId, row);
     });
 
-    workspace.addEventListener("keydown", (event) => {
+    root.addEventListener("keydown", (event) => {
       const row = event.target.closest(".task-row");
       if (!row?.dataset.taskId) return;
       if (event.key === "Enter" || event.key === " ") {
@@ -3311,14 +3313,14 @@ export class UIController {
       }
     });
 
-    workspace.addEventListener("contextmenu", (event) => {
+    root.addEventListener("contextmenu", (event) => {
       const row = event.target.closest(".task-row");
       if (!row?.dataset.taskId || row.classList.contains("is-dragging")) return;
       event.preventDefault();
       this.openTaskContextMenu(row.dataset.taskId, event.clientX, event.clientY);
     });
 
-    workspace.addEventListener("dragstart", (event) => {
+    root.addEventListener("dragstart", (event) => {
       const row = event.target.closest(".task-row");
       if (!row?.dataset.taskId) return;
       const taskId = row.dataset.taskId;
@@ -3328,7 +3330,7 @@ export class UIController {
       this.draggingTaskId = taskId;
     });
 
-    workspace.addEventListener("dragend", (event) => {
+    root.addEventListener("dragend", (event) => {
       const row = event.target.closest(".task-row");
       if (!row) return;
       row.classList.remove("is-dragging", "is-drop-before", "is-drop-after");

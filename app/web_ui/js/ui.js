@@ -4904,10 +4904,13 @@ export class UIController {
     });
   }
 
-  _completeClarifyStep() {
+  _completeClarifyStep(outcome = "routed") {
     this._clarifyCompleting = true;
     this._clearClarifyDraft(this.clarifyState.taskId);
     if (this.processSession) {
+      const stats = this.processSession.stats;
+      if (stats && stats[outcome] !== undefined) stats[outcome] += 1;
+      this._persistProcessSession();
       this.advanceProcessSession();
     } else {
       this.closeClarifyModal();
@@ -4916,19 +4919,34 @@ export class UIController {
   }
 
   startProcessSession() {
-    const queue = this.taskManager.getInboxQueue();
-    if (!queue.length) {
-      this.taskManager.notify("info", "Inbox is already clear.");
-      return;
+    const existing = this._loadProcessSession();
+    let queue;
+    let cursor = 0;
+    let startedAt = Date.now();
+    let completedIds = new Set();
+    let stats = { routed: 0, deferred: 0, deleted: 0, referenced: 0, twoMinDone: 0 };
+    if (existing) {
+      queue = existing.queue;
+      cursor = existing.cursor || 0;
+      startedAt = existing.startedAt || Date.now();
+      completedIds = new Set(existing.completedIds || []);
+      stats = { ...stats, ...(existing.stats || {}) };
+    } else {
+      queue = this.taskManager.getInboxQueue();
+      if (!queue.length) {
+        this.taskManager.notify("info", "Inbox is already clear.");
+        return;
+      }
     }
-    this.processSession = {
-      queue,
-      cursor: 0,
-      startedAt: Date.now(),
-      completedIds: new Set(),
-    };
+    this.processSession = { queue, cursor, startedAt, completedIds, stats };
+    this._persistProcessSession();
+    this._startHudTimer();
     this.setActivePanel("inbox");
-    this.openClarifyModal(queue[0]);
+    if (cursor < queue.length) {
+      this.openClarifyModal(queue[cursor]);
+    } else {
+      this.showInboxZeroCelebration();
+    }
   }
 
   advanceProcessSession() {
@@ -4942,6 +4960,7 @@ export class UIController {
       const nextId = session.queue[session.cursor];
       const task = this.taskManager.getTaskById(nextId);
       if (task && !task.completedAt && task.status === STATUS.INBOX) {
+        this._persistProcessSession();
         this.openClarifyModal(nextId);
         return;
       }
@@ -4952,7 +4971,75 @@ export class UIController {
 
   endProcessSession() {
     this.processSession = null;
+    this._stopHudTimer();
+    this._clearProcessSession();
     this._updateClarifyProgress();
+  }
+
+  _persistProcessSession() {
+    if (!this.processSession) return;
+    try {
+      const s = this.processSession;
+      const payload = {
+        queue: s.queue,
+        cursor: s.cursor,
+        startedAt: s.startedAt,
+        expiresAt: s.startedAt + 12 * 60 * 60 * 1000,
+        completedIds: Array.from(s.completedIds),
+        stats: s.stats,
+      };
+      localStorage.setItem("nextflow-clarify-session", JSON.stringify(payload));
+    } catch (e) {
+      // ignore quota errors
+    }
+  }
+
+  _loadProcessSession() {
+    try {
+      const raw = localStorage.getItem("nextflow-clarify-session");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.queue) return null;
+      if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
+        localStorage.removeItem("nextflow-clarify-session");
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _clearProcessSession() {
+    try {
+      localStorage.removeItem("nextflow-clarify-session");
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  _startHudTimer() {
+    this._stopHudTimer();
+    this._hudTimer = setInterval(() => this._updateClarifyProgress(), 1000);
+  }
+
+  _stopHudTimer() {
+    if (this._hudTimer) {
+      clearInterval(this._hudTimer);
+      this._hudTimer = null;
+    }
+  }
+
+  _formatElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    if (m >= 60) {
+      const h = Math.floor(m / 60);
+      const mm = m % 60;
+      return `${h}:${String(mm).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
 
   _updateClarifyProgress() {
@@ -4965,13 +5052,16 @@ export class UIController {
       return;
     }
     el.hidden = false;
-    el.textContent = `Item ${session.cursor + 1} of ${session.queue.length}`;
+    const elapsed = this._formatElapsed(Date.now() - session.startedAt);
+    el.textContent = `${session.cursor + 1} / ${session.queue.length} · ${elapsed}`;
   }
 
   showInboxZeroCelebration() {
     const modal = this.elements.clarifyModal;
     const session = this.processSession;
+    this._stopHudTimer();
     this.processSession = null;
+    this._clearProcessSession();
     this._updateClarifyProgress();
     if (!modal) {
       this.taskManager.notify("info", "Inbox cleared.");
@@ -4983,12 +5073,17 @@ export class UIController {
       return;
     }
     const count = session ? session.completedIds.size : 0;
+    const elapsed = session ? this._formatElapsed(Date.now() - session.startedAt) : "0:00";
+    const stats = session?.stats || {};
     body.innerHTML = "";
     const card = document.createElement("div");
     card.className = "inbox-zero clarify-celebration";
     card.innerHTML = `
       <strong>✓ Inbox cleared</strong>
-      <span class="muted small-text">${count} item${count === 1 ? "" : "s"} processed.</span>
+      <span class="muted">${count} item${count === 1 ? "" : "s"} · ${elapsed}</span>
+      <span class="muted small-text">
+        ${stats.routed || 0} routed · ${stats.deferred || 0} deferred · ${stats.referenced || 0} referenced · ${stats.deleted || 0} deleted${stats.twoMinDone ? ` · ${stats.twoMinDone} 2-min done` : ""}
+      </span>
       <button type="button" class="btn btn-primary" id="clarifyCelebrationClose">Close</button>
     `;
     body.append(card);
@@ -5505,7 +5600,7 @@ export class UIController {
       if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
       this.taskManager.notify("info", "✓ Routed to Later", { actions });
     }
-    this._completeClarifyStep();
+    this._completeClarifyStep(destination === "trash" ? "deleted" : "deferred");
   }
 
   handleClarifySingleAction() {
@@ -5529,7 +5624,7 @@ export class UIController {
     ];
     if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
     this.taskManager.notify("info", `✓ Filed "${label}" to Reference`, { actions });
-    this._completeClarifyStep();
+    this._completeClarifyStep("referenced");
   }
 
   _applyDelegateBranchVisibility(isDelegate) {
@@ -5724,6 +5819,16 @@ export class UIController {
     this.resetFollowupTiming();
     if (followup) {
       followup.hidden = false;
+      // If recurrence is set, surface the implication.
+      if (this.clarifyState.recurrenceRule?.type) {
+        let hint = followup.querySelector(".clarify-recurrence-yes-hint");
+        if (!hint) {
+          hint = document.createElement("p");
+          hint.className = "muted small-text clarify-recurrence-yes-hint";
+          hint.textContent = "This task repeats — completing it will schedule the next occurrence.";
+          followup.prepend(hint);
+        }
+      }
     }
     const responseInput = this.elements.clarifyTwoMinuteResponseInput;
     if (responseInput) {
@@ -5805,7 +5910,7 @@ export class UIController {
     ];
     if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
     this.taskManager.notify("info", "✓ Completed in under two minutes", { actions });
-    this._completeClarifyStep();
+    this._completeClarifyStep("twoMinDone");
   }
 
   handleClarifyDelegation(name) {
@@ -5905,7 +6010,7 @@ export class UIController {
       actions.push({ label: "Next item →", onClick: () => {} });
     }
     this.taskManager.notify("info", `✓ Routed to ${dest}`, { actions });
-    this._completeClarifyStep();
+    this._completeClarifyStep("routed");
   }
 
   _computeRouteDestination(updates) {

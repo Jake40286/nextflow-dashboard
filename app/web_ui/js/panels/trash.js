@@ -75,8 +75,25 @@ export default {
       restoreBtn.type = "button";
       restoreBtn.className = "btn btn-light btn-small";
       restoreBtn.textContent = "Restore";
+      restoreBtn.title = "Bring back as an active task in its prior status";
       restoreBtn.dataset.action = "restore";
       actions.append(restoreBtn);
+
+      const referenceBtn = document.createElement("button");
+      referenceBtn.type = "button";
+      referenceBtn.className = "btn btn-light btn-small";
+      referenceBtn.textContent = "Send to Reference";
+      referenceBtn.title = "Treat as a completed task with reference history (counts in Stats and Reports)";
+      referenceBtn.dataset.action = "reference";
+      actions.append(referenceBtn);
+
+      const completedBtn = document.createElement("button");
+      completedBtn.type = "button";
+      completedBtn.className = "btn btn-light btn-small";
+      completedBtn.textContent = "Mark as completed";
+      completedBtn.title = "Treat as a quiet completion (counts in Stats but not shown in Reports)";
+      completedBtn.dataset.action = "completed";
+      actions.append(completedBtn);
 
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -102,6 +119,14 @@ export default {
         if (!entryId) return;
         if (btn.dataset.action === "restore") {
           this.taskManager.restoreFromTrash(entryId);
+          return;
+        }
+        if (btn.dataset.action === "reference") {
+          this.taskManager.reclassifyTrashAsReference(entryId);
+          return;
+        }
+        if (btn.dataset.action === "completed") {
+          this.taskManager.reclassifyTrashAsCompleted(entryId);
           return;
         }
         if (btn.dataset.action === "purge") {

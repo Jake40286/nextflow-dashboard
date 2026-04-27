@@ -1941,6 +1941,47 @@ export class TaskManager extends EventTarget {
     return true;
   }
 
+  // Reclassify a trashed (deleted) entry as a reference completion: move it
+  // from completionLog into state.reference and stamp archiveType="reference".
+  // Tombstone is preserved — the task stays removed from active.
+  reclassifyTrashAsReference(id) {
+    const log = this.state.completionLog || [];
+    const idx = log.findIndex(
+      (entry) => entry?.archiveType === "deleted" && (entry.id === id || entry.sourceId === id),
+    );
+    if (idx === -1) {
+      this.notify("error", "Trash entry not found.");
+      return false;
+    }
+    const [entry] = log.splice(idx, 1);
+    entry.archiveType = "reference";
+    this.state.reference = this.state.reference || [];
+    this.state.reference.unshift(entry);
+    this._completionsDirty = true;
+    this.emitChange();
+    this.notify("info", `Moved "${entry.title}" to Reference.`);
+    return true;
+  }
+
+  // Reclassify a trashed (deleted) entry as a quiet completion: keep it in
+  // completionLog but stamp archiveType="completed" so stats and reports
+  // count it. Tombstone preserved.
+  reclassifyTrashAsCompleted(id) {
+    const log = this.state.completionLog || [];
+    const entry = log.find(
+      (e) => e?.archiveType === "deleted" && (e.id === id || e.sourceId === id),
+    );
+    if (!entry) {
+      this.notify("error", "Trash entry not found.");
+      return false;
+    }
+    entry.archiveType = "completed";
+    this._completionsDirty = true;
+    this.emitChange();
+    this.notify("info", `Marked "${entry.title}" as completed.`);
+    return true;
+  }
+
   emptyTrash() {
     const log = this.state.completionLog || [];
     const before = log.length;

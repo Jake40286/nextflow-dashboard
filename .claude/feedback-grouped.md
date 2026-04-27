@@ -93,7 +93,7 @@
 | ID | Type | Description |
 |----|------|-------------|
 | `943c01b8` | feature | Mobile-friendly dashboard (full mobile pass) |
-| `3ba31a39` | feature | Remove button in Weekly Report restore |
+| `3ba31a39` | feature | ~~Remove button in Weekly Report restore~~ (resolved 2026-04-27 — already implemented in `panels/reports.js:375`) |
 | `346ac587` | feature | Multi-user support |
 | `fc822ad6` | feature | Task trash bin with 30-day auto-delete |
 | `3ad1d3e3` | feature | Sleep/snooze task with intervals |

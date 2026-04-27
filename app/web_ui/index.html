@@ -135,6 +135,7 @@
         <button type="button" class="summary-pill" role="tab" data-panel-target="reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</button>
         <button type="button" class="summary-pill" role="tab" data-panel-target="statistics" aria-controls="panel-statistics" aria-selected="false" tabindex="-1">Stats</button>
         <button type="button" class="summary-pill" role="tab" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false" tabindex="-1">All</button>
+        <button type="button" class="summary-pill" role="tab" data-panel-target="trash" aria-controls="panel-trash" aria-selected="false" tabindex="-1">Trash</button>
       </nav>
 
       <aside class="sidebar" aria-label="Summary and filters">
@@ -195,6 +196,10 @@
             <button type="button" class="summary-tab" role="tab" id="summary-tab-all-active" data-panel-target="all-active" aria-controls="panel-all-active" aria-selected="false">
               <span class="summary-label">All Tasks</span>
               <span class="summary-value" id="summaryAllActive">0</span>
+            </button>
+            <button type="button" class="summary-tab" role="tab" id="summary-tab-trash" data-panel-target="trash" aria-controls="panel-trash" aria-selected="false">
+              <span class="summary-label">Trash</span>
+              <span class="summary-value" id="summaryTrash">0</span>
             </button>
             <button type="button" class="summary-tab" role="tab" id="summary-tab-backlog" data-panel-target="backlog" aria-controls="panel-backlog" aria-selected="false" hidden>
               <span class="summary-label">Backlog</span>
@@ -391,6 +396,16 @@
       <section class="workspace-view" data-panel="all-active" role="tabpanel" aria-labelledby="summary-tab-all-active" id="panel-all-active" hidden>
         <div class="panel-content">
           <div class="panel-body" id="allActiveList"></div>
+        </div>
+      </section>
+
+      <section class="workspace-view" data-panel="trash" role="tabpanel" aria-labelledby="summary-tab-trash" id="panel-trash" hidden>
+        <div class="panel-content">
+          <div class="trash-toolbar">
+            <p class="muted small-text" id="trashRetentionNote">Deleted tasks are kept here for 30 days, then permanently removed.</p>
+            <button type="button" id="trashEmptyBtn" class="btn btn-light btn-small" hidden>Empty trash</button>
+          </div>
+          <div class="panel-body" id="trashList"></div>
         </div>
       </section>
 

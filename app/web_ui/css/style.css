@@ -2140,6 +2140,19 @@ body.is-admin .alerts {
   margin-left: auto;
   margin-right: var(--space-3);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface));
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+
+.clarify-recurrence-yes-hint {
+  background: color-mix(in srgb, var(--accent-soft) 40%, var(--surface));
+  border-left: 2px solid var(--accent);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
 }
 
 .inbox-zero strong {

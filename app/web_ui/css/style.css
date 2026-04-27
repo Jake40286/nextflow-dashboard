@@ -2039,6 +2039,39 @@ body.is-admin .alerts {
   text-align: center;
 }
 
+.clarify-celebration {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.clarify-celebration .btn {
+  margin-top: var(--space-2);
+}
+
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+.panel-toolbar-hint kbd {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  background: var(--surface);
+}
+
+.clarify-progress {
+  margin-left: auto;
+  margin-right: var(--space-3);
+  white-space: nowrap;
+}
+
 .inbox-zero strong {
   display: block;
   margin-bottom: 3px;

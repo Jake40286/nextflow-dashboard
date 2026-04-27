@@ -34,7 +34,25 @@ document.addEventListener("DOMContentLoaded", () => {
   setupExport();
   setupHelpModal();
   setupReview();
+  setupProcessInboxShortcut();
 });
+
+function setupProcessInboxShortcut() {
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "p" && event.key !== "P") return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      if (target.isContentEditable) return;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    }
+    if (ui.activePanel !== "inbox") return;
+    if (ui.elements?.clarifyModal?.classList.contains("is-open")) return;
+    event.preventDefault();
+    ui.startProcessSession();
+  });
+}
 
 function setupReview() {
   const btn = document.getElementById("startReviewBtn");

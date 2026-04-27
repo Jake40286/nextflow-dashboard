@@ -306,6 +306,12 @@
 
       <section class="workspace-view is-active" data-panel="inbox" role="tabpanel" aria-labelledby="summary-tab-inbox" id="panel-inbox">
         <div class="panel-content">
+          <div class="panel-toolbar">
+            <button id="processInboxBtn" class="btn btn-primary" type="button" hidden>
+              Process Inbox <span id="processInboxCount" class="meta-value">0</span>
+            </button>
+            <span class="muted small-text panel-toolbar-hint">Press <kbd>P</kbd> to start</span>
+          </div>
           <div class="panel-body" role="list" data-dropzone="inbox"></div>
         </div>
       </section>
@@ -953,6 +959,7 @@
     <div class="modal-dialog" role="document">
       <header class="modal-header">
         <h2 id="clarifyModalTitle">Process inbox item</h2>
+        <span id="clarifyProgress" class="clarify-progress muted small-text" hidden></span>
         <button id="closeClarifyModal" class="btn btn-light" type="button" aria-label="Close clarify dialog">Close</button>
       </header>
       <div class="modal-body clarify-modal-body">

@@ -2928,6 +2928,18 @@ export class TaskManager extends EventTarget {
     return true;
   }
 
+  getInboxQueue() {
+    return this.state.tasks
+      .filter((task) => !task.completedAt && task.status === STATUS.INBOX)
+      .slice()
+      .sort((a, b) => {
+        const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return aTs - bTs;
+      })
+      .map((task) => task.id);
+  }
+
   getSummary() {
     const todayIso = new Date().toISOString().slice(0, 10);
     const summary = {

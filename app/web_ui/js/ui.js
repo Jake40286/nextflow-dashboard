@@ -4611,9 +4611,6 @@ export class UIController {
       this._applyDelegateBranchVisibility(true);
     });
 
-    // Reference outcome — archive to /completed reference array
-    this.elements.clarifyOutcomeReference?.addEventListener("click", () => this.handleClarifyReference());
-
     // Inline new-project name input
     const newProjectInput = this.elements.clarifyNewProjectNameInput;
     const finalizeNewProject = () => {
@@ -5105,7 +5102,7 @@ export class UIController {
       <strong>✓ Inbox cleared</strong>
       <span class="muted">${count} item${count === 1 ? "" : "s"} · ${elapsed}</span>
       <span class="muted small-text">
-        ${stats.routed || 0} routed · ${stats.deferred || 0} deferred · ${stats.referenced || 0} referenced · ${stats.deleted || 0} deleted${stats.twoMinDone ? ` · ${stats.twoMinDone} 2-min done` : ""}
+        ${stats.routed || 0} routed · ${stats.deferred || 0} deferred · ${stats.deleted || 0} deleted${stats.twoMinDone ? ` · ${stats.twoMinDone} 2-min done` : ""}
       </span>
       <button type="button" class="btn btn-primary" id="clarifyCelebrationClose">Close</button>
     `;
@@ -5635,21 +5632,6 @@ export class UIController {
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
     }
-  }
-
-  handleClarifyReference() {
-    if (!this.clarifyState.taskId) return;
-    const taskId = this.clarifyState.taskId;
-    const task = this.taskManager.getTaskById(taskId);
-    const label = task?.title || "this capture";
-    this.taskManager.completeTask(taskId, { archive: "reference" });
-    const sessionActive = !!this.processSession;
-    const actions = [
-      { label: "Undo", onClick: () => this.taskManager.restoreCompletedTask(taskId) },
-    ];
-    if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
-    this.taskManager.notify("info", `✓ Filed "${label}" to Reference`, { actions });
-    this._completeClarifyStep("referenced");
   }
 
   _applyDelegateBranchVisibility(isDelegate) {
@@ -9369,7 +9351,6 @@ function mapElements() {
     clarifyFollowUpRow: byId("clarifyFollowUpRow"),
     clarifyFollowUpFields: byId("clarifyFollowUpFields"),
     clarifyFollowUpDateInput: byId("clarifyFollowUpDateInput"),
-    clarifyOutcomeReference: byId("clarifyOutcomeReference"),
     clarifyNewProjectInline: byId("clarifyNewProjectInline"),
     clarifyNewProjectNameInput: byId("clarifyNewProjectNameInput"),
     clarifyProjectSection: byId("clarifyProjectSection"),

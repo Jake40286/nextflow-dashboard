@@ -2122,7 +2122,13 @@ body.is-admin .alerts {
   border-top: 1px solid var(--line);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
   z-index: 1;
+}
+
+.clarify-footer #clarifyAddDetailsLink[hidden] {
+  display: none;
 }
 
 .clarify-segment[hidden] {
@@ -4642,6 +4648,42 @@ body.is-admin .alerts {
 .clarify-summary-desc {
   color: var(--text-muted);
   white-space: pre-wrap;
+}
+
+.clarify-preview-description {
+  margin: 0 0 var(--space-3) 0;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  border-left: 3px solid var(--border);
+}
+
+.clarify-preview-description-text {
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-size: 0.95em;
+  line-height: 1.4;
+}
+
+.clarify-preview-description-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clarify-preview-description-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 0.85em;
+  margin-top: 2px;
+}
+
+.clarify-preview-description-toggle:hover {
+  text-decoration: underline;
 }
 
 .clarify-modal-body blockquote {

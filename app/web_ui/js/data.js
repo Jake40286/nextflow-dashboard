@@ -1793,7 +1793,8 @@ export class TaskManager extends EventTarget {
       }
     }
     this.emitChange();
-    this.notify("info", `Restored "${restored.title}" to Pending Tasks.`);
+    const destLabel = STATUS_LABELS[restored.status] || "Pending Tasks";
+    this.notify("info", `Restored "${restored.title}" to ${destLabel}.`);
     return restored;
   }
 
@@ -3636,6 +3637,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
     sourceId: task.id,
     title: task.title,
     description: task.description,
+    status: task.status || null,
     contexts: task.contexts ?? [],
     peopleTag: task.peopleTag,
     effortLevel: task.effortLevel,

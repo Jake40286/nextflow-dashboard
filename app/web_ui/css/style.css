@@ -5602,7 +5602,6 @@ body.flyout-open .feedback-widget {
 }
 
 .toast-action {
-  margin-left: auto;
   background: none;
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
@@ -5612,6 +5611,14 @@ body.flyout-open .feedback-widget {
   color: inherit;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.toast-action:first-of-type {
+  margin-left: auto;
+}
+
+.toast-action + .toast-action {
+  margin-left: 6px;
 }
 
 .conflict-modal-section-title {

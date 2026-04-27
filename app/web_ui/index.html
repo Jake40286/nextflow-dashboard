@@ -968,10 +968,11 @@
         <div class="clarify-field" id="clarifyActionableQuestion">
           <p class="muted small-text">Item</p>
           <blockquote id="clarifyPreviewText" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true"></blockquote>
-          <p class="clarify-question">Does this need to be done?</p>
+          <p class="clarify-question">What is it?</p>
           <div class="clarify-option-buttons">
-            <button id="clarifyActionableYes" class="btn btn-primary clarify-choice" type="button">Yes</button>
-            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Backburner</button>
+            <button id="clarifyActionableYes" class="btn btn-primary clarify-choice" type="button">Action</button>
+            <button id="clarifyOutcomeReference" class="btn btn-light" type="button">Reference</button>
+            <button class="btn btn-light" type="button" data-clarify-nonaction="someday">Later</button>
             <button class="btn btn-danger" type="button" data-clarify-nonaction="trash">Trash</button>
           </div>
 
@@ -988,20 +989,6 @@
 
         <!-- All following fields revealed after clicking Yes -->
         <div id="clarifyActionableFields" hidden>
-
-          <!-- Project? -->
-          <div class="clarify-field clarify-field-section">
-            <p class="clarify-question">Part of a project?</p>
-            <div class="clarify-option-buttons">
-              <button id="clarifyActionSingle" class="btn btn-light clarify-choice is-selected" type="button">Single action</button>
-              <button id="clarifyActionAddExisting" class="btn btn-light clarify-choice" type="button">Existing project</button>
-              <button id="clarifyConvertProject" class="btn btn-light clarify-choice" type="button">New project</button>
-            </div>
-            <div id="clarifyProjectPicker" class="clarify-project-option" hidden>
-              <label for="clarifyProjectSelect" class="visually-hidden">Project</label>
-              <select id="clarifyProjectSelect"></select>
-            </div>
-          </div>
 
           <!-- 2-minute rule -->
           <div class="clarify-field clarify-field-section">
@@ -1048,30 +1035,72 @@
               </div>
             </div>
 
-            <!-- Date? -->
+            <!-- Project? -->
+            <div class="clarify-field clarify-field-section" id="clarifyProjectSection">
+              <p class="clarify-question">Part of a project?</p>
+              <div class="clarify-option-buttons">
+                <button id="clarifyActionSingle" class="btn btn-light clarify-choice is-selected" type="button">Single action</button>
+                <button id="clarifyActionAddExisting" class="btn btn-light clarify-choice" type="button">Existing project</button>
+                <button id="clarifyConvertProject" class="btn btn-light clarify-choice" type="button">New project</button>
+              </div>
+              <div id="clarifyProjectPicker" class="clarify-project-option" hidden>
+                <label for="clarifyProjectSelect" class="visually-hidden">Project</label>
+                <select id="clarifyProjectSelect"></select>
+              </div>
+              <div id="clarifyNewProjectInline" class="clarify-project-option" hidden>
+                <label class="visually-hidden" for="clarifyNewProjectNameInput">New project name</label>
+                <input id="clarifyNewProjectNameInput" type="text" placeholder="New project name (Enter to confirm)" autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- When? -->
             <div class="clarify-field clarify-field-section">
-              <p class="clarify-question">Does it need a date?</p>
+              <p class="clarify-question">When?</p>
               <div class="clarify-project-option">
                 <label><input id="clarifyDateOptionNone" type="radio" name="clarifyDateOption" value="none" checked /> No date</label>
               </div>
               <div class="clarify-project-option">
-                <label><input id="clarifyDateOptionSpecific" type="radio" name="clarifyDateOption" value="specific" /> Specific date / time → Calendar</label>
+                <label><input id="clarifyDateOptionSpecific" type="radio" name="clarifyDateOption" value="specific" /> Specific date / time</label>
+                <span class="muted small-text clarify-date-hint">Time-boxed event</span>
                 <div id="clarifySpecificDateFields" class="clarify-date-row" hidden>
                   <input id="clarifySpecificDateInput" type="date" />
                   <input id="clarifySpecificTimeInput" type="time" />
                 </div>
               </div>
               <div class="clarify-project-option">
-                <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date → Pending Tasks</label>
+                <label><input id="clarifyDateOptionDue" type="radio" name="clarifyDateOption" value="due" /> Due by date</label>
+                <span class="muted small-text clarify-date-hint">Deadline, no fixed time</span>
                 <div id="clarifyDueDateFields" hidden>
                   <input id="clarifyDueDateInput" type="date" />
                 </div>
               </div>
+              <div class="clarify-project-option" id="clarifyFollowUpRow" hidden>
+                <label><input id="clarifyDateOptionFollowUp" type="radio" name="clarifyDateOption" value="followUp" /> Follow up on</label>
+                <span class="muted small-text clarify-date-hint">Check back on this date</span>
+                <div id="clarifyFollowUpFields" hidden>
+                  <input id="clarifyFollowUpDateInput" type="date" />
+                </div>
+              </div>
+              <!-- Recurrence (nested under When) -->
+              <div class="clarify-project-option clarify-recurrence-nested">
+                <label class="muted small-text">Repeat?</label>
+                <div class="task-recurrence-controls">
+                  <select id="clarifyRecurrenceType">
+                    <option value="">Does not repeat</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                  <input id="clarifyRecurrenceInterval" class="task-recurrence-interval" type="number" min="1" step="1" value="1" disabled />
+                </div>
+                <span id="clarifyRecurrenceHint" class="muted small-text" hidden>Set a date first to repeat.</span>
+              </div>
             </div>
 
-            <!-- Metadata -->
-            <div class="clarify-field clarify-field-section">
-              <p class="clarify-question">Optional details</p>
+            <!-- Details -->
+            <div class="clarify-field clarify-field-section" id="clarifyDetailsSection">
+              <p class="clarify-question">Details</p>
               <div class="clarify-project-option">
                 <label for="clarifyAreaInput">Area of focus</label>
                 <div class="area-select-group">
@@ -1111,21 +1140,6 @@
                   <option value="<30min">&lt; 30 minutes</option>
                   <option value="30min+">&gt; 30 minutes</option>
                 </select>
-              </div>
-            </div>
-
-            <!-- Recurrence -->
-            <div class="clarify-field clarify-field-section">
-              <p class="clarify-question">Does it repeat?</p>
-              <div class="task-recurrence-controls">
-                <select id="clarifyRecurrenceType">
-                  <option value="">Does not repeat</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="yearly">Yearly</option>
-                </select>
-                <input id="clarifyRecurrenceInterval" class="task-recurrence-interval" type="number" min="1" step="1" value="1" disabled />
               </div>
             </div>
 

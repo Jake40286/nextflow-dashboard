@@ -5056,6 +5056,19 @@ export class UIController {
     el.textContent = `${session.cursor + 1} / ${session.queue.length} · ${elapsed}`;
   }
 
+  _clearCelebrationCard() {
+    const modal = this.elements.clarifyModal;
+    if (!modal) return;
+    const body = modal.querySelector(".modal-body");
+    if (!body) return;
+    const card = body.querySelector(".clarify-celebration");
+    if (card) card.remove();
+    body.querySelectorAll('[data-clarify-hidden-for-celebration="1"]').forEach((el) => {
+      el.hidden = false;
+      delete el.dataset.clarifyHiddenForCelebration;
+    });
+  }
+
   showInboxZeroCelebration() {
     const modal = this.elements.clarifyModal;
     const session = this.processSession;
@@ -5075,7 +5088,17 @@ export class UIController {
     const count = session ? session.completedIds.size : 0;
     const elapsed = session ? this._formatElapsed(Date.now() - session.startedAt) : "0:00";
     const stats = session?.stats || {};
-    body.innerHTML = "";
+    // Hide the original modal-body children rather than wiping innerHTML —
+    // the cached element refs (clarifyPreviewText, etc.) need to stay attached
+    // for the next open.
+    Array.from(body.children).forEach((child) => {
+      if (child.classList.contains("clarify-celebration")) {
+        child.remove();
+        return;
+      }
+      child.dataset.clarifyHiddenForCelebration = "1";
+      child.hidden = true;
+    });
     const card = document.createElement("div");
     card.className = "inbox-zero clarify-celebration";
     card.innerHTML = `
@@ -5101,6 +5124,7 @@ export class UIController {
       this.openTaskFlyout(taskId);
       return;
     }
+    this._clearCelebrationCard();
     const task = this.taskManager.getTaskById(taskId);
     if (!task) return;
     this.resetClarifyState();
@@ -5254,6 +5278,7 @@ export class UIController {
   closeClarifyModal({ fromPopstate = false } = {}) {
     const wasOpen = this.elements.clarifyModal?.classList.contains("is-open");
     this.setClarifyModalOpen(false);
+    this._clearCelebrationCard();
     if (this.processSession) {
       this.endProcessSession();
     }

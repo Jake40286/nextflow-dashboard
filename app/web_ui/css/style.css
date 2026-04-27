@@ -6408,3 +6408,53 @@ body.doing-bar-visible .app {
     max-width: 200px;
   }
 }
+
+.trash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+.trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  margin-bottom: var(--space-2);
+}
+
+.trash-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.trash-row-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.trash-row-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .trash-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .trash-row-actions {
+    justify-content: flex-end;
+  }
+}

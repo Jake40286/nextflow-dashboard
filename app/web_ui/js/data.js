@@ -25,6 +25,7 @@ const OP_LOG_MAX = 300;
 const OP_LOG_SHARED_MAX = 100;
 // Stores the last server-assigned _rev this client successfully wrote/read.
 const REV_KEY = "nextflow-last-rev";
+const TRASH_RETENTION_DAYS = 30;
 // Fields tracked in the op log and eligible for per-field-group merge
 const OP_LOG_FIELDS = ["status", "myDayDate", "calendarDate", "calendarTime", "dueDate", "followUpDate"];
 // Field groups for per-field-group merge logic in mergeTasks()
@@ -568,6 +569,7 @@ export class TaskManager extends EventTarget {
         this._saveLastKnownRev(remoteState._rev);
       }
       this._completedDataLoaded = true;
+      this._sweepExpiredTrash();
       this.setConnectionStatus("online");
       this.emitChange({ persist: false });
       // Write-back: if the merge produced more data than the server reported,
@@ -628,6 +630,7 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Could not load saved data. Starting from an empty dashboard.");
       this.state = hydrateState(EMPTY_STATE);
     }
+    this._sweepExpiredTrash();
   }
 
   _persistLocallyNow() {
@@ -1901,7 +1904,70 @@ export class TaskManager extends EventTarget {
     this.state.completionLog.unshift(snapshot);
     this._completionsDirty = true;
     this.emitChange();
-    this.notify("info", `"${task.title}" deleted.`);
+    this.notify("info", `"${task.title}" deleted.`, {
+      action: { label: "Undo", onClick: () => this.restoreCompletedTask(task.id) },
+    });
+  }
+
+  getTrashEntries() {
+    return (this.state.completionLog || [])
+      .filter((entry) => entry?.archiveType === "deleted")
+      .slice()
+      .sort((a, b) => {
+        const at = a.completedAt || a.archivedAt || "";
+        const bt = b.completedAt || b.archivedAt || "";
+        return bt.localeCompare(at);
+      });
+  }
+
+  restoreFromTrash(id) {
+    return this.restoreCompletedTask(id);
+  }
+
+  purgeFromTrash(id) {
+    const log = this.state.completionLog || [];
+    const idx = log.findIndex(
+      (entry) => entry?.archiveType === "deleted" && (entry.id === id || entry.sourceId === id),
+    );
+    if (idx === -1) {
+      this.notify("error", "Trash entry not found.");
+      return false;
+    }
+    const [entry] = log.splice(idx, 1);
+    this._completionsDirty = true;
+    this.emitChange();
+    this.notify("info", `"${entry.title}" permanently deleted.`);
+    return true;
+  }
+
+  emptyTrash() {
+    const log = this.state.completionLog || [];
+    const before = log.length;
+    this.state.completionLog = log.filter((entry) => entry?.archiveType !== "deleted");
+    const removed = before - this.state.completionLog.length;
+    if (removed === 0) return 0;
+    this._completionsDirty = true;
+    this.emitChange();
+    this.notify("info", `Emptied trash (${removed} ${removed === 1 ? "item" : "items"}).`);
+    return removed;
+  }
+
+  // Drop deleted-archive entries older than TRASH_RETENTION_DAYS. Idempotent and silent.
+  _sweepExpiredTrash() {
+    const log = this.state.completionLog;
+    if (!Array.isArray(log) || log.length === 0) return 0;
+    const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const kept = log.filter((entry) => {
+      if (entry?.archiveType !== "deleted") return true;
+      const ts = Date.parse(entry.completedAt || entry.archivedAt || "");
+      return Number.isNaN(ts) ? true : ts >= cutoff;
+    });
+    const removed = log.length - kept.length;
+    if (removed > 0) {
+      this.state.completionLog = kept;
+      this._completionsDirty = true;
+    }
+    return removed;
   }
 
   getProjects({ includeSomeday = true } = {}) {

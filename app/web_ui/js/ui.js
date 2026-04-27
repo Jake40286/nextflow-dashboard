@@ -22,6 +22,7 @@ import StatisticsPanel from "./panels/statistics.js";
 import AllActivePanel from "./panels/all-active.js";
 import SettingsPanel from "./panels/settings.js";
 import BacklogPanel from "./panels/backlog.js";
+import TrashPanel from "./panels/trash.js";
 
 const TAB_STORAGE_KEY = "nextflow-active-panel";
 const NEXT_FANOUT_KEY = "nextflow-next-fanout";
@@ -120,6 +121,7 @@ const PANEL_RENDER_FNS = Object.freeze({
   "all-active": "renderAllActive",
   settings: "renderSettings",
   backlog: "renderBacklog",
+  trash: "renderTrash",
 });
 
 export class UIController {
@@ -248,6 +250,7 @@ export class UIController {
     }
     this.setupSidebarToggle();
     this.setupMultiEditBar();
+    this.initTrashListeners();
     this.renderAll();
     this.syncTheme(this.taskManager.getTheme());
     this.updateFooterYear();
@@ -977,6 +980,7 @@ export class UIController {
     if (panel === "reports") return "Complete";
     if (panel === "statistics") return "Statistics";
     if (panel === "settings") return "Settings";
+    if (panel === "trash") return "Trash";
     return "Overview";
   }
 
@@ -1014,6 +1018,10 @@ export class UIController {
       const active = this.taskManager.getTasks({ includeCompleted: false }).length;
       const completed = this.taskManager.getCompletedTasks().length;
       return `${active} active • ${completed} completed`;
+    }
+    if (panel === "trash") {
+      const count = this.taskManager.getTrashEntries().length;
+      return `${count} ${count === 1 ? "item" : "items"}`;
     }
     if (panel === "settings") {
       const totalSettings =
@@ -1274,6 +1282,10 @@ export class UIController {
     }
     if (summaryAllActive) {
       summaryAllActive.textContent = filteredTasks.length;
+    }
+    const summaryTrash = this.elements.summaryTrash;
+    if (summaryTrash) {
+      summaryTrash.textContent = this.taskManager.getTrashEntries().length;
     }
   }
 
@@ -9043,6 +9055,7 @@ Object.assign(UIController.prototype,
   AllActivePanel,
   SettingsPanel,
   BacklogPanel,
+  TrashPanel,
 );
 
 function clearCustomThemeVariables(root) {
@@ -9349,6 +9362,9 @@ function mapElements() {
     summaryStatistics: byId("summaryStatistics"),
     summaryAllActive: byId("summaryAllActive"),
     allActiveList: byId("allActiveList"),
+    trashList: byId("trashList"),
+    trashEmptyBtn: byId("trashEmptyBtn"),
+    summaryTrash: byId("summaryTrash"),
     settingsThemesList: byId("settingsThemesList"),
     settingsFeatureFlagsList: byId("settingsFeatureFlagsList"),
     settingsContextsList: byId("settingsContextsList"),

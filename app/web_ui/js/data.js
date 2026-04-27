@@ -833,8 +833,9 @@ export class TaskManager extends EventTarget {
     this.persistRemotely();
   }
 
-  notify(level, message, { action } = {}) {
-    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message, action } }));
+  notify(level, message, { action, actions } = {}) {
+    const normalized = actions ?? (action ? [action] : null);
+    this.dispatchEvent(new CustomEvent("toast", { detail: { level, message, action, actions: normalized } }));
   }
 
   emitChange(options = {}) {

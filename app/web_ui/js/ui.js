@@ -728,7 +728,10 @@ export class UIController {
     });
 
     this.taskManager.addEventListener("toast", (event) => {
-      this.showToast(event.detail.level, event.detail.message, { action: event.detail.action });
+      this.showToast(event.detail.level, event.detail.message, {
+        action: event.detail.action,
+        actions: event.detail.actions,
+      });
     });
 
     this.taskManager.addEventListener("connection", (event) => {
@@ -5283,18 +5286,27 @@ export class UIController {
 
   async handleClarifyNonAction(destination) {
     if (!this.clarifyState.taskId || !destination) return;
+    const sessionActive = !!this.processSession;
     if (destination === "trash") {
       const task = this.taskManager.getTaskById(this.clarifyState.taskId);
       const label = task?.title || "this capture";
-      const confirmed = await this.showConfirm(`Delete "${label}"?`, { title: "Delete task", okLabel: "Delete", danger: true });
-      if (!confirmed) {
-        return;
-      }
-      this.taskManager.deleteTask(this.clarifyState.taskId);
-      this.taskManager.notify("info", "Captured idea deleted.");
+      const taskId = this.clarifyState.taskId;
+      this.taskManager.deleteTask(taskId);
+      const actions = [
+        { label: "Undo", onClick: () => this.taskManager.restoreCompletedTask(taskId) },
+      ];
+      if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
+      this.taskManager.notify("info", `Deleted "${label}"`, { actions });
     } else if (destination === "someday") {
-      this.taskManager.moveTask(this.clarifyState.taskId, STATUS.SOMEDAY);
-      this.taskManager.notify("info", "Moved to Backburner.");
+      const taskId = this.clarifyState.taskId;
+      const prev = this.taskManager.getTaskById(taskId);
+      const prevStatus = prev?.status || STATUS.INBOX;
+      this.taskManager.moveTask(taskId, STATUS.SOMEDAY);
+      const actions = [
+        { label: "Undo", onClick: () => this.taskManager.moveTask(taskId, prevStatus) },
+      ];
+      if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
+      this.taskManager.notify("info", "✓ Routed to Later", { actions });
     }
     this._completeClarifyStep();
   }
@@ -5523,8 +5535,14 @@ export class UIController {
       return;
     }
     const closureNotes = this.elements.clarifyTwoMinuteClosureNotes?.value?.trim() || task.closureNotes;
-    this.taskManager.completeTask(task.id, { archive: "reference", closureNotes });
-    this.taskManager.notify("info", "Completed in under two minutes.");
+    const taskId = task.id;
+    this.taskManager.completeTask(taskId, { archive: "reference", closureNotes });
+    const sessionActive = !!this.processSession;
+    const actions = [
+      { label: "Undo", onClick: () => this.taskManager.restoreCompletedTask(taskId) },
+    ];
+    if (sessionActive) actions.push({ label: "Next item →", onClick: () => {} });
+    this.taskManager.notify("info", "✓ Completed in under two minutes", { actions });
     this._completeClarifyStep();
   }
 
@@ -5610,39 +5628,47 @@ export class UIController {
     } else if (this.clarifyState.dueType === "followUp" && this.clarifyState.followUpDate) {
       updates.followUpDate = this.clarifyState.followUpDate;
     }
+    const prevSnapshot = {};
+    Object.keys(updates).forEach((key) => {
+      prevSnapshot[key] = task[key] === undefined ? null : task[key];
+    });
     this.taskManager.updateTask(task.id, updates);
-    const destinations = [];
-    if (updates.status === STATUS.WAITING) destinations.push("Delegated");
-    else if (updates.calendarDate) destinations.push("Calendar");
-    else if (updates.dueDate) destinations.push("Pending Tasks (due)");
-    else destinations.push("Pending Tasks");
+    const dest = this._computeRouteDestination(updates);
+    const taskId = task.id;
+    const sessionActive = !!this.processSession;
+    const actions = [
+      { label: "Undo", onClick: () => this.taskManager.updateTask(taskId, prevSnapshot) },
+    ];
+    if (sessionActive) {
+      actions.push({ label: "Next item →", onClick: () => {} });
+    }
+    this.taskManager.notify("info", `✓ Routed to ${dest}`, { actions });
+    this._completeClarifyStep();
+  }
+
+  _computeRouteDestination(updates) {
+    let primary;
+    if (updates.status === STATUS.WAITING) primary = "Delegated";
+    else if (updates.status === STATUS.DOING) primary = "Doing";
+    else if (updates.status === STATUS.SOMEDAY) primary = "Later";
+    else if (updates.status === STATUS.INBOX) primary = "Inbox";
+    else if (updates.calendarDate) primary = "Calendar";
+    else if (updates.dueDate) primary = "Pending Tasks (due)";
+    else primary = "Next";
+    const parts = [primary];
+    const contexts = updates.contexts || [];
+    if (contexts.length) parts.push(contexts[0]);
     if (updates.projectId) {
       const name = this.getProjectName(updates.projectId);
-      if (name) destinations.push(`Project: ${name}`);
+      if (name) parts.push(`Project: ${name}`);
     }
-    const routeMessage = destinations.length > 1
-      ? `Routed to ${destinations.join(" + ")}.`
-      : `Routed to ${destinations[0] || "Pending Tasks"}.`;
-    this.taskManager.notify("info", routeMessage);
-    this._completeClarifyStep();
+    return parts.join(" · ");
   }
 
   setClarifyFinalMessage(updates) {
     const messageEl = this.elements.clarifyFinalMessage;
     if (!messageEl) return;
-    const destinations = [];
-    if (updates.status === STATUS.WAITING) destinations.push("Delegated");
-    else if (updates.calendarDate) destinations.push("Calendar");
-    else if (updates.dueDate) destinations.push("Pending Tasks (due)");
-    else destinations.push("Pending Tasks");
-    if (updates.projectId) {
-      const name = this.getProjectName(updates.projectId);
-      if (name) destinations.push(`Project: ${name}`);
-    }
-    messageEl.textContent =
-      destinations.length > 1
-        ? `Routed to ${destinations.join(" + ")}.`
-        : `Routed to ${destinations[0] || "Pending Tasks"}.`;
+    messageEl.textContent = `Routed to ${this._computeRouteDestination(updates)}.`;
   }
 
   closeClarifyFlowToInbox() {
@@ -8360,27 +8386,67 @@ export class UIController {
     document.body.prepend(banner);
   }
 
-  showToast(level, message, { action } = {}) {
+  showToast(level, message, { action, actions } = {}) {
     const region = this.elements.alerts;
     if (!message) return;
+    const list = actions ?? (action ? [action] : []);
     const toast = document.createElement("div");
     toast.className = `toast ${level}`;
     toast.textContent = message;
-    if (action) {
+    const buttons = [];
+    list.forEach((entry) => {
+      if (!entry || !entry.onClick) return;
       const btn = document.createElement("button");
       btn.className = "toast-action";
-      btn.textContent = action.label;
+      btn.type = "button";
+      btn.textContent = entry.label;
       btn.addEventListener("click", () => {
-        if (region.contains(toast)) region.removeChild(toast);
-        action.onClick();
+        dismiss();
+        entry.onClick();
       });
       toast.appendChild(btn);
-    }
+      buttons.push({ entry, btn });
+    });
     region.innerHTML = "";
     region.append(toast);
-    setTimeout(() => {
+    if (this._activeToastCleanup) this._activeToastCleanup();
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
       if (region.contains(toast)) region.removeChild(toast);
-    }, action ? 5000 : 3200);
+      document.removeEventListener("keydown", onKeydown, true);
+      clearTimeout(timer);
+      this._activeToastCleanup = null;
+    };
+    const findKey = (key) => {
+      const lower = key.toLowerCase();
+      return buttons.find(({ entry }) => {
+        const label = (entry.label || "").trim().toLowerCase();
+        if (lower === "z" && label.startsWith("undo")) return true;
+        if ((lower === "n" || key === "Enter") && (label.startsWith("next") || label.includes("→"))) return true;
+        return false;
+      });
+    };
+    const onKeydown = (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.isContentEditable) return;
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      }
+      if (event.key !== "Z" && event.key !== "z" && event.key !== "N" && event.key !== "n" && event.key !== "Enter") return;
+      const match = findKey(event.key);
+      if (!match) return;
+      event.preventDefault();
+      match.btn.click();
+    };
+    if (buttons.length) {
+      document.addEventListener("keydown", onKeydown, true);
+      this._activeToastCleanup = dismiss;
+    }
+    const timer = setTimeout(dismiss, buttons.length ? 6000 : 3200);
   }
 
   startConnectionChecks() {

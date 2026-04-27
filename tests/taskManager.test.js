@@ -94,6 +94,47 @@ test("getTrashEntries returns only deleted entries, never completed", () => {
   assert.equal(trash[0].id, deletedTask.id);
 });
 
+test("reclassifyTrashAsReference moves entry from completionLog to reference", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Was it deletion or completion?" });
+  manager.deleteTask(task.id);
+  assert.equal(manager.state.completionLog.length, 1);
+  assert.equal(manager.getTrashEntries().length, 1);
+
+  const ok = manager.reclassifyTrashAsReference(task.id);
+  assert.equal(ok, true);
+  assert.equal(manager.state.completionLog.length, 0, "entry removed from completionLog");
+  assert.equal(manager.state.reference.length, 1, "entry now in reference");
+  assert.equal(manager.state.reference[0].archiveType, "reference");
+  assert.equal(manager.getTrashEntries().length, 0, "no longer in trash");
+  assert.equal(manager.getCompletionEntries().length, 1, "now counted in stats");
+  assert.ok(manager.state._tombstones?.[task.id], "tombstone preserved");
+});
+
+test("reclassifyTrashAsCompleted retags entry in place; stays in completionLog", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Quiet finish, mistakenly trashed" });
+  manager.deleteTask(task.id);
+
+  const ok = manager.reclassifyTrashAsCompleted(task.id);
+  assert.equal(ok, true);
+  assert.equal(manager.state.completionLog.length, 1, "entry stays in completionLog");
+  assert.equal(manager.state.completionLog[0].archiveType, "completed");
+  assert.equal(manager.getTrashEntries().length, 0, "no longer in trash");
+  assert.equal(manager.getCompletionEntries().length, 1, "now counted in stats");
+  assert.ok(manager.state._tombstones?.[task.id], "tombstone preserved");
+});
+
+test("reclassify methods refuse non-deleted entries", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Quiet finish" });
+  manager.completeTask(task.id, { archive: "log" });
+  assert.equal(manager.state.completionLog[0].archiveType, "completed");
+
+  assert.equal(manager.reclassifyTrashAsReference(task.id), false, "won't move non-deleted entry");
+  assert.equal(manager.reclassifyTrashAsCompleted(task.id), false, "won't retag non-deleted entry");
+});
+
 test("emptyTrash removes only deleted entries, preserves completed entries", () => {
   const manager = createManager();
   const completedTask = manager.addTask({ title: "Done quietly" });

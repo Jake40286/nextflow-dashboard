@@ -4506,7 +4506,56 @@ export class UIController {
         this.elements.clarifyDescSummary.textContent = task?.description || "";
       }
       if (summary) summary.hidden = false;
+      if (this.elements.clarifyFooter) this.elements.clarifyFooter.hidden = false;
+      this.showClarifySegment("time");
+      this.renderClaritySummary();
     });
+
+    // Breadcrumb segment navigation
+    clarifyModal.querySelectorAll("[data-clarify-step]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.showClarifySegment(btn.dataset.clarifyStep);
+      });
+    });
+
+    // Re-render summary rail on any field change inside the actionable form
+    const actionableFields = document.getElementById("clarifyActionableFields");
+    if (actionableFields) {
+      actionableFields.addEventListener("change", () => this.renderClaritySummary());
+      actionableFields.addEventListener("input", () => this.renderClaritySummary());
+      actionableFields.addEventListener("click", () => {
+        // delay one tick so handlers update state first
+        setTimeout(() => this.renderClaritySummary(), 0);
+      });
+    }
+
+    // Cmd/Ctrl+Enter routes; arrow keys move between segments while modal open
+    const segmentOrder = ["time", "who", "project", "when", "details"];
+    this._clarifyExtraKeydown = (event) => {
+      if (!clarifyModal.classList.contains("is-open")) return;
+      const target = event.target;
+      const inEditable = target instanceof HTMLElement && (target.isContentEditable
+        || target.tagName === "TEXTAREA"
+        || (target.tagName === "INPUT" && target.type !== "radio" && target.type !== "checkbox"));
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("clarifyDoneButton")?.click();
+        return;
+      }
+      if (inEditable) return;
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        const current = segmentOrder.indexOf(this.clarifyState.activeSegment || "time");
+        if (current === -1) return;
+        const next = event.key === "ArrowRight"
+          ? Math.min(current + 1, segmentOrder.length - 1)
+          : Math.max(current - 1, 0);
+        if (next !== current) {
+          event.preventDefault();
+          this.showClarifySegment(segmentOrder[next]);
+        }
+      }
+    };
+    document.addEventListener("keydown", this._clarifyExtraKeydown);
 
     // Project section
     clarifyActionSingle?.addEventListener("click", () => {
@@ -4530,6 +4579,7 @@ export class UIController {
       if (clarifyTwoMinuteFollowup) clarifyTwoMinuteFollowup.hidden = true;
       const normalFields = document.getElementById("clarifyNormalActionFields");
       if (normalFields) normalFields.hidden = false;
+      this.showClarifySegment("who");
     });
     clarifyTwoMinuteYes?.addEventListener("click", () => {
       selectChoice(twoMinChoices, clarifyTwoMinuteYes);
@@ -5030,6 +5080,24 @@ export class UIController {
       if (this.elements.clarifyTitleSummary && s.previewText) {
         this.elements.clarifyTitleSummary.textContent = s.previewText;
       }
+      if (this.elements.clarifyFooter) this.elements.clarifyFooter.hidden = false;
+      this.showClarifySegment(s.activeSegment || "time");
+    }
+
+    // Draft-restored chip on the summary rail
+    const rail = this.elements.claritySummaryRail;
+    if (rail) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "clarify-draft-chip";
+      chip.textContent = "Draft restored — Start over";
+      chip.addEventListener("click", () => {
+        const taskId = s.taskId;
+        this._clearClarifyDraft(taskId);
+        this.resetClarifyState();
+        if (taskId) this.openClarifyModal(taskId);
+      });
+      rail.prepend(chip);
     }
 
     // Restore date selection
@@ -5131,6 +5199,63 @@ export class UIController {
     }
   }
 
+  showClarifySegment(name) {
+    const modal = this.elements.clarifyModal;
+    if (!modal) return;
+    const segments = modal.querySelectorAll("[data-segment]");
+    let matched = false;
+    segments.forEach((seg) => {
+      const isActive = seg.dataset.segment === name;
+      seg.hidden = !isActive;
+      if (isActive) matched = true;
+    });
+    if (!matched) return;
+    modal.querySelectorAll("[data-clarify-step]").forEach((btn) => {
+      const isActive = btn.dataset.clarifyStep === name;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-selected", String(isActive));
+    });
+    this.clarifyState.activeSegment = name;
+    this.renderClaritySummary();
+  }
+
+  renderClaritySummary() {
+    const rail = this.elements.claritySummaryRail;
+    if (!rail) return;
+    const s = this.clarifyState;
+    if (!s.actionableConfirmed) {
+      rail.textContent = "";
+      return;
+    }
+    const parts = [];
+    const title = (s.previewText || "").trim();
+    if (title) parts.push(`"${title.length > 40 ? title.slice(0, 40) + "…" : title}"`);
+    if (s.whoChoice === "delegate" && s.waitingFor) {
+      parts.push(`→ Delegated to ${s.waitingFor}`);
+    } else if (s.statusTarget) {
+      parts.push(`→ ${this._segmentStatusLabel(s.statusTarget)}`);
+    } else {
+      parts.push("→ Next");
+    }
+    if (s.contexts && s.contexts.length) parts.push(s.contexts[0]);
+    if (s.projectName) parts.push(`Project: ${s.projectName}`);
+    if (s.dueType === "calendar" && s.calendarDate) {
+      parts.push(`📅 ${s.calendarDate}${s.calendarTime ? " " + s.calendarTime : ""}`);
+    } else if (s.dueType === "due" && s.dueDate) {
+      parts.push(`due ${s.dueDate}`);
+    } else if (s.dueType === "followUp" && s.followUpDate) {
+      parts.push(`follow up ${s.followUpDate}`);
+    }
+    rail.textContent = parts.join(" · ");
+  }
+
+  _segmentStatusLabel(status) {
+    if (status === STATUS.WAITING) return "Delegated";
+    if (status === STATUS.DOING) return "Doing";
+    if (status === STATUS.SOMEDAY) return "Later";
+    return "Next";
+  }
+
   populateClarifyPreview(task) {
     if (this.elements.clarifyPreviewText) {
       this.elements.clarifyPreviewText.textContent = task.title || "(No title)";
@@ -5197,6 +5322,20 @@ export class UIController {
     }
     this._applyDelegateBranchVisibility(false);
     this._applyRecurrenceGate();
+    if (this.elements.clarifyFooter) this.elements.clarifyFooter.hidden = true;
+    if (this.elements.claritySummaryRail) this.elements.claritySummaryRail.textContent = "";
+    this.clarifyState.activeSegment = "time";
+    const modal = this.elements.clarifyModal;
+    if (modal) {
+      modal.querySelectorAll("[data-segment]").forEach((seg) => {
+        seg.hidden = seg.dataset.segment !== "time";
+      });
+      modal.querySelectorAll("[data-clarify-step]").forEach((btn) => {
+        const isActive = btn.dataset.clarifyStep === "time";
+        btn.classList.toggle("is-active", isActive);
+        btn.setAttribute("aria-selected", String(isActive));
+      });
+    }
   }
 
   populateClarifyContexts() {
@@ -9106,6 +9245,8 @@ function mapElements() {
     clarifyProjectSection: byId("clarifyProjectSection"),
     clarifyDetailsSection: byId("clarifyDetailsSection"),
     clarifyRecurrenceHint: byId("clarifyRecurrenceHint"),
+    claritySummaryRail: byId("claritySummaryRail"),
+    clarifyFooter: byId("clarifyFooter"),
     clarifySpecificDateInput: byId("clarifySpecificDateInput"),
     clarifySpecificTimeInput: byId("clarifySpecificTimeInput"),
     clarifyDueDateInput: byId("clarifyDueDateInput"),

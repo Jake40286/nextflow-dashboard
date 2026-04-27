@@ -1507,7 +1507,8 @@ export class TaskManager extends EventTarget {
     const log = Array.isArray(this.state.completionLog) ? this.state.completionLog : [];
     const logIndex = log.findIndex(match);
     if (logIndex !== -1) {
-      return { list: log, index: logIndex, archiveType: "deleted" };
+      const entry = log[logIndex];
+      return { list: log, index: logIndex, archiveType: entry?.archiveType || "deleted" };
     }
     return null;
   }
@@ -1635,7 +1636,7 @@ export class TaskManager extends EventTarget {
       return null;
     }
     const completedAt = new Date().toISOString();
-    const archiveType = archive === "reference" ? "reference" : "deleted";
+    const archiveType = archive === "reference" ? "reference" : "completed";
     const [task] = this.state.tasks.splice(taskIndex, 1);
     // Record a tombstone so other devices don't resurrect this task during merge.
     this.state._tombstones = this.state._tombstones || {};
@@ -1669,7 +1670,7 @@ export class TaskManager extends EventTarget {
       this.notify("info", `"${t.title}" is now unblocked.`);
     }
     const completionMessage =
-      archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed and removed "${task.title}".`;
+      archive === "reference" ? `Moved "${task.title}" to Reference.` : `Completed "${task.title}".`;
     const suffix = scheduled ? " Next occurrence scheduled." : "";
     this.notify("info", `${completionMessage}${suffix}`, {
       action: { label: "Undo", onClick: () => this.restoreCompletedTask(task.id) },
@@ -1746,7 +1747,7 @@ export class TaskManager extends EventTarget {
       archiveType = "reference";
     } else if (logIndex !== -1) {
       [entry] = this.state.completionLog.splice(logIndex, 1);
-      archiveType = "deleted";
+      archiveType = entry?.archiveType || "deleted";
     }
     if (entry) this._completionsDirty = true;
     if (!entry) {
@@ -3127,7 +3128,7 @@ export class TaskManager extends EventTarget {
     const logged = Array.isArray(this.state.completionLog) ? this.state.completionLog : [];
     return [...reference, ...logged]
       .map((entry) => normalizeCompletionEntry(entry))
-      .filter((entry) => entry && entry.archiveType !== "deleted");
+      .filter((entry) => entry && (entry.archiveType === "reference" || entry.archiveType === "completed"));
   }
 
   getCompletedTasks({ year, context, contexts, projectId, projectIds, areas } = {}) {

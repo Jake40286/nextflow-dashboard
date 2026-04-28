@@ -1,4 +1,4 @@
-const CACHE_NAME = "nextflow-shell-v7";
+const CACHE_NAME = "nextflow-shell-v8";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -9,6 +9,20 @@ const CORE_ASSETS = [
   "/js/data.js",
   "/js/analytics.js",
   "/js/review.js",
+  "/js/panels/all-active.js",
+  "/js/panels/backlog.js",
+  "/js/panels/calendar.js",
+  "/js/panels/inbox.js",
+  "/js/panels/kanban.js",
+  "/js/panels/my-day.js",
+  "/js/panels/next.js",
+  "/js/panels/projects.js",
+  "/js/panels/reports.js",
+  "/js/panels/settings.js",
+  "/js/panels/someday.js",
+  "/js/panels/statistics.js",
+  "/js/panels/trash.js",
+  "/js/panels/waiting.js",
   "/lib/chart.min.js",
   "/lib/dragdrop.js",
   "/favicon-16x16.png",
@@ -49,7 +63,11 @@ self.addEventListener("fetch", (event) => {
   if (isSameOrigin && (
     url.pathname.startsWith("/state") ||
     url.pathname.startsWith("/completed") ||
-    url.pathname.startsWith("/feedback")
+    url.pathname.startsWith("/feedback") ||
+    url.pathname.startsWith("/credentials") ||
+    url.pathname.startsWith("/upload") ||
+    url.pathname.startsWith("/admin") ||
+    url.pathname.startsWith("/export")
   )) {
     return;
   }

@@ -67,6 +67,8 @@ Handles static file serving and a small JSON REST API. All JSON responses are gz
 
 **Thread safety:** All reads/writes to `STATE_FILE`/`COMPLETED_FILE` are guarded by `STATE_LOCK`. Feedback uses a separate `FEEDBACK_LOCK`. Google Calendar sync uses `_CALENDAR_SYNC_LOCK`.
 
+`SERVER_VERSION` is set to the current git short SHA at startup (falls back to a timestamp if git is unavailable). The frontend uses `_serverVersion` in the `/state` response to detect when the server was redeployed.
+
 ---
 
 ### State persistence
@@ -156,14 +158,12 @@ Triggered asynchronously after each `PUT /state`. Requires `GOOGLE_CREDENTIALS_F
 
 ---
 
-## Slash commands
+## Reference docs
 
-Custom slash commands live in `.claude/commands/`. Key references for this project:
+- `@.claude/feedback-grouped.md` — snapshot of the bug/feature backlog (source of truth is `GET /feedback`). Check before starting bug-fix or feature work to avoid duplicating analysis.
+- `@.claude/project-context.md` — concise architectural reference. Useful as context for `/ask` architectural questions.
 
-- `@feedback.md` — current bug/feature backlog with proposed solutions and resolved status. **Check this before starting any bug fix or feature work** to avoid duplicating analysis already done.
-- `@project-context.md` — concise architectural reference (stack, key files, data model, design decisions). Useful as context for `/ask` architectural questions.
-
-Both files are kept in sync with `data/feedback.json` — when items are implemented, mark them resolved in both places.
+Slash commands live in `.claude/commands/` (`/nextflow-add-panel`, `/nextflow-feedback-triage`, `/nextflow-sync-debug`).
 
 ---
 
@@ -175,5 +175,3 @@ Tests live in `tests/taskManager.test.js` and use Node's built-in test runner. T
 - Imports `__testing` from `data.js` for access to internal helpers (`mergeStates`, `mergeTasks`, `mergeSettings`, `_buildConflictSummary`, `_mergeTombstones`, etc.).
 
 New tests should follow this pattern — no server required, no mocking framework.
-
-`SERVER_VERSION` is set to the current git short SHA at startup (falls back to a timestamp if git is unavailable). The frontend uses `_serverVersion` in the `/state` response to detect when the server was redeployed.

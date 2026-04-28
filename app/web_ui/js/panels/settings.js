@@ -335,7 +335,11 @@ export default {
         configPanel = document.createElement("div");
         configPanel.className = "feature-flag-config-panel";
         configPanel.hidden = !input.checked;
-        entry.renderConfig(configPanel);
+        try {
+          entry.renderConfig(configPanel);
+        } catch (error) {
+          console.error(`Failed to render config for ${entry.key}`, error);
+        }
         item.append(configPanel);
       }
       container.append(item);
@@ -495,10 +499,15 @@ export default {
       }
     };
 
-    fetch("/credentials/google", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => updateCredsStatus(d.configured, d.clientEmail))
-      .catch(() => updateCredsStatus(false, null));
+    if (this.taskManager.connectionStatus === "offline") {
+      credsStatus.textContent = "Offline — credentials status unavailable.";
+      credsStatus.dataset.state = "warn";
+    } else {
+      fetch("/credentials/google", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => updateCredsStatus(d.configured, d.clientEmail))
+        .catch(() => updateCredsStatus(false, null));
+    }
 
     credsSaveBtn.addEventListener("click", async () => {
       const raw = credsTextarea.value.trim();

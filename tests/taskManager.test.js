@@ -1701,6 +1701,42 @@ test("mergeTasks preserves prerequisiteTaskIds via LWW per-field-group", () => {
   assert.deepEqual(merged.prerequisiteTaskIds, [], "remote wins — prereq removed");
 });
 
+test("getContexts returns a populated list with no network access", () => {
+  const manager = createManager({
+    settings: {
+      contextOptions: [
+        { name: "@Home", areas: [] },
+        { name: "@Office", areas: ["Work"] },
+      ],
+    },
+  });
+  const contexts = manager.getContexts();
+  assert.ok(contexts.includes("@Home"), "@Home present from settings");
+  assert.ok(contexts.includes("@Office"), "@Office present from settings");
+});
+
+test("getContexts falls back to physical defaults when state has no contexts", () => {
+  const manager = createManager();
+  const contexts = manager.getContexts();
+  assert.ok(contexts.length > 0, "fallback contexts available offline");
+  assert.ok(contexts.includes("@Phone"), "default @Phone present");
+});
+
+test("addContextOption / renameContext / deleteContext mutate state without network", () => {
+  const manager = createManager({
+    settings: {
+      contextOptions: [{ name: "@Office", areas: [] }],
+    },
+  });
+  assert.equal(manager.addContextOption("@Library", { notify: false }), "@Library");
+  assert.ok(manager.getContexts().includes("@Library"));
+  assert.ok(manager.renameContext("@Library", "@Studio"));
+  assert.ok(manager.getContexts().includes("@Studio"));
+  assert.ok(!manager.getContexts().includes("@Library"));
+  assert.ok(manager.deleteContext("@Studio"));
+  assert.ok(!manager.getContexts().includes("@Studio"));
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

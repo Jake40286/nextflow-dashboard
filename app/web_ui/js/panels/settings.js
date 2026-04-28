@@ -499,7 +499,7 @@ export default {
       }
     };
 
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    if (this.taskManager.connectionStatus === "offline") {
       credsStatus.textContent = "Offline — credentials status unavailable.";
       credsStatus.dataset.state = "warn";
     } else {

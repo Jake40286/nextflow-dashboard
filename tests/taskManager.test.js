@@ -2041,6 +2041,118 @@ test("stripMarkdownCodeFence + parseTemplateFile: round-trips a fenced schema ex
   assert.ok(parsed.tasks.length >= 2);
 });
 
+test("deleteProject (default) removes project and orphans tasks (clears projectId)", () => {
+  const manager = createManager();
+  const project = manager.addProject("Kitchen Reno");
+  const t1 = manager.addTask({ title: "Demo cabinets", projectId: project.id });
+  const t2 = manager.addTask({ title: "Pick paint", projectId: project.id });
+  const unrelated = manager.addTask({ title: "Standalone" });
+
+  manager.deleteProject(project.id);
+
+  assert.equal(manager.state.projects.find((p) => p.id === project.id), undefined, "project removed");
+  assert.equal(manager.state.tasks.length, 3, "tasks remain in active list");
+  const t1After = manager.state.tasks.find((t) => t.id === t1.id);
+  const t2After = manager.state.tasks.find((t) => t.id === t2.id);
+  assert.equal(t1After.projectId, null, "task projectId cleared");
+  assert.equal(t2After.projectId, null, "task projectId cleared");
+  assert.equal(
+    (manager.state.completionLog || []).length,
+    0,
+    "no completionLog entries written when not cascading",
+  );
+  assert.equal(
+    Object.keys(manager.state._tombstones || {}).length,
+    0,
+    "no tombstones written when not cascading",
+  );
+  assert.ok(
+    manager.state.tasks.find((t) => t.id === unrelated.id),
+    "unrelated task untouched",
+  );
+});
+
+test("deleteProject({ deleteTasks: true }) batch-deletes tasks with tombstones and Trash entries", () => {
+  const manager = createManager();
+  const project = manager.addProject("Wind-down project");
+  const t1 = manager.addTask({ title: "Cancel invoice", projectId: project.id });
+  const t2 = manager.addTask({ title: "Archive notes", projectId: project.id });
+  const unrelated = manager.addTask({ title: "Keep me" });
+
+  manager.deleteProject(project.id, { deleteTasks: true });
+
+  assert.equal(manager.state.projects.find((p) => p.id === project.id), undefined, "project removed");
+  assert.equal(manager.state.tasks.length, 1, "only the unrelated task remains active");
+  assert.equal(manager.state.tasks[0].id, unrelated.id);
+
+  // Tombstones written for both deleted tasks (required for cross-device merge).
+  assert.ok(manager.state._tombstones[t1.id], "tombstone for t1");
+  assert.ok(manager.state._tombstones[t2.id], "tombstone for t2");
+  assert.equal(manager.state._tombstones[unrelated.id], undefined, "no tombstone for unrelated task");
+
+  // Trash entries written for both deleted tasks.
+  const trashEntries = manager.getTrashEntries();
+  const trashIds = trashEntries.map((e) => e.id).sort();
+  assert.deepEqual(trashIds, [t1.id, t2.id].sort(), "both deleted tasks in Trash");
+  for (const entry of trashEntries) {
+    assert.equal(entry.archiveType, "deleted", "archiveType is 'deleted'");
+  }
+
+  assert.equal(manager._completionsDirty, true, "_completionsDirty set so PUT /state includes completionLog");
+});
+
+test("deleteProject({ deleteTasks: true }) restoreFromTrash brings back individually", () => {
+  const manager = createManager();
+  const project = manager.addProject("To delete");
+  const t1 = manager.addTask({ title: "Survivor", projectId: project.id });
+  manager.addTask({ title: "Goner", projectId: project.id });
+
+  manager.deleteProject(project.id, { deleteTasks: true });
+  assert.equal(manager.state.tasks.length, 0);
+
+  manager.restoreFromTrash(t1.id);
+  assert.equal(manager.state.tasks.length, 1, "one task restored");
+  const restored = manager.state.tasks[0];
+  assert.equal(restored.id, t1.id);
+  assert.equal(manager.state._tombstones[t1.id], undefined, "tombstone cleared on restore");
+});
+
+test("deleteProject({ deleteTasks: true }) on empty project leaves _completionsDirty unset", () => {
+  const manager = createManager();
+  const project = manager.addProject("Empty project");
+
+  manager.deleteProject(project.id, { deleteTasks: true });
+
+  assert.equal(manager.state.projects.length, 0, "project removed");
+  assert.equal(
+    manager._completionsDirty,
+    false,
+    "no work for the completion-sync path when no tasks were deleted",
+  );
+  assert.equal(
+    Object.keys(manager.state._tombstones || {}).length,
+    0,
+    "no tombstones written when project is empty",
+  );
+});
+
+test("deleteProject({ deleteTasks: true }) only deletes tasks with the matching projectId", () => {
+  const manager = createManager();
+  const projectA = manager.addProject("Project A");
+  const projectB = manager.addProject("Project B");
+  const aTask = manager.addTask({ title: "A1", projectId: projectA.id });
+  const bTask = manager.addTask({ title: "B1", projectId: projectB.id });
+  const orphan = manager.addTask({ title: "No project" });
+
+  manager.deleteProject(projectA.id, { deleteTasks: true });
+
+  const remaining = manager.state.tasks.map((t) => t.id).sort();
+  assert.deepEqual(remaining, [bTask.id, orphan.id].sort(), "only Project A tasks deleted");
+  assert.ok(manager.state._tombstones[aTask.id], "tombstone for the A task");
+  assert.equal(manager.state._tombstones[bTask.id], undefined);
+  assert.equal(manager.state._tombstones[orphan.id], undefined);
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

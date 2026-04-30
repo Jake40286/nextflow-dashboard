@@ -2115,7 +2115,7 @@ export class TaskManager extends EventTarget {
     return project;
   }
 
-  deleteProject(projectId) {
+  deleteProject(projectId, { deleteTasks = false } = {}) {
     const projectIndex = this.state.projects.findIndex((p) => p.id === projectId);
     if (projectIndex === -1) {
       this.notify("error", "Project not found.");
@@ -2123,14 +2123,52 @@ export class TaskManager extends EventTarget {
     }
 
     const [project] = this.state.projects.splice(projectIndex, 1);
-    this.state.tasks.forEach((task) => {
-      if (task.projectId === projectId) {
-        task.projectId = null;
+
+    let deletedCount = 0;
+    if (deleteTasks) {
+      const deletedAt = nowIso();
+      this.state._tombstones = this.state._tombstones || {};
+      this.state.completionLog = this.state.completionLog || [];
+      const remaining = [];
+      const newEntries = [];
+      const deletedIds = new Set();
+      for (const task of this.state.tasks) {
+        if (task.projectId === projectId) {
+          this.state._tombstones[task.id] = deletedAt;
+          newEntries.push(createCompletionSnapshot(task, deletedAt, "deleted"));
+          deletedIds.add(task.id);
+        } else {
+          remaining.push(task);
+        }
       }
-    });
+      this.state.tasks = remaining;
+      deletedCount = deletedIds.size;
+      if (deletedCount > 0) {
+        // Prepend in one O(L) splice instead of N×O(L) unshifts. Reverse so the last-processed
+        // task lands at the front of the log, matching the order N individual deleteTask calls would produce.
+        this.state.completionLog = [...newEntries.reverse(), ...this.state.completionLog];
+        this.state.projects.forEach((p) => {
+          p.tasks = (p.tasks || []).filter((taskId) => !deletedIds.has(taskId));
+        });
+        this._completionsDirty = true;
+      }
+    } else {
+      this.state.tasks.forEach((task) => {
+        if (task.projectId === projectId) {
+          task.projectId = null;
+        }
+      });
+    }
 
     this.emitChange();
-    this.notify("info", `Deleted project "${project.name}". Tasks remain available in their current lists.`);
+    if (deleteTasks && deletedCount > 0) {
+      this.notify(
+        "info",
+        `Deleted project "${project.name}" and ${deletedCount} task${deletedCount === 1 ? "" : "s"}.`,
+      );
+    } else {
+      this.notify("info", `Deleted project "${project.name}". Tasks remain available in their current lists.`);
+    }
   }
 
   mergeProjects(sourceId, targetId) {

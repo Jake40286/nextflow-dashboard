@@ -2202,14 +2202,21 @@ export class UIController {
     deleteBtn.className = "btn btn-danger";
     deleteBtn.textContent = "Delete project";
     deleteBtn.addEventListener("click", async () => {
-      const confirmed = await this.showConfirm(
-        `Delete project "${project.name}"? Tasks will remain but lose their project link.`,
-        { title: "Delete project", okLabel: "Delete", danger: true }
-      );
-      if (confirmed) {
+      const activeTasks = this.taskManager.getTasks({ projectId: project.id });
+      if (activeTasks.length === 0) {
+        const confirmed = await this.showConfirm(
+          `Delete project "${project.name}"?`,
+          { title: "Delete project", okLabel: "Delete", danger: true },
+        );
+        if (!confirmed) return;
         this.closeProjectFlyout();
         this.taskManager.deleteProject(project.id);
+        return;
       }
+      const choice = await this.showProjectDeleteDialog(project.name, activeTasks.length);
+      if (!choice) return;
+      this.closeProjectFlyout();
+      this.taskManager.deleteProject(project.id, { deleteTasks: choice === "cascade" });
     });
     footer.append(deleteBtn);
 
@@ -8918,6 +8925,51 @@ export class UIController {
     });
   }
 
+  // Resolves to "cascade" (delete project + tasks), "project-only" (orphan tasks), or null (cancel).
+  showProjectDeleteDialog(projectName, taskCount) {
+    return new Promise((resolve) => {
+      const modal = this.elements.projectDeleteModal;
+      if (!modal) {
+        const ok = window.confirm(
+          `Delete project "${projectName}" and its ${taskCount} task${taskCount === 1 ? "" : "s"}?`,
+        );
+        resolve(ok ? "cascade" : null);
+        return;
+      }
+      const msgEl = this.elements.projectDeleteModalMessage;
+      const cascadeBtn = this.elements.projectDeleteModalCascade;
+      const projectOnlyBtn = this.elements.projectDeleteModalProjectOnly;
+      const cancelBtn = this.elements.projectDeleteModalCancel;
+      const backdropEl = modal.querySelector(".modal-backdrop");
+      if (msgEl) {
+        msgEl.textContent =
+          `Delete project "${projectName}"? It contains ${taskCount} active task${taskCount === 1 ? "" : "s"}. ` +
+          `Choose whether to delete the tasks too, or keep them (they will lose their project link).`;
+      }
+      const cleanup = () => {
+        modal.classList.remove("is-open");
+        modal.setAttribute("hidden", "");
+        cascadeBtn?.removeEventListener("click", onCascade);
+        projectOnlyBtn?.removeEventListener("click", onProjectOnly);
+        cancelBtn?.removeEventListener("click", onCancel);
+        backdropEl?.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKeydown);
+      };
+      const onCascade = () => { cleanup(); resolve("cascade"); };
+      const onProjectOnly = () => { cleanup(); resolve("project-only"); };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } };
+      cascadeBtn?.addEventListener("click", onCascade);
+      projectOnlyBtn?.addEventListener("click", onProjectOnly);
+      cancelBtn?.addEventListener("click", onCancel);
+      backdropEl?.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKeydown);
+      modal.classList.add("is-open");
+      modal.removeAttribute("hidden");
+      setTimeout(() => cancelBtn?.focus(), 50);
+    });
+  }
+
   showConfirm(message, { title = "Confirm", okLabel = "Confirm", danger = false } = {}) {
     return new Promise((resolve) => {
       const modal = this.elements.confirmModal;
@@ -9575,6 +9627,12 @@ function mapElements() {
     recurringDeleteModalInstance: byId("recurringDeleteModalInstance"),
     recurringDeleteModalSeries: byId("recurringDeleteModalSeries"),
     recurringDeleteModalCancel: byId("recurringDeleteModalCancel"),
+    projectDeleteModal: byId("projectDeleteModal"),
+    projectDeleteModalHeading: byId("projectDeleteModalHeading"),
+    projectDeleteModalMessage: byId("projectDeleteModalMessage"),
+    projectDeleteModalCascade: byId("projectDeleteModalCascade"),
+    projectDeleteModalProjectOnly: byId("projectDeleteModalProjectOnly"),
+    projectDeleteModalCancel: byId("projectDeleteModalCancel"),
     confirmModal: byId("confirmModal"),
     confirmModalHeading: byId("confirmModalHeading"),
     confirmModalMessage: byId("confirmModalMessage"),

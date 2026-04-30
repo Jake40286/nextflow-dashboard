@@ -2647,16 +2647,26 @@ export class UIController {
       }
     }
 
-    importTemplateModal.removeAttribute("hidden");
-    importTemplateModal.classList.add("is-open");
-    setTimeout(() => importTemplateProjectName?.focus(), 30);
+    this._openModal(importTemplateModal, importTemplateProjectName);
   }
 
   closeImportTemplateModal() {
-    const { importTemplateModal } = this.elements;
+    const {
+      importTemplateModal, importTemplateProjectName, importTemplateNameHint,
+      importTemplateSummary, importTemplateWarnings, importTemplateWarningsList,
+      importTemplateTaskList,
+    } = this.elements;
     if (!importTemplateModal) return;
-    importTemplateModal.classList.remove("is-open");
-    importTemplateModal.setAttribute("hidden", "");
+    this._closeModal(importTemplateModal);
+    if (importTemplateProjectName) importTemplateProjectName.value = "";
+    if (importTemplateNameHint) {
+      importTemplateNameHint.textContent = "";
+      importTemplateNameHint.setAttribute("hidden", "");
+    }
+    if (importTemplateSummary) importTemplateSummary.textContent = "";
+    if (importTemplateWarningsList) importTemplateWarningsList.innerHTML = "";
+    if (importTemplateWarnings) importTemplateWarnings.setAttribute("hidden", "");
+    if (importTemplateTaskList) importTemplateTaskList.innerHTML = "";
     this._pendingTemplateImport = null;
   }
 
@@ -2683,15 +2693,24 @@ export class UIController {
     const { templateSchemaModal, templateSchemaExample } = this.elements;
     if (!templateSchemaModal) return;
     if (templateSchemaExample) templateSchemaExample.textContent = TEMPLATE_SCHEMA_EXAMPLE;
-    templateSchemaModal.removeAttribute("hidden");
-    templateSchemaModal.classList.add("is-open");
+    this._openModal(templateSchemaModal);
   }
 
   closeTemplateSchemaModal() {
-    const { templateSchemaModal } = this.elements;
-    if (!templateSchemaModal) return;
-    templateSchemaModal.classList.remove("is-open");
-    templateSchemaModal.setAttribute("hidden", "");
+    this._closeModal(this.elements.templateSchemaModal);
+  }
+
+  _openModal(modal, focusEl) {
+    if (!modal) return;
+    modal.removeAttribute("hidden");
+    modal.classList.add("is-open");
+    if (focusEl) setTimeout(() => focusEl.focus(), 30);
+  }
+
+  _closeModal(modal) {
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("hidden", "");
   }
 
   async _copyToClipboard(text, successMessage) {

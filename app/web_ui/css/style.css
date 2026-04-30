@@ -1514,7 +1514,6 @@ body.is-admin .alerts {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre;
   overflow-x: auto;
-  max-height: 50vh;
   margin: var(--space-2) 0;
 }
 

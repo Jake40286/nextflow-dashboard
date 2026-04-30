@@ -2426,25 +2426,42 @@ export class TaskManager extends EventTarget {
     }
     const settings = this.state.settings;
 
-    const ensureOptionInArray = (arrName, name, valueShape) => {
+    const buildOptionLookup = (arrName) => {
       if (!Array.isArray(settings[arrName])) settings[arrName] = [];
-      const arr = settings[arrName];
-      const exists = arr.some((opt) => {
+      const set = new Set();
+      for (const opt of settings[arrName]) {
         const n = typeof opt === "object" && opt !== null ? opt.name : opt;
-        return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
-      });
-      if (!exists) arr.push(valueShape === "object" ? { name, areas: [] } : name);
+        if (typeof n === "string") set.add(n.toLowerCase());
+      }
+      return set;
     };
-    const ensureContext = (name) => ensureOptionInArray("contextOptions", name, "object");
+    const seenContexts = buildOptionLookup("contextOptions");
+    const seenPeople = buildOptionLookup("peopleOptions");
+    const seenAreas = buildOptionLookup("areaOptions");
+    const ensureContext = (name) => {
+      const key = name.toLowerCase();
+      if (seenContexts.has(key)) return;
+      settings.contextOptions.push({ name, areas: [] });
+      seenContexts.add(key);
+    };
     const ensurePerson = (name) => {
-      ensureOptionInArray("peopleOptions", name, "object");
+      const key = name.toLowerCase();
+      if (!seenPeople.has(key)) {
+        settings.peopleOptions.push({ name, areas: [] });
+        seenPeople.add(key);
+      }
       if (Array.isArray(settings.deletedPeopleOptions)) {
         settings.deletedPeopleOptions = settings.deletedPeopleOptions.filter(
-          (d) => typeof d === "string" && d.toLowerCase() !== name.toLowerCase()
+          (d) => typeof d === "string" && d.toLowerCase() !== key
         );
       }
     };
-    const ensureArea = (name) => ensureOptionInArray("areaOptions", name, "string");
+    const ensureArea = (name) => {
+      const key = name.toLowerCase();
+      if (seenAreas.has(key)) return;
+      settings.areaOptions.push(name);
+      seenAreas.add(key);
+    };
 
     const projectArea = projectInput.areaOfFocus || PROJECT_AREAS[0];
     ensureArea(projectArea);
@@ -4153,7 +4170,7 @@ function normalizeTemplate(tmpl) {
   };
 }
 
-function sanitizePeopleTag(value) {
+export function sanitizePeopleTag(value) {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;

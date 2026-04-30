@@ -6,7 +6,7 @@ import {
   EFFORT_LEVELS,
   TIME_REQUIREMENTS,
   PROJECT_STATUSES,
-  PEOPLE_TAG_PATTERN,
+  sanitizePeopleTag,
 } from "./data.js";
 
 export const TEMPLATE_SCHEMA_VERSION = "nextflow-template@1";
@@ -55,14 +55,6 @@ function sanitizeContext(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
-}
-
-function sanitizePerson(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const candidate = trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
-  return PEOPLE_TAG_PATTERN.test(candidate) ? candidate : null;
 }
 
 function dedupCaseInsensitive(items) {
@@ -131,7 +123,7 @@ function parseTask(raw, index, warnings) {
   }
 
   const rawPeople = Array.isArray(raw.peopleTags) ? raw.peopleTags : [];
-  const peopleTags = dedupCaseInsensitive(rawPeople.map(sanitizePerson).filter(Boolean));
+  const peopleTags = dedupCaseInsensitive(rawPeople.map(sanitizePeopleTag).filter(Boolean));
   if (rawPeople.length && peopleTags.length !== rawPeople.length) {
     warnings.push(`Task "${title}": some people tags didn't match the +Name pattern and were dropped.`);
   }

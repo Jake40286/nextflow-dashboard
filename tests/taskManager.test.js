@@ -1805,11 +1805,10 @@ test("parseTemplateFile warns on schema mismatch but proceeds", () => {
 test("parseTemplateFile drops invalid people tags with a warning", () => {
   const json = JSON.stringify({
     project: { name: "P" },
-    tasks: [{ title: "T", peopleTags: ["+Bob", "no-prefix-allowed", "+!!!"] }],
+    tasks: [{ title: "T", peopleTags: ["+Bob", "no-leading-plus", "+!!!"] }],
   });
   const parsed = parseTemplateFile(json);
-  assert.deepEqual(parsed.tasks[0].peopleTags, ["+Bob", "+no-prefix-allowed"]);
-  // "+!!!" fails the pattern, so dropped
+  assert.deepEqual(parsed.tasks[0].peopleTags, ["+Bob"]);
   assert.ok(parsed.warnings.some((w) => /people tags/.test(w)));
 });
 

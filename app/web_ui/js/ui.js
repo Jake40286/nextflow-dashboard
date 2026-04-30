@@ -14,6 +14,7 @@ import {
   resolveTemplateDates,
   uniqueProjectName,
   buildAiPrompt,
+  stripMarkdownCodeFence,
   TEMPLATE_SCHEMA_EXAMPLE,
 } from "./templateImport.js";
 import InboxPanel from "./panels/inbox.js";
@@ -2553,8 +2554,27 @@ export class UIController {
     closeTemplateSchemaModal?.addEventListener("click", closeSchema);
     templateSchemaModalBackdrop?.addEventListener("click", closeSchema);
     templateSchemaModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSchema(); });
-    copyTemplatePromptBtn?.addEventListener("click", () => this._copyToClipboard(buildAiPrompt(), "AI prompt copied."));
+    copyTemplatePromptBtn?.addEventListener("click", () => this._copyToClipboard(buildAiPrompt(this.taskManager.state.settings || {}), "AI prompt copied."));
     copyTemplateSchemaBtn?.addEventListener("click", () => this._copyToClipboard(TEMPLATE_SCHEMA_EXAMPLE, "Schema example copied."));
+
+    // Paste-template flow
+    const {
+      pasteTemplateModal, pasteTemplateModalBackdrop, closePasteTemplateModal,
+      pasteTemplateInput, pasteTemplateCancelBtn, pasteTemplatePreviewBtn,
+    } = this.elements;
+
+    const closePaste = () => this.closePasteTemplateModal();
+    closePasteTemplateModal?.addEventListener("click", closePaste);
+    pasteTemplateModalBackdrop?.addEventListener("click", closePaste);
+    pasteTemplateCancelBtn?.addEventListener("click", closePaste);
+    pasteTemplateModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closePaste(); });
+    pasteTemplatePreviewBtn?.addEventListener("click", () => this._handleTemplateJsonPaste());
+    pasteTemplateInput?.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        this._handleTemplateJsonPaste();
+      }
+    });
   }
 
   triggerTemplateImport() {
@@ -2567,7 +2587,7 @@ export class UIController {
     if (!file) return;
     try {
       const text = await file.text();
-      const parsed = parseTemplateFile(text);
+      const parsed = parseTemplateFile(stripMarkdownCodeFence(text));
       const resolved = resolveTemplateDates(parsed, new Date().toISOString());
       this.openImportTemplateModal(resolved);
     } catch (error) {
@@ -2698,6 +2718,58 @@ export class UIController {
 
   closeTemplateSchemaModal() {
     this._closeModal(this.elements.templateSchemaModal);
+  }
+
+  openPasteTemplateModal() {
+    const { pasteTemplateModal, pasteTemplateInput } = this.elements;
+    if (!pasteTemplateModal) return;
+    if (pasteTemplateInput) pasteTemplateInput.value = "";
+    this._clearPasteTemplateError();
+    this._openModal(pasteTemplateModal, pasteTemplateInput);
+  }
+
+  closePasteTemplateModal() {
+    const { pasteTemplateModal, pasteTemplateInput } = this.elements;
+    if (!pasteTemplateModal) return;
+    this._closeModal(pasteTemplateModal);
+    if (pasteTemplateInput) pasteTemplateInput.value = "";
+    this._clearPasteTemplateError();
+  }
+
+  _handleTemplateJsonPaste() {
+    const { pasteTemplateInput } = this.elements;
+    const raw = pasteTemplateInput?.value || "";
+    if (!raw.trim()) {
+      this._showPasteTemplateError("Paste a JSON template above.");
+      return;
+    }
+    try {
+      const unwrapped = stripMarkdownCodeFence(raw);
+      const parsed = parseTemplateFile(unwrapped);
+      const resolved = resolveTemplateDates(parsed, new Date().toISOString());
+      this.closePasteTemplateModal();
+      this.openImportTemplateModal(resolved);
+    } catch (err) {
+      this._showPasteTemplateError(err?.message || "Could not parse JSON.");
+    }
+  }
+
+  _showPasteTemplateError(msg) {
+    const { pasteTemplateError, pasteTemplateInput } = this.elements;
+    if (pasteTemplateError) {
+      pasteTemplateError.textContent = msg;
+      pasteTemplateError.removeAttribute("hidden");
+    }
+    pasteTemplateInput?.setAttribute("aria-invalid", "true");
+  }
+
+  _clearPasteTemplateError() {
+    const { pasteTemplateError, pasteTemplateInput } = this.elements;
+    if (pasteTemplateError) {
+      pasteTemplateError.textContent = "";
+      pasteTemplateError.setAttribute("hidden", "");
+    }
+    pasteTemplateInput?.removeAttribute("aria-invalid");
   }
 
   _openModal(modal, focusEl) {
@@ -9745,6 +9817,13 @@ function mapElements() {
     importTemplateTaskList: byId("importTemplateTaskList"),
     importTemplateCancelBtn: byId("importTemplateCancelBtn"),
     importTemplateConfirmBtn: byId("importTemplateConfirmBtn"),
+    pasteTemplateModal: byId("pasteTemplateModal"),
+    pasteTemplateModalBackdrop: byId("pasteTemplateModalBackdrop"),
+    closePasteTemplateModal: byId("closePasteTemplateModal"),
+    pasteTemplateInput: byId("pasteTemplateInput"),
+    pasteTemplateError: byId("pasteTemplateError"),
+    pasteTemplateCancelBtn: byId("pasteTemplateCancelBtn"),
+    pasteTemplatePreviewBtn: byId("pasteTemplatePreviewBtn"),
     templateSchemaModal: byId("templateSchemaModal"),
     templateSchemaModalBackdrop: byId("templateSchemaModalBackdrop"),
     closeTemplateSchemaModal: byId("closeTemplateSchemaModal"),

@@ -295,6 +295,12 @@ export default {
     importBtn.textContent = "Import…";
     importBtn.title = "Import a project from a JSON template file";
     importBtn.addEventListener("click", () => this.triggerTemplateImport());
+    const pasteBtn = document.createElement("button");
+    pasteBtn.type = "button";
+    pasteBtn.className = "btn btn-light btn-small";
+    pasteBtn.textContent = "Paste JSON…";
+    pasteBtn.title = "Paste a JSON template directly";
+    pasteBtn.addEventListener("click", () => this.openPasteTemplateModal());
     const schemaBtn = document.createElement("button");
     schemaBtn.type = "button";
     schemaBtn.className = "btn btn-light btn-small";
@@ -302,7 +308,7 @@ export default {
     schemaBtn.setAttribute("aria-label", "Show template schema");
     schemaBtn.title = "Show schema · copy AI prompt";
     schemaBtn.addEventListener("click", () => this.openTemplateSchemaModal());
-    headerActions.append(newBtn, importBtn, schemaBtn);
+    headerActions.append(newBtn, importBtn, pasteBtn, schemaBtn);
     header.append(heading, headerActions);
     section.append(header);
 

@@ -1322,6 +1322,24 @@
     </div>
   </div>
 
+  <!-- Project delete dialog (asks whether to also delete tasks in the project) -->
+  <div id="projectDeleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="projectDeleteModalHeading" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm" role="document">
+      <header class="modal-header">
+        <h2 id="projectDeleteModalHeading">Delete project</h2>
+      </header>
+      <div class="modal-body">
+        <p id="projectDeleteModalMessage"></p>
+      </div>
+      <footer class="modal-footer">
+        <button id="projectDeleteModalCancel" class="btn btn-light" type="button">Cancel</button>
+        <button id="projectDeleteModalProjectOnly" class="btn btn-primary" type="button">Delete project only</button>
+        <button id="projectDeleteModalCascade" class="btn btn-danger" type="button">Delete project and tasks</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Shared in-app confirm dialog -->
   <div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalHeading" hidden>
     <div class="modal-backdrop"></div>

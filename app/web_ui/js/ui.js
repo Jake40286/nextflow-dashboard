@@ -8940,6 +8940,7 @@ export class UIController {
       const cascadeBtn = this.elements.projectDeleteModalCascade;
       const projectOnlyBtn = this.elements.projectDeleteModalProjectOnly;
       const cancelBtn = this.elements.projectDeleteModalCancel;
+      const backdropEl = modal.querySelector(".modal-backdrop");
       if (msgEl) {
         msgEl.textContent =
           `Delete project "${projectName}"? It contains ${taskCount} active task${taskCount === 1 ? "" : "s"}. ` +
@@ -8951,6 +8952,7 @@ export class UIController {
         cascadeBtn?.removeEventListener("click", onCascade);
         projectOnlyBtn?.removeEventListener("click", onProjectOnly);
         cancelBtn?.removeEventListener("click", onCancel);
+        backdropEl?.removeEventListener("click", onCancel);
         document.removeEventListener("keydown", onKeydown);
       };
       const onCascade = () => { cleanup(); resolve("cascade"); };
@@ -8960,6 +8962,7 @@ export class UIController {
       cascadeBtn?.addEventListener("click", onCascade);
       projectOnlyBtn?.addEventListener("click", onProjectOnly);
       cancelBtn?.addEventListener("click", onCancel);
+      backdropEl?.addEventListener("click", onCancel);
       document.addEventListener("keydown", onKeydown);
       modal.classList.add("is-open");
       modal.removeAttribute("hidden");

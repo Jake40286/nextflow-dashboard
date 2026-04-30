@@ -2130,19 +2130,25 @@ export class TaskManager extends EventTarget {
       this.state._tombstones = this.state._tombstones || {};
       this.state.completionLog = this.state.completionLog || [];
       const remaining = [];
+      const newEntries = [];
+      const deletedIds = new Set();
       for (const task of this.state.tasks) {
         if (task.projectId === projectId) {
           this.state._tombstones[task.id] = deletedAt;
-          this.state.completionLog.unshift(createCompletionSnapshot(task, deletedAt, "deleted"));
-          deletedCount += 1;
+          newEntries.push(createCompletionSnapshot(task, deletedAt, "deleted"));
+          deletedIds.add(task.id);
         } else {
           remaining.push(task);
         }
       }
       this.state.tasks = remaining;
+      deletedCount = deletedIds.size;
       if (deletedCount > 0) {
+        // Prepend in one O(L) splice instead of N×O(L) unshifts. Reverse so the last-processed
+        // task lands at the front of the log, matching the order N individual deleteTask calls would produce.
+        this.state.completionLog = [...newEntries.reverse(), ...this.state.completionLog];
         this.state.projects.forEach((p) => {
-          p.tasks = (p.tasks || []).filter((taskId) => !this.state._tombstones[taskId]);
+          p.tasks = (p.tasks || []).filter((taskId) => !deletedIds.has(taskId));
         });
         this._completionsDirty = true;
       }

@@ -282,12 +282,28 @@ export default {
     header.className = "template-section-header";
     const heading = document.createElement("strong");
     heading.textContent = "Templates";
+    const headerActions = document.createElement("div");
+    headerActions.className = "template-section-header-actions";
     const newBtn = document.createElement("button");
     newBtn.type = "button";
     newBtn.className = "btn btn-light btn-small";
     newBtn.textContent = "+ New template";
     newBtn.addEventListener("click", () => this.openTemplateEditor());
-    header.append(heading, newBtn);
+    const importBtn = document.createElement("button");
+    importBtn.type = "button";
+    importBtn.className = "btn btn-light btn-small";
+    importBtn.textContent = "Import…";
+    importBtn.title = "Import a project from a JSON template file";
+    importBtn.addEventListener("click", () => this.triggerTemplateImport());
+    const schemaBtn = document.createElement("button");
+    schemaBtn.type = "button";
+    schemaBtn.className = "btn btn-light btn-small";
+    schemaBtn.textContent = "?";
+    schemaBtn.setAttribute("aria-label", "Show template schema");
+    schemaBtn.title = "Show schema · copy AI prompt";
+    schemaBtn.addEventListener("click", () => this.openTemplateSchemaModal());
+    headerActions.append(newBtn, importBtn, schemaBtn);
+    header.append(heading, headerActions);
     section.append(header);
 
     if (!templates.length) {

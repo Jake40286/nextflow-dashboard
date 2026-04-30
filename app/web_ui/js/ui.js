@@ -9,6 +9,13 @@ import {
   PROJECT_STATUSES,
   THEME_OPTIONS,
 } from "./data.js";
+import {
+  parseTemplateFile,
+  resolveTemplateDates,
+  uniqueProjectName,
+  buildAiPrompt,
+  TEMPLATE_SCHEMA_EXAMPLE,
+} from "./templateImport.js";
 import InboxPanel from "./panels/inbox.js";
 import MyDayPanel from "./panels/my-day.js";
 import NextPanel from "./panels/next.js";
@@ -2520,6 +2527,210 @@ export class UIController {
       event.preventDefault();
       this._saveTemplateFromEditor();
     });
+
+    // Import-template flow
+    const {
+      templateFileInput,
+      importTemplateModal, importTemplateModalBackdrop, closeImportTemplateModal,
+      importTemplateCancelBtn, importTemplateForm,
+      templateSchemaModal, templateSchemaModalBackdrop, closeTemplateSchemaModal,
+      copyTemplatePromptBtn, copyTemplateSchemaBtn,
+    } = this.elements;
+
+    templateFileInput?.addEventListener("change", (event) => this._handleTemplateFileSelected(event));
+
+    const closeImport = () => this.closeImportTemplateModal();
+    closeImportTemplateModal?.addEventListener("click", closeImport);
+    importTemplateModalBackdrop?.addEventListener("click", closeImport);
+    importTemplateCancelBtn?.addEventListener("click", closeImport);
+    importTemplateModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closeImport(); });
+    importTemplateForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this._confirmTemplateImport();
+    });
+
+    const closeSchema = () => this.closeTemplateSchemaModal();
+    closeTemplateSchemaModal?.addEventListener("click", closeSchema);
+    templateSchemaModalBackdrop?.addEventListener("click", closeSchema);
+    templateSchemaModal?.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSchema(); });
+    copyTemplatePromptBtn?.addEventListener("click", () => this._copyToClipboard(buildAiPrompt(), "AI prompt copied."));
+    copyTemplateSchemaBtn?.addEventListener("click", () => this._copyToClipboard(TEMPLATE_SCHEMA_EXAMPLE, "Schema example copied."));
+  }
+
+  triggerTemplateImport() {
+    this.elements.templateFileInput?.click();
+  }
+
+  async _handleTemplateFileSelected(event) {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseTemplateFile(text);
+      const resolved = resolveTemplateDates(parsed, new Date().toISOString());
+      this.openImportTemplateModal(resolved);
+    } catch (error) {
+      this.showToast("error", error?.message || "Could not read template file.");
+    } finally {
+      if (input) input.value = "";
+    }
+  }
+
+  openImportTemplateModal(resolved) {
+    const {
+      importTemplateModal, importTemplateProjectName, importTemplateNameHint,
+      importTemplateSummary, importTemplateWarnings, importTemplateWarningsList,
+      importTemplateWarningsTitle, importTemplateTaskList,
+    } = this.elements;
+    if (!importTemplateModal || !resolved) return;
+
+    this._pendingTemplateImport = resolved;
+    const baseName = resolved.project?.name || "";
+    const suggested = uniqueProjectName(baseName, this.taskManager.state.projects || []);
+    if (importTemplateProjectName) {
+      importTemplateProjectName.value = suggested;
+    }
+    if (importTemplateNameHint) {
+      if (suggested !== baseName) {
+        importTemplateNameHint.textContent = `A project named "${baseName}" already exists — using "${suggested}" instead.`;
+        importTemplateNameHint.removeAttribute("hidden");
+      } else {
+        importTemplateNameHint.setAttribute("hidden", "");
+        importTemplateNameHint.textContent = "";
+      }
+    }
+    const taskCount = (resolved.tasks || []).length;
+    const warnCount = (resolved.warnings || []).length;
+    if (importTemplateSummary) {
+      const taskWord = taskCount === 1 ? "task" : "tasks";
+      const warnWord = warnCount === 1 ? "warning" : "warnings";
+      importTemplateSummary.textContent = `1 project, ${taskCount} ${taskWord}${warnCount ? `, ${warnCount} ${warnWord}` : ""}.`;
+    }
+    if (importTemplateWarnings && importTemplateWarningsList) {
+      importTemplateWarningsList.innerHTML = "";
+      if (warnCount) {
+        if (importTemplateWarningsTitle) {
+          importTemplateWarningsTitle.textContent = `${warnCount} ${warnCount === 1 ? "warning" : "warnings"}`;
+        }
+        for (const w of resolved.warnings) {
+          const li = document.createElement("li");
+          li.textContent = w;
+          importTemplateWarningsList.appendChild(li);
+        }
+        importTemplateWarnings.removeAttribute("hidden");
+      } else {
+        importTemplateWarnings.setAttribute("hidden", "");
+      }
+    }
+    if (importTemplateTaskList) {
+      importTemplateTaskList.innerHTML = "";
+      for (const t of resolved.tasks || []) {
+        const li = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = t.title;
+        li.appendChild(title);
+        const meta = [];
+        if (t.status) meta.push(t.status);
+        if (t.dueDate) meta.push(`due ${t.dueDate}`);
+        if (t.followUpDate) meta.push(`follow-up ${t.followUpDate}`);
+        if (t.myDayDate) meta.push(`my day ${t.myDayDate}`);
+        if ((t.contexts || []).length) meta.push(t.contexts.join(" "));
+        if ((t.peopleTags || []).length) meta.push(t.peopleTags.join(" "));
+        if (meta.length) {
+          const span = document.createElement("span");
+          span.className = "muted small-text";
+          span.textContent = ` — ${meta.join(" · ")}`;
+          li.appendChild(span);
+        }
+        importTemplateTaskList.appendChild(li);
+      }
+    }
+
+    this._openModal(importTemplateModal, importTemplateProjectName);
+  }
+
+  closeImportTemplateModal() {
+    const {
+      importTemplateModal, importTemplateProjectName, importTemplateNameHint,
+      importTemplateSummary, importTemplateWarnings, importTemplateWarningsList,
+      importTemplateTaskList,
+    } = this.elements;
+    if (!importTemplateModal) return;
+    this._closeModal(importTemplateModal);
+    if (importTemplateProjectName) importTemplateProjectName.value = "";
+    if (importTemplateNameHint) {
+      importTemplateNameHint.textContent = "";
+      importTemplateNameHint.setAttribute("hidden", "");
+    }
+    if (importTemplateSummary) importTemplateSummary.textContent = "";
+    if (importTemplateWarningsList) importTemplateWarningsList.innerHTML = "";
+    if (importTemplateWarnings) importTemplateWarnings.setAttribute("hidden", "");
+    if (importTemplateTaskList) importTemplateTaskList.innerHTML = "";
+    this._pendingTemplateImport = null;
+  }
+
+  _confirmTemplateImport() {
+    const pending = this._pendingTemplateImport;
+    if (!pending) {
+      this.closeImportTemplateModal();
+      return;
+    }
+    const nameInput = this.elements.importTemplateProjectName;
+    const overrideName = (nameInput?.value || "").trim();
+    const payload = {
+      ...pending,
+      project: { ...pending.project, name: overrideName || pending.project.name },
+    };
+    const result = this.taskManager.importProjectTemplate(payload);
+    if (!result) return;
+    this.closeImportTemplateModal();
+    this.setActivePanel("projects");
+    if (result.project?.id) this.openProjectFlyout(result.project.id);
+  }
+
+  openTemplateSchemaModal() {
+    const { templateSchemaModal, templateSchemaExample } = this.elements;
+    if (!templateSchemaModal) return;
+    if (templateSchemaExample) templateSchemaExample.textContent = TEMPLATE_SCHEMA_EXAMPLE;
+    this._openModal(templateSchemaModal);
+  }
+
+  closeTemplateSchemaModal() {
+    this._closeModal(this.elements.templateSchemaModal);
+  }
+
+  _openModal(modal, focusEl) {
+    if (!modal) return;
+    modal.removeAttribute("hidden");
+    modal.classList.add("is-open");
+    if (focusEl) setTimeout(() => focusEl.focus(), 30);
+  }
+
+  _closeModal(modal) {
+    if (!modal) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("hidden", "");
+  }
+
+  async _copyToClipboard(text, successMessage) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      this.showToast("info", successMessage || "Copied to clipboard.");
+    } catch (err) {
+      this.showToast("error", "Could not copy to clipboard.");
+    }
   }
 
   openUseTemplateModal(template) {
@@ -9520,6 +9731,26 @@ function mapElements() {
     templateEditorAddTask: byId("templateEditorAddTask"),
     templateEditorSaveBtn: byId("templateEditorSaveBtn"),
     templateEditorCancelBtn: byId("templateEditorCancelBtn"),
+    templateFileInput: byId("templateFileInput"),
+    importTemplateModal: byId("importTemplateModal"),
+    importTemplateModalBackdrop: byId("importTemplateModalBackdrop"),
+    closeImportTemplateModal: byId("closeImportTemplateModal"),
+    importTemplateForm: byId("importTemplateForm"),
+    importTemplateProjectName: byId("importTemplateProjectName"),
+    importTemplateNameHint: byId("importTemplateNameHint"),
+    importTemplateSummary: byId("importTemplateSummary"),
+    importTemplateWarnings: byId("importTemplateWarnings"),
+    importTemplateWarningsList: byId("importTemplateWarningsList"),
+    importTemplateWarningsTitle: byId("importTemplateWarningsTitle"),
+    importTemplateTaskList: byId("importTemplateTaskList"),
+    importTemplateCancelBtn: byId("importTemplateCancelBtn"),
+    importTemplateConfirmBtn: byId("importTemplateConfirmBtn"),
+    templateSchemaModal: byId("templateSchemaModal"),
+    templateSchemaModalBackdrop: byId("templateSchemaModalBackdrop"),
+    closeTemplateSchemaModal: byId("closeTemplateSchemaModal"),
+    templateSchemaExample: byId("templateSchemaExample"),
+    copyTemplatePromptBtn: byId("copyTemplatePromptBtn"),
+    copyTemplateSchemaBtn: byId("copyTemplateSchemaBtn"),
   };
 }
 

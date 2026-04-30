@@ -673,6 +673,7 @@
                   <button id="exportMarkdown" class="btn btn-light" type="button">Export .md</button>
                 </div>
                 <input id="jsonFileInput" type="file" accept=".json" hidden />
+                <input id="templateFileInput" type="file" accept=".json,application/json" hidden />
               </div>
               <div class="settings-subgroup">
                 <h4 class="settings-subgroup-heading">Feedback</h4>
@@ -826,6 +827,56 @@
         <button id="projectMergeCancelBtn" class="btn btn-light" type="button">Cancel</button>
         <button id="projectMergeConfirmBtn" class="btn btn-danger" type="button" disabled>Merge projects</button>
       </footer>
+    </div>
+  </div>
+
+  <div id="importTemplateModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="importTemplateModalTitle" hidden>
+    <div class="modal-backdrop" id="importTemplateModalBackdrop"></div>
+    <div class="modal-dialog modal-dialog--wide" role="document">
+      <header class="modal-header">
+        <h2 id="importTemplateModalTitle">Import project template</h2>
+        <button id="closeImportTemplateModal" class="btn btn-light" type="button" aria-label="Cancel">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <form id="importTemplateForm">
+          <label class="project-complete-field" for="importTemplateProjectName">
+            <span class="project-complete-label">Project name</span>
+            <input id="importTemplateProjectName" type="text" autocomplete="off" required />
+            <span id="importTemplateNameHint" class="muted small-text" hidden></span>
+          </label>
+          <p id="importTemplateSummary" class="muted small-text"></p>
+          <details id="importTemplateWarnings" class="template-import-warnings" hidden>
+            <summary><span id="importTemplateWarningsTitle">Warnings</span></summary>
+            <ul id="importTemplateWarningsList"></ul>
+          </details>
+          <div class="project-complete-field">
+            <span class="project-complete-label">Tasks to import</span>
+            <ul id="importTemplateTaskList" class="template-tasks-list"></ul>
+          </div>
+          <div class="clarify-option-buttons">
+            <button type="button" class="btn btn-light" id="importTemplateCancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="importTemplateConfirmBtn">Import</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="templateSchemaModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templateSchemaModalTitle" hidden>
+    <div class="modal-backdrop" id="templateSchemaModalBackdrop"></div>
+    <div class="modal-dialog modal-dialog--wide" role="document">
+      <header class="modal-header">
+        <h2 id="templateSchemaModalTitle">Template file schema</h2>
+        <button id="closeTemplateSchemaModal" class="btn btn-light" type="button" aria-label="Close">Close</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small-text">Save a JSON file matching this shape, then click Import template. Required fields: <code>project.name</code> and a <code>title</code> on each task. Everything else is optional. Dates can be absolute (<code>"2026-05-15"</code>) or relative offsets in days from import time (<code>"dueOffsetDays": 3</code>).</p>
+        <pre id="templateSchemaExample" class="template-schema-example"></pre>
+        <div class="clarify-option-buttons">
+          <button type="button" class="btn btn-light" id="copyTemplatePromptBtn">Copy AI prompt</button>
+          <button type="button" class="btn btn-light" id="copyTemplateSchemaBtn">Copy schema</button>
+        </div>
+      </div>
     </div>
   </div>
 

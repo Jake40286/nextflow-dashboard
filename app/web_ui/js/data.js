@@ -2391,6 +2391,176 @@ export class TaskManager extends EventTarget {
     return project;
   }
 
+  importProjectTemplate(parsed) {
+    if (!parsed || typeof parsed !== "object") {
+      this.notify("error", "Import payload missing.");
+      return null;
+    }
+    const projectInput = parsed.project || {};
+    const finalName = (projectInput.name || "").trim();
+    if (!finalName) {
+      this.notify("error", "Imported project is missing a name.");
+      return null;
+    }
+
+    const now = nowIso();
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const settings = this.state.settings;
+
+    const buildOptionLookup = (arrName) => {
+      if (!Array.isArray(settings[arrName])) settings[arrName] = [];
+      const set = new Set();
+      for (const opt of settings[arrName]) {
+        const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+        if (typeof n === "string") set.add(n.toLowerCase());
+      }
+      return set;
+    };
+    const seenContexts = buildOptionLookup("contextOptions");
+    const seenPeople = buildOptionLookup("peopleOptions");
+    const seenAreas = buildOptionLookup("areaOptions");
+    const ensureContext = (name) => {
+      const key = name.toLowerCase();
+      if (seenContexts.has(key)) return;
+      settings.contextOptions.push({ name, areas: [] });
+      seenContexts.add(key);
+    };
+    const ensurePerson = (name) => {
+      const key = name.toLowerCase();
+      if (!seenPeople.has(key)) {
+        settings.peopleOptions.push({ name, areas: [] });
+        seenPeople.add(key);
+      }
+      if (Array.isArray(settings.deletedPeopleOptions)) {
+        settings.deletedPeopleOptions = settings.deletedPeopleOptions.filter(
+          (d) => typeof d === "string" && d.toLowerCase() !== key
+        );
+      }
+    };
+    const ensureArea = (name) => {
+      const key = name.toLowerCase();
+      if (seenAreas.has(key)) return;
+      settings.areaOptions.push(name);
+      seenAreas.add(key);
+    };
+
+    const projectArea = projectInput.areaOfFocus || PROJECT_AREAS[0];
+    ensureArea(projectArea);
+
+    const project = {
+      id: generateId("project"),
+      name: finalName,
+      vision: projectInput.vision || "",
+      status: "active",
+      owner: "",
+      tags: [],
+      tasks: [],
+      isExpanded: true,
+      someday: false,
+      areaOfFocus: projectArea,
+      themeTag: projectInput.themeTag || null,
+      statusTag: projectInput.statusTag || PROJECT_STATUSES[0],
+      deadline: projectInput.deadline || null,
+      updatedAt: now,
+    };
+    normalizeProjectTags(project);
+    this.state.projects.push(project);
+
+    const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+    const ops = [];
+    let createdCount = 0;
+    for (const t of tasks) {
+      const id = generateId("task");
+      const status = Object.values(STATUS).includes(t.status) ? t.status : STATUS.NEXT;
+      const contexts = normalizeContextsField(t.contexts || []);
+      contexts.forEach(ensureContext);
+      const peopleTags = (t.peopleTags || []).filter((p) => PEOPLE_TAG_PATTERN.test(p));
+      peopleTags.forEach(ensurePerson);
+      const taskArea = t.areaOfFocus || project.areaOfFocus || null;
+      if (taskArea) ensureArea(taskArea);
+
+      const taskNotes = Array.isArray(t.notes) && t.notes.length
+        ? normalizeTaskNotes(
+            t.notes.map((text) => ({ id: generateId("note"), text, createdAt: now })),
+            { fallbackCreatedAt: now }
+          )
+        : [];
+
+      // People tags are associated with the task by appearing in scannable text.
+      // collectEntryPeopleTags() picks them up from the description.
+      const baseDescription = (t.description || "").trim();
+      const description = peopleTags.length
+        ? (baseDescription ? `${baseDescription}\n\n${peopleTags.join(" ")}` : peopleTags.join(" "))
+        : baseDescription;
+
+      const task = {
+        id,
+        title: t.title,
+        description,
+        status,
+        contexts,
+        dueDate: t.dueDate || null,
+        followUpDate: t.followUpDate || null,
+        myDayDate: t.myDayDate || null,
+        areaOfFocus: taskArea,
+        projectId: project.id,
+        createdAt: now,
+        waitingFor: t.waitingFor || null,
+        calendarDate: null,
+        calendarTime: null,
+        completedAt: null,
+        closureNotes: null,
+        notes: taskNotes,
+        listItems: [],
+        updatedAt: now,
+        recurrenceRule: null,
+        slug: normalizeSlug(undefined, id),
+        originDevice: this.deviceInfo?.label || "Unknown device",
+        originDeviceId: this.deviceInfo?.id || null,
+        effortLevel: EFFORT_LEVELS.includes(t.effortLevel) ? t.effortLevel : null,
+        timeRequired: TIME_REQUIREMENTS.includes(t.timeRequired) ? t.timeRequired : null,
+        prerequisiteTaskIds: [],
+        _fieldTimestamps: {
+          scheduling: now,
+          status: now,
+          dueDate: now,
+          followUpDate: now,
+          prerequisites: now,
+        },
+      };
+      this.state.tasks.unshift(task);
+      project.tasks.unshift(id);
+      createdCount += 1;
+
+      OP_LOG_FIELDS.forEach((field) => {
+        const val = task[field];
+        if (val == null || val === "") return;
+        ops.push({
+          id: generateId("op"),
+          taskId: id,
+          taskTitle: task.title,
+          field,
+          prev: "",
+          next: String(val),
+          ts: now,
+          deviceId: this.deviceInfo?.id || "unknown",
+          deviceLabel: this.deviceInfo?.label || "Unknown device",
+        });
+      });
+    }
+
+    if (ops.length) appendOpLogEntries(this.storage, ops);
+    stampSettingsTimestamp(settings, "lists");
+    this.emitChange();
+    this.notify(
+      "info",
+      `Imported "${project.name}" with ${createdCount} task${createdCount !== 1 ? "s" : ""}.`
+    );
+    return { project, taskCount: createdCount, warnings: parsed.warnings || [] };
+  }
+
   getContexts({ areaLens = null } = {}) {
     const contexts = new Set();
     const addContext = (value) => {
@@ -3989,7 +4159,7 @@ function normalizeTemplate(tmpl) {
   };
 }
 
-function sanitizePeopleTag(value) {
+export function sanitizePeopleTag(value) {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;

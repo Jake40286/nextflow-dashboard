@@ -1737,6 +1737,194 @@ test("addContextOption / renameContext / deleteContext mutate state without netw
   assert.ok(!manager.getContexts().includes("@Studio"));
 });
 
+// ─── Template Import ─────────────────────────────────────────────────────────
+
+import {
+  parseTemplateFile,
+  resolveTemplateDates,
+  uniqueProjectName,
+  TEMPLATE_SCHEMA_VERSION,
+} from "../app/web_ui/js/templateImport.js";
+
+test("parseTemplateFile parses a happy-path template", () => {
+  const json = JSON.stringify({
+    $schema: TEMPLATE_SCHEMA_VERSION,
+    project: { name: "Kitchen", areaOfFocus: "Home", themeTag: "Family", deadline: "2026-08-01" },
+    tasks: [
+      { title: "Quote", status: "next", contexts: ["@Phone"], dueOffsetDays: 3 },
+      { title: "Paperwork", dueDate: "2026-05-15", peopleTags: ["+Bob"] },
+    ],
+  });
+  const parsed = parseTemplateFile(json);
+  assert.equal(parsed.project.name, "Kitchen");
+  assert.equal(parsed.project.deadline, "2026-08-01");
+  assert.equal(parsed.tasks.length, 2);
+  assert.equal(parsed.tasks[0].dueOffsetDays, 3);
+  assert.equal(parsed.tasks[1].dueDate, "2026-05-15");
+  assert.deepEqual(parsed.tasks[1].peopleTags, ["+Bob"]);
+  assert.equal(parsed.warnings.length, 0);
+});
+
+test("parseTemplateFile throws when project.name is missing", () => {
+  const json = JSON.stringify({ project: { vision: "vague" }, tasks: [] });
+  assert.throws(() => parseTemplateFile(json), /project\.name/);
+});
+
+test("parseTemplateFile defaults bad status to 'next' and emits a warning", () => {
+  const json = JSON.stringify({
+    project: { name: "P" },
+    tasks: [{ title: "T", status: "shrug" }],
+  });
+  const parsed = parseTemplateFile(json);
+  assert.equal(parsed.tasks[0].status, "next");
+  assert.ok(parsed.warnings.some((w) => /status "shrug"/.test(w)));
+});
+
+test("parseTemplateFile drops tasks without a title", () => {
+  const json = JSON.stringify({
+    project: { name: "P" },
+    tasks: [{ title: "Keep" }, { title: "" }, { description: "no title" }],
+  });
+  const parsed = parseTemplateFile(json);
+  assert.equal(parsed.tasks.length, 1);
+  assert.equal(parsed.tasks[0].title, "Keep");
+  assert.equal(parsed.warnings.filter((w) => /missing a title/.test(w)).length, 2);
+});
+
+test("parseTemplateFile warns on schema mismatch but proceeds", () => {
+  const json = JSON.stringify({
+    $schema: "nextflow-template@99",
+    project: { name: "P" },
+    tasks: [{ title: "T" }],
+  });
+  const parsed = parseTemplateFile(json);
+  assert.equal(parsed.tasks.length, 1);
+  assert.ok(parsed.warnings.some((w) => /Schema/.test(w)));
+});
+
+test("parseTemplateFile drops invalid people tags with a warning", () => {
+  const json = JSON.stringify({
+    project: { name: "P" },
+    tasks: [{ title: "T", peopleTags: ["+Bob", "no-prefix-allowed", "+!!!"] }],
+  });
+  const parsed = parseTemplateFile(json);
+  assert.deepEqual(parsed.tasks[0].peopleTags, ["+Bob", "+no-prefix-allowed"]);
+  // "+!!!" fails the pattern, so dropped
+  assert.ok(parsed.warnings.some((w) => /people tags/.test(w)));
+});
+
+test("resolveTemplateDates converts offsets to absolute ISO dates", () => {
+  const parsed = {
+    project: { name: "P" },
+    tasks: [{ title: "T", dueOffsetDays: 3, dueDate: null, followUpDate: null, myDayDate: null, followUpOffsetDays: null, myDayOffsetDays: null }],
+    warnings: [],
+  };
+  const resolved = resolveTemplateDates(parsed, "2026-04-29T00:00:00Z");
+  assert.equal(resolved.tasks[0].dueDate, "2026-05-02");
+  assert.equal(resolved.tasks[0].dueOffsetDays, undefined);
+});
+
+test("resolveTemplateDates passes absolute dates through untouched", () => {
+  const parsed = {
+    project: { name: "P" },
+    tasks: [{ title: "T", dueDate: "2026-05-15", followUpDate: null, myDayDate: null, dueOffsetDays: null, followUpOffsetDays: null, myDayOffsetDays: null }],
+    warnings: [],
+  };
+  const resolved = resolveTemplateDates(parsed, "2026-04-29T00:00:00Z");
+  assert.equal(resolved.tasks[0].dueDate, "2026-05-15");
+});
+
+test("resolveTemplateDates: absolute wins over offset and emits a warning", () => {
+  const parsed = {
+    project: { name: "P" },
+    tasks: [{ title: "T", dueDate: "2026-05-15", dueOffsetDays: 3, followUpDate: null, myDayDate: null, followUpOffsetDays: null, myDayOffsetDays: null }],
+    warnings: [],
+  };
+  const resolved = resolveTemplateDates(parsed, "2026-04-29T00:00:00Z");
+  assert.equal(resolved.tasks[0].dueDate, "2026-05-15");
+  assert.ok(resolved.warnings.some((w) => /both dueDate and dueOffsetDays/.test(w)));
+});
+
+test("uniqueProjectName returns base when no collision", () => {
+  const projects = [{ name: "Kitchen" }];
+  assert.equal(uniqueProjectName("Bathroom", projects), "Bathroom");
+});
+
+test("uniqueProjectName appends (2) on first collision and increments", () => {
+  const projects = [{ name: "Kitchen" }, { name: "kitchen (2)" }];
+  assert.equal(uniqueProjectName("Kitchen", projects), "Kitchen (3)");
+});
+
+test("uniqueProjectName matches case-insensitively", () => {
+  const projects = [{ name: "KITCHEN" }];
+  assert.equal(uniqueProjectName("kitchen", projects), "kitchen (2)");
+});
+
+test("importProjectTemplate creates a project + tasks with status 'next'", () => {
+  const manager = createManager();
+  const result = manager.importProjectTemplate({
+    project: { name: "Kitchen", areaOfFocus: "Home" },
+    tasks: [
+      { title: "Quote", status: "next", contexts: ["@Phone"], dueDate: "2026-05-15" },
+      { title: "Paperwork" },
+    ],
+    warnings: [],
+  });
+  assert.equal(result.taskCount, 2);
+  assert.equal(manager.state.projects.length, 1);
+  assert.equal(manager.state.projects[0].name, "Kitchen");
+  assert.equal(manager.state.tasks.length, 2);
+  for (const t of manager.state.tasks) {
+    assert.equal(t.status, "next", "imported tasks bypass the inbox");
+    assert.equal(t.projectId, manager.state.projects[0].id);
+  }
+});
+
+test("importProjectTemplate auto-renames on project-name collision", () => {
+  const manager = createManager();
+  manager.importProjectTemplate({
+    project: { name: "Kitchen" },
+    tasks: [{ title: "T1" }],
+    warnings: [],
+  });
+  manager.importProjectTemplate({
+    project: { name: "Kitchen" },
+    tasks: [{ title: "T2" }],
+    warnings: [],
+  });
+  const names = manager.state.projects.map((p) => p.name);
+  assert.deepEqual(names.sort(), ["Kitchen", "Kitchen (2)"]);
+});
+
+test("importProjectTemplate merges new contexts and people tags into settings", () => {
+  const manager = createManager();
+  manager.importProjectTemplate({
+    project: { name: "Kitchen" },
+    tasks: [{ title: "Quote", contexts: ["@Showroom"], peopleTags: ["+Bob"] }],
+    warnings: [],
+  });
+  const ctxNames = (manager.state.settings.contextOptions || []).map((o) =>
+    typeof o === "object" ? o.name : o
+  );
+  const peopleNames = (manager.state.settings.peopleOptions || []).map((o) =>
+    typeof o === "object" ? o.name : o
+  );
+  assert.ok(ctxNames.includes("@Showroom"), "context auto-added to settings");
+  assert.ok(peopleNames.includes("+Bob"), "people tag auto-added to settings");
+});
+
+test("importProjectTemplate emits exactly one statechange event", () => {
+  const manager = createManager();
+  let count = 0;
+  manager.addEventListener("statechange", () => count++);
+  manager.importProjectTemplate({
+    project: { name: "Kitchen" },
+    tasks: [{ title: "T1" }, { title: "T2" }, { title: "T3" }],
+    warnings: [],
+  });
+  assert.equal(count, 1, "single emitChange for the whole bulk import");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

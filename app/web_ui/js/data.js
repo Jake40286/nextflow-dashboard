@@ -398,6 +398,22 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function pickUniqueProjectName(name, existingProjects = []) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return trimmed;
+  const taken = new Set(
+    (existingProjects || [])
+      .map((p) => (p && typeof p.name === "string" ? p.name.trim().toLowerCase() : ""))
+      .filter(Boolean)
+  );
+  if (!taken.has(trimmed.toLowerCase())) return trimmed;
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${trimmed} (${i})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${trimmed} (${Date.now()})`;
+}
+
 function createSlug(seed = "") {
   const input = seed || `${Math.random()}-${Date.now()}`;
   let hash = 0;
@@ -2389,6 +2405,154 @@ export class TaskManager extends EventTarget {
     const taskCount = (template.tasks || []).length;
     this.notify("info", `Created project "${project.name}" with ${taskCount} task${taskCount !== 1 ? "s" : ""} from template.`);
     return project;
+  }
+
+  importProjectTemplate(parsed) {
+    if (!parsed || typeof parsed !== "object") {
+      this.notify("error", "Import payload missing.");
+      return null;
+    }
+    const projectInput = parsed.project || {};
+    const baseName = (projectInput.name || "").trim();
+    if (!baseName) {
+      this.notify("error", "Imported project is missing a name.");
+      return null;
+    }
+    const finalName = pickUniqueProjectName(baseName, this.state.projects);
+
+    const now = nowIso();
+    if (!this.state.settings) {
+      this.state.settings = defaultSettings(this.state.projects, this.state.completedProjects);
+    }
+    const settings = this.state.settings;
+
+    const ensureOptionInArray = (arrName, name, valueShape) => {
+      if (!Array.isArray(settings[arrName])) settings[arrName] = [];
+      const arr = settings[arrName];
+      const exists = arr.some((opt) => {
+        const n = typeof opt === "object" && opt !== null ? opt.name : opt;
+        return typeof n === "string" && n.toLowerCase() === name.toLowerCase();
+      });
+      if (!exists) arr.push(valueShape === "object" ? { name, areas: [] } : name);
+    };
+    const ensureContext = (name) => ensureOptionInArray("contextOptions", name, "object");
+    const ensurePerson = (name) => {
+      ensureOptionInArray("peopleOptions", name, "object");
+      if (Array.isArray(settings.deletedPeopleOptions)) {
+        settings.deletedPeopleOptions = settings.deletedPeopleOptions.filter(
+          (d) => typeof d === "string" && d.toLowerCase() !== name.toLowerCase()
+        );
+      }
+    };
+    const ensureArea = (name) => ensureOptionInArray("areaOptions", name, "string");
+
+    const projectArea = projectInput.areaOfFocus || PROJECT_AREAS[0];
+    ensureArea(projectArea);
+
+    const project = {
+      id: generateId("project"),
+      name: finalName,
+      vision: projectInput.vision || "",
+      status: "active",
+      owner: "",
+      tags: [],
+      tasks: [],
+      isExpanded: true,
+      someday: false,
+      areaOfFocus: projectArea,
+      themeTag: projectInput.themeTag || null,
+      statusTag: projectInput.statusTag || PROJECT_STATUSES[0],
+      deadline: projectInput.deadline || null,
+      updatedAt: now,
+    };
+    normalizeProjectTags(project);
+    this.state.projects.push(project);
+
+    const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+    const ops = [];
+    let createdCount = 0;
+    for (const t of tasks) {
+      const id = generateId("task");
+      const status = Object.values(STATUS).includes(t.status) ? t.status : STATUS.NEXT;
+      const contexts = normalizeContextsField(t.contexts || []);
+      contexts.forEach(ensureContext);
+      (t.peopleTags || []).forEach((p) => {
+        if (PEOPLE_TAG_PATTERN.test(p)) ensurePerson(p);
+      });
+      const taskArea = t.areaOfFocus || project.areaOfFocus || null;
+      if (taskArea) ensureArea(taskArea);
+
+      const taskNotes = Array.isArray(t.notes) && t.notes.length
+        ? normalizeTaskNotes(
+            t.notes.map((text) => ({ id: generateId("note"), text, createdAt: now })),
+            { fallbackCreatedAt: now }
+          )
+        : [];
+
+      const task = {
+        id,
+        title: t.title,
+        description: t.description || "",
+        status,
+        contexts,
+        dueDate: t.dueDate || null,
+        followUpDate: t.followUpDate || null,
+        myDayDate: t.myDayDate || null,
+        areaOfFocus: taskArea,
+        projectId: project.id,
+        createdAt: now,
+        waitingFor: t.waitingFor || null,
+        calendarDate: null,
+        calendarTime: null,
+        completedAt: null,
+        closureNotes: null,
+        notes: taskNotes,
+        listItems: [],
+        updatedAt: now,
+        recurrenceRule: null,
+        slug: normalizeSlug(undefined, id),
+        originDevice: this.deviceInfo?.label || "Unknown device",
+        originDeviceId: this.deviceInfo?.id || null,
+        effortLevel: EFFORT_LEVELS.includes(t.effortLevel) ? t.effortLevel : null,
+        timeRequired: TIME_REQUIREMENTS.includes(t.timeRequired) ? t.timeRequired : null,
+        prerequisiteTaskIds: [],
+        _fieldTimestamps: {
+          scheduling: now,
+          status: now,
+          dueDate: now,
+          followUpDate: now,
+          prerequisites: now,
+        },
+      };
+      this.state.tasks.unshift(task);
+      project.tasks.unshift(id);
+      createdCount += 1;
+
+      OP_LOG_FIELDS.forEach((field) => {
+        const val = task[field];
+        if (val == null || val === "") return;
+        ops.push({
+          id: generateId("op"),
+          taskId: id,
+          taskTitle: task.title,
+          field,
+          prev: "",
+          next: String(val),
+          ts: now,
+          deviceId: this.deviceInfo?.id || "unknown",
+          deviceLabel: this.deviceInfo?.label || "Unknown device",
+        });
+      });
+    }
+
+    if (ops.length) appendOpLogEntries(this.storage, ops);
+    stampSettingsTimestamp(settings, "lists");
+    this.emitChange();
+    this.notify(
+      "info",
+      `Imported "${project.name}" with ${createdCount} task${createdCount !== 1 ? "s" : ""}.`
+    );
+    return { project, taskCount: createdCount, warnings: parsed.warnings || [] };
   }
 
   getContexts({ areaLens = null } = {}) {

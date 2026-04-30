@@ -398,22 +398,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function pickUniqueProjectName(name, existingProjects = []) {
-  const trimmed = (name || "").trim();
-  if (!trimmed) return trimmed;
-  const taken = new Set(
-    (existingProjects || [])
-      .map((p) => (p && typeof p.name === "string" ? p.name.trim().toLowerCase() : ""))
-      .filter(Boolean)
-  );
-  if (!taken.has(trimmed.toLowerCase())) return trimmed;
-  for (let i = 2; i < 1000; i++) {
-    const candidate = `${trimmed} (${i})`;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
-  }
-  return `${trimmed} (${Date.now()})`;
-}
-
 function createSlug(seed = "") {
   const input = seed || `${Math.random()}-${Date.now()}`;
   let hash = 0;
@@ -2413,12 +2397,11 @@ export class TaskManager extends EventTarget {
       return null;
     }
     const projectInput = parsed.project || {};
-    const baseName = (projectInput.name || "").trim();
-    if (!baseName) {
+    const finalName = (projectInput.name || "").trim();
+    if (!finalName) {
       this.notify("error", "Imported project is missing a name.");
       return null;
     }
-    const finalName = pickUniqueProjectName(baseName, this.state.projects);
 
     const now = nowIso();
     if (!this.state.settings) {
@@ -2493,9 +2476,8 @@ export class TaskManager extends EventTarget {
       const status = Object.values(STATUS).includes(t.status) ? t.status : STATUS.NEXT;
       const contexts = normalizeContextsField(t.contexts || []);
       contexts.forEach(ensureContext);
-      (t.peopleTags || []).forEach((p) => {
-        if (PEOPLE_TAG_PATTERN.test(p)) ensurePerson(p);
-      });
+      const peopleTags = (t.peopleTags || []).filter((p) => PEOPLE_TAG_PATTERN.test(p));
+      peopleTags.forEach(ensurePerson);
       const taskArea = t.areaOfFocus || project.areaOfFocus || null;
       if (taskArea) ensureArea(taskArea);
 
@@ -2506,10 +2488,17 @@ export class TaskManager extends EventTarget {
           )
         : [];
 
+      // People tags are associated with the task by appearing in scannable text.
+      // collectEntryPeopleTags() picks them up from the description.
+      const baseDescription = (t.description || "").trim();
+      const description = peopleTags.length
+        ? (baseDescription ? `${baseDescription}\n\n${peopleTags.join(" ")}` : peopleTags.join(" "))
+        : baseDescription;
+
       const task = {
         id,
         title: t.title,
-        description: t.description || "",
+        description,
         status,
         contexts,
         dueDate: t.dueDate || null,

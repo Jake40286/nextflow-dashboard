@@ -1879,7 +1879,7 @@ test("importProjectTemplate creates a project + tasks with status 'next'", () =>
   }
 });
 
-test("importProjectTemplate auto-renames on project-name collision", () => {
+test("importProjectTemplate uses the caller-provided name verbatim (uniqueness is the UI's job)", () => {
   const manager = createManager();
   manager.importProjectTemplate({
     project: { name: "Kitchen" },
@@ -1887,12 +1887,32 @@ test("importProjectTemplate auto-renames on project-name collision", () => {
     warnings: [],
   });
   manager.importProjectTemplate({
-    project: { name: "Kitchen" },
+    project: { name: uniqueProjectName("Kitchen", manager.state.projects) },
     tasks: [{ title: "T2" }],
     warnings: [],
   });
   const names = manager.state.projects.map((p) => p.name);
   assert.deepEqual(names.sort(), ["Kitchen", "Kitchen (2)"]);
+});
+
+test("importProjectTemplate associates peopleTags with the task via mention text", () => {
+  const manager = createManager();
+  manager.importProjectTemplate({
+    project: { name: "Kitchen" },
+    tasks: [
+      { title: "Quote", peopleTags: ["+Bob", "+Alice"], description: "Get three estimates" },
+      { title: "No tags here" },
+    ],
+    warnings: [],
+  });
+  const task = manager.state.tasks.find((t) => t.title === "Quote");
+  assert.ok(task, "imported task exists");
+  assert.match(task.description, /\+Bob/);
+  assert.match(task.description, /\+Alice/);
+  assert.match(task.description, /Get three estimates/, "original description is preserved");
+  const tags = manager.getPeopleTags();
+  assert.ok(tags.includes("+Bob"), "+Bob is now associated with the task via mention scan");
+  assert.ok(tags.includes("+Alice"), "+Alice is now associated with the task via mention scan");
 });
 
 test("importProjectTemplate merges new contexts and people tags into settings", () => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TaskManager, STATUS, THEME_OPTIONS, __testing } from "../app/web_ui/js/data.js";
+import { TaskManager, STATUS, THEME_OPTIONS, EFFORT_LEVELS, TIME_REQUIREMENTS, __testing } from "../app/web_ui/js/data.js";
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = undefined;
@@ -1743,7 +1743,10 @@ import {
   parseTemplateFile,
   resolveTemplateDates,
   uniqueProjectName,
+  buildAiPrompt,
+  stripMarkdownCodeFence,
   TEMPLATE_SCHEMA_VERSION,
+  TEMPLATE_SCHEMA_EXAMPLE,
 } from "../app/web_ui/js/templateImport.js";
 
 test("parseTemplateFile parses a happy-path template", () => {
@@ -1942,6 +1945,100 @@ test("importProjectTemplate emits exactly one statechange event", () => {
     warnings: [],
   });
   assert.equal(count, 1, "single emitChange for the whole bulk import");
+});
+
+// ─── AI prompt builder ───────────────────────────────────────────────────────
+
+test("buildAiPrompt() with no args contains the lead instruction and embeds both worked examples", () => {
+  const out = buildAiPrompt();
+  assert.match(out, /Generate a NextFlow project template/);
+  assert.ok(out.includes(TEMPLATE_SCHEMA_EXAMPLE), "should embed the existing schema example verbatim");
+  assert.match(out, /Spring Garage Cleanout/, "should include the second (edge-case) worked example");
+});
+
+test("buildAiPrompt() lists every STATUS, EFFORT_LEVEL, and TIME_REQUIREMENT value", () => {
+  const out = buildAiPrompt();
+  for (const v of Object.values(STATUS)) {
+    assert.ok(out.includes(v), `field reference is missing status "${v}"`);
+  }
+  for (const v of EFFORT_LEVELS) {
+    assert.ok(out.includes(v), `field reference is missing effortLevel "${v}"`);
+  }
+  for (const v of TIME_REQUIREMENTS) {
+    assert.ok(out.includes(v), `field reference is missing timeRequired "${v}"`);
+  }
+});
+
+test("buildAiPrompt() with peopleOptions includes them under a personalization header", () => {
+  const out = buildAiPrompt({ peopleOptions: ["+Bob", "+Alice"] });
+  assert.match(out, /Your existing options/);
+  assert.match(out, /People you collaborate with: \+Bob, \+Alice/);
+});
+
+test("buildAiPrompt() with contextOptions and areaOptions includes them", () => {
+  const out = buildAiPrompt({
+    contextOptions: ["@Garage", "@Lab"],
+    areaOptions: ["Lab Work"],
+  });
+  assert.match(out, /Contexts you use: @Garage @Lab/);
+  assert.match(out, /Areas of focus: Lab Work/);
+});
+
+test("buildAiPrompt() with all empty arrays omits the personalization section", () => {
+  const out = buildAiPrompt({ peopleOptions: [], contextOptions: [], areaOptions: [] });
+  assert.doesNotMatch(out, /Your existing options/);
+});
+
+test("buildAiPrompt() ignores non-string entries in personalization arrays", () => {
+  const out = buildAiPrompt({ peopleOptions: [null, "", "+Bob", 42] });
+  assert.match(out, /\+Bob/);
+  assert.doesNotMatch(out, /null/);
+});
+
+// ─── stripMarkdownCodeFence ──────────────────────────────────────────────────
+
+test("stripMarkdownCodeFence: leaves unfenced JSON unchanged", () => {
+  const json = '{"a":1}';
+  assert.equal(stripMarkdownCodeFence(json), json);
+});
+
+test('stripMarkdownCodeFence: strips ```json ... ``` fences', () => {
+  const wrapped = '```json\n{"a":1}\n```';
+  assert.equal(stripMarkdownCodeFence(wrapped), '{"a":1}');
+});
+
+test("stripMarkdownCodeFence: strips bare ``` ... ``` fences", () => {
+  const wrapped = '```\n{"a":1}\n```';
+  assert.equal(stripMarkdownCodeFence(wrapped), '{"a":1}');
+});
+
+test("stripMarkdownCodeFence: tolerates surrounding whitespace", () => {
+  const wrapped = '\n\n```json\n{"a":1}\n```\n   ';
+  assert.equal(stripMarkdownCodeFence(wrapped), '{"a":1}');
+});
+
+test("stripMarkdownCodeFence: with only an opening fence, strips just the opener", () => {
+  const wrapped = '```json\n{"a":1}';
+  assert.equal(stripMarkdownCodeFence(wrapped), '{"a":1}');
+});
+
+test("stripMarkdownCodeFence: strips non-json language tags (js, javascript, text)", () => {
+  for (const tag of ["js", "javascript", "text", "JSON"]) {
+    const wrapped = "```" + tag + '\n{"a":1}\n```';
+    assert.equal(stripMarkdownCodeFence(wrapped), '{"a":1}', `failed for tag "${tag}"`);
+  }
+});
+
+test("stripMarkdownCodeFence: non-string input is returned as-is", () => {
+  assert.equal(stripMarkdownCodeFence(null), null);
+  assert.equal(stripMarkdownCodeFence(undefined), undefined);
+});
+
+test("stripMarkdownCodeFence + parseTemplateFile: round-trips a fenced schema example", () => {
+  const fenced = "```json\n" + TEMPLATE_SCHEMA_EXAMPLE + "\n```";
+  const parsed = parseTemplateFile(stripMarkdownCodeFence(fenced));
+  assert.equal(parsed.project.name, "Kitchen Renovation");
+  assert.ok(parsed.tasks.length >= 2);
 });
 
 test.after(() => {

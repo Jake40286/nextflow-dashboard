@@ -1517,6 +1517,37 @@ body.is-admin .alerts {
   margin: var(--space-2) 0;
 }
 
+.template-paste-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: var(--space-2);
+  margin: var(--space-2) 0;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 6px);
+}
+
+.template-paste-input[aria-invalid="true"] {
+  border-color: var(--danger, #c0392b);
+}
+
+.form-error {
+  color: var(--danger, #c0392b);
+  font-size: 0.85em;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+kbd {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  background: var(--surface);
+}
+
 .template-import-warnings {
   margin: var(--space-2) 0;
   padding: var(--space-2);

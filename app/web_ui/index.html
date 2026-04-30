@@ -862,6 +862,25 @@
     </div>
   </div>
 
+  <div id="pasteTemplateModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pasteTemplateModalTitle" hidden>
+    <div class="modal-backdrop" id="pasteTemplateModalBackdrop"></div>
+    <div class="modal-dialog modal-dialog--wide" role="document">
+      <header class="modal-header">
+        <h2 id="pasteTemplateModalTitle">Paste template JSON</h2>
+        <button id="closePasteTemplateModal" class="btn btn-light" type="button" aria-label="Cancel">Cancel</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small-text">Paste a JSON template (the response from your AI assistant, or a copied template). Markdown code fences are stripped automatically. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> previews.</p>
+        <textarea id="pasteTemplateInput" class="template-paste-input" rows="14" spellcheck="false" aria-describedby="pasteTemplateError" placeholder="Paste a NextFlow template JSON here…"></textarea>
+        <p id="pasteTemplateError" class="form-error" role="alert" aria-live="polite" hidden></p>
+        <div class="clarify-option-buttons">
+          <button type="button" class="btn btn-light" id="pasteTemplateCancelBtn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="pasteTemplatePreviewBtn">Preview</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="templateSchemaModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templateSchemaModalTitle" hidden>
     <div class="modal-backdrop" id="templateSchemaModalBackdrop"></div>
     <div class="modal-dialog modal-dialog--wide" role="document">

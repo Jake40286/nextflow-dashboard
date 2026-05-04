@@ -1739,21 +1739,25 @@ export class TaskManager extends EventTarget {
     else if (fallbackNext && !nextDue) updates.calendarDate = formatIsoDate(fallbackNext);
     const next = nextDue || nextCalendar || fallbackNext;
     const nextIso = next ? formatIsoDate(next) : "unknown";
-    if (skipped >= 2) {
+    const isCatchUp = skipped >= 2;
+    if (isCatchUp) {
       const snapshot = createSkipSnapshot(task, {
+        skippedAt: today.toISOString(),
         skipped,
         skippedThrough: formatIsoDate(today),
         nextDate: nextIso,
       });
-      this.state.completionLog = [snapshot, ...(this.state.completionLog || [])];
+      this.state.completionLog = this.state.completionLog || [];
+      this.state.completionLog.unshift(snapshot);
       this._completionsDirty = true;
     }
     const updated = this.updateTask(id, updates);
-    if (skipped >= 2) {
-      this.notify("info", `Skipped ${skipped} occurrences — next: ${nextIso}.`);
-    } else {
-      this.notify("info", `Skipped — next occurrence: ${nextIso}.`);
-    }
+    this.notify(
+      "info",
+      isCatchUp
+        ? `Skipped ${skipped} occurrences — next: ${nextIso}.`
+        : `Skipped — next occurrence: ${nextIso}.`,
+    );
     return updated;
   }
 
@@ -4001,9 +4005,9 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
   };
 }
 
-function createSkipSnapshot(task, { skipped, skippedThrough, nextDate }) {
-  const skippedAt = new Date().toISOString();
-  const snapshot = createCompletionSnapshot(task, skippedAt, "skipped");
+function createSkipSnapshot(task, { skippedAt, skipped, skippedThrough, nextDate }) {
+  const stamp = skippedAt || new Date().toISOString();
+  const snapshot = createCompletionSnapshot(task, stamp, "skipped");
   snapshot.status = STATUS.NEXT;
   snapshot.skippedCount = skipped;
   snapshot.skippedThrough = skippedThrough || null;

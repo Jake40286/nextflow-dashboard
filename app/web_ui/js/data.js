@@ -4008,6 +4008,7 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
 function createSkipSnapshot(task, { skippedAt, skipped, skippedThrough, nextDate }) {
   const stamp = skippedAt || new Date().toISOString();
   const snapshot = createCompletionSnapshot(task, stamp, "skipped");
+  snapshot.id = generateId("skip");
   snapshot.status = STATUS.NEXT;
   snapshot.skippedCount = skipped;
   snapshot.skippedThrough = skippedThrough || null;

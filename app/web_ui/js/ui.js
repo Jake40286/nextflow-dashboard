@@ -6703,7 +6703,7 @@ export class UIController {
         skipButton.type = "button";
         skipButton.className = "task-flyout-complete-secondary";
         skipButton.textContent = "Skip this instance \u2192";
-        skipButton.title = "Advance to next recurrence without completing";
+        skipButton.title = "Advance to next future occurrence (catches up if neglected)";
         skipButton.addEventListener("click", () => {
           this.taskManager.skipRecurringTaskInstance(task.id);
           this.closeTaskFlyout();

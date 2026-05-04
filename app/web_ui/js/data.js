@@ -1726,14 +1726,34 @@ export class TaskManager extends EventTarget {
       this.notify("warn", "Task has no recurrence rule to skip.");
       return null;
     }
-    const { nextDue, nextCalendar, fallbackNext } = computeNextRecurrenceDates(task, rule, new Date());
+    const today = new Date();
+    const { nextDue, nextCalendar, fallbackNext, skipped } = computeNextRecurrenceDates(
+      task,
+      rule,
+      today,
+      { catchUpTo: today },
+    );
     const updates = { myDayDate: null };
     if (nextDue) updates.dueDate = formatIsoDate(nextDue);
     if (nextCalendar) updates.calendarDate = formatIsoDate(nextCalendar);
     else if (fallbackNext && !nextDue) updates.calendarDate = formatIsoDate(fallbackNext);
-    const updated = this.updateTask(id, updates);
     const next = nextDue || nextCalendar || fallbackNext;
-    this.notify("info", `Skipped — next occurrence: ${next ? formatIsoDate(next) : "unknown"}.`);
+    const nextIso = next ? formatIsoDate(next) : "unknown";
+    if (skipped >= 2) {
+      const snapshot = createSkipSnapshot(task, {
+        skipped,
+        skippedThrough: formatIsoDate(today),
+        nextDate: nextIso,
+      });
+      this.state.completionLog = [snapshot, ...(this.state.completionLog || [])];
+      this._completionsDirty = true;
+    }
+    const updated = this.updateTask(id, updates);
+    if (skipped >= 2) {
+      this.notify("info", `Skipped ${skipped} occurrences — next: ${nextIso}.`);
+    } else {
+      this.notify("info", `Skipped — next occurrence: ${nextIso}.`);
+    }
     return updated;
   }
 
@@ -3981,6 +4001,16 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
   };
 }
 
+function createSkipSnapshot(task, { skipped, skippedThrough, nextDate }) {
+  const skippedAt = new Date().toISOString();
+  const snapshot = createCompletionSnapshot(task, skippedAt, "skipped");
+  snapshot.status = STATUS.NEXT;
+  snapshot.skippedCount = skipped;
+  snapshot.skippedThrough = skippedThrough || null;
+  snapshot.nextDate = nextDate || null;
+  return snapshot;
+}
+
 function normalizeTask(task) {
   const linkedSchedule = normalizeLinkedSchedule({
     calendarDate: task.calendarDate,
@@ -4725,13 +4755,42 @@ function advanceRecurrence(date, rule) {
   return next;
 }
 
-function computeNextRecurrenceDates(task, rule, fallbackDate = null) {
+function catchUpRecurrence(date, rule, today) {
+  const first = advanceRecurrence(date, rule);
+  if (!first) return { next: null, skipped: 0 };
+  let next = first;
+  let skipped = 1;
+  const todayKey = formatIsoDate(today);
+  if (!todayKey) return { next, skipped };
+  while (formatIsoDate(next) < todayKey) {
+    const after = advanceRecurrence(next, rule);
+    if (!after) break;
+    next = after;
+    skipped += 1;
+  }
+  return { next, skipped };
+}
+
+function computeNextRecurrenceDates(task, rule, fallbackDate = null, options = {}) {
+  const catchUpTo = options.catchUpTo || null;
+  const step = (base) => {
+    if (!base) return { next: null, skipped: 0 };
+    if (catchUpTo) return catchUpRecurrence(base, rule, catchUpTo);
+    const next = advanceRecurrence(base, rule);
+    return { next, skipped: next ? 1 : 0 };
+  };
   const dueDateBase = task.dueDate ? new Date(task.dueDate) : null;
   const calendarBase = task.calendarDate ? new Date(task.calendarDate) : null;
-  const nextDue = dueDateBase ? advanceRecurrence(dueDateBase, rule) : null;
-  const nextCalendar = calendarBase ? advanceRecurrence(calendarBase, rule) : null;
-  const fallbackNext = !nextDue && !nextCalendar && fallbackDate ? advanceRecurrence(fallbackDate, rule) : null;
-  return { nextDue, nextCalendar, fallbackNext };
+  const dueResult = step(dueDateBase);
+  const calResult = step(calendarBase);
+  const fallbackResult =
+    !dueResult.next && !calResult.next && fallbackDate ? step(fallbackDate) : { next: null, skipped: 0 };
+  return {
+    nextDue: dueResult.next,
+    nextCalendar: calResult.next,
+    fallbackNext: fallbackResult.next,
+    skipped: Math.max(dueResult.skipped, calResult.skipped, fallbackResult.skipped),
+  };
 }
 
 function formatIsoDate(date) {

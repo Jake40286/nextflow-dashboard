@@ -380,6 +380,71 @@ test("recurring tasks without a due date still gain a future calendar date after
   assert.equal(next.recurrenceRule.type, "monthly");
 });
 
+function isoDateOffsetDays(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+test("skipping a non-neglected recurring task advances by one cycle", () => {
+  const manager = createManager();
+  const tomorrow = isoDateOffsetDays(1);
+  const dayAfter = isoDateOffsetDays(2);
+  const task = manager.addTask({
+    title: "Daily check",
+    status: STATUS.NEXT,
+    dueDate: tomorrow,
+    recurrenceRule: { type: "daily", interval: 1 },
+  });
+
+  manager.skipRecurringTaskInstance(task.id);
+
+  const updated = manager.getTaskById(task.id);
+  assert.equal(updated.dueDate, dayAfter, "advances exactly one day");
+  assert.equal(manager.state.completionLog.length, 0, "no log entry for single-cycle skip");
+});
+
+test("skipping a neglected recurring task catches up to today", () => {
+  const manager = createManager();
+  const tenDaysAgo = isoDateOffsetDays(-10);
+  const today = isoDateOffsetDays(0);
+  const task = manager.addTask({
+    title: "Neglected daily",
+    status: STATUS.NEXT,
+    dueDate: tenDaysAgo,
+    recurrenceRule: { type: "daily", interval: 1 },
+  });
+
+  manager.skipRecurringTaskInstance(task.id);
+
+  const updated = manager.getTaskById(task.id);
+  assert.ok(updated.dueDate >= today, "due date is today or later");
+  assert.equal(manager.state.completionLog.length, 1, "one summary log entry");
+  const entry = manager.state.completionLog[0];
+  assert.equal(entry.archiveType, "skipped");
+  assert.ok(entry.skippedCount >= 10, `skippedCount >= 10 (got ${entry.skippedCount})`);
+  assert.equal(entry.sourceId, task.id);
+});
+
+test("catch-up skip works on weekly recurrence with interval > 1", () => {
+  const manager = createManager();
+  const eightWeeksAgo = isoDateOffsetDays(-56);
+  const today = isoDateOffsetDays(0);
+  const task = manager.addTask({
+    title: "Biweekly review",
+    status: STATUS.NEXT,
+    dueDate: eightWeeksAgo,
+    recurrenceRule: { type: "weekly", interval: 2 },
+  });
+
+  manager.skipRecurringTaskInstance(task.id);
+
+  const updated = manager.getTaskById(task.id);
+  assert.ok(updated.dueDate >= today, "due date is today or later");
+  assert.equal(manager.state.completionLog.length, 1);
+  assert.equal(manager.state.completionLog[0].skippedCount, 4, "8 weeks / 2-week interval = 4 jumps");
+});
+
 test("getProjects excludes projects already archived in completedProjects", () => {
   const manager = createManager({
     projects: [

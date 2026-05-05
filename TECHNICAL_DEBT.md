@@ -56,3 +56,31 @@ _Captured automatically after /simplify and /review. Review before starting rela
 - [ ] `tests/taskManager.test.js` — no test covers the skip-snapshot dedup-on-merge path: calling `skipRecurringTaskInstance` twice on the same recurring task and verifying both entries survive an `ensureCompletedLoaded` round-trip (or a direct `mergeStates` of two skip snapshots with the same `sourceId`). Would have caught the duplicate-id bug fixed in this PR.
   - Why deferred: fix landed; coverage gap noted for follow-up
   - Resolve when: next touch to `createSkipSnapshot` or completion-merge logic — add a regression test that two consecutive skips on the same task produce two distinct entries after a merge round-trip
+
+## 2026-05-05 — feature/completion-dispositions-data-layer
+
+### From /simplify
+- [ ] `app/web_ui/js/data.js:2245` — disposition values (`"complete"`, `"skip"`, `"keep"`, `"delete"`) are bare strings; should be promoted to a `DISPOSITION` constants object (relates to the existing `ARCHIVE_TYPE` debt item above).
+  - Why deferred: no constants exist; adding them would be scope creep for the data-layer slice; Slice 2 UI will also reference these values and is the natural point to introduce constants
+  - Resolve when: Slice 2 implementation, or when the ARCHIVE_TYPE constant cleanup is tackled
+
+- [ ] `app/web_ui/js/data.js` (~1642, ~1922, ~2154, ~2234) — `this.state._tombstones[task.id] = now` is repeated verbatim at four call sites (`completeTask`, `deleteTask`, `deleteProject`, `completeProject`); a `_writeTombstone(id, ts)` helper would centralize the write.
+  - Why deferred: touches code outside the diff scope; out of scope for data-layer slice
+  - Resolve when: standalone cleanup PR, or next time tombstone semantics change
+
+- [ ] `app/web_ui/js/data.js` (`deleteProject` ~2154 and `completeProject` ~2232) — bulk-archive loop (build `remaining`/`newEntries`/`removedIds`, splice tasks, prepend log, set dirty) is structurally identical in both methods (~10 lines); could be extracted into a private `_archiveTaskBatch` helper.
+  - Why deferred: both call sites work correctly; out of scope for the data-layer slice
+  - Resolve when: a third caller appears, or as a standalone cleanup PR
+
+- [ ] `app/web_ui/js/data.js` (`completeTask` ~1645 and `completeProject` ~2248) — the `_closeDoingSession(task, now)` + `normalizeTaskTags(task)` + `createCompletionSnapshot(task, now, "completed")` sequence is duplicated; could be a shared `_snapshotCompletedTask(task, ts)` helper.
+  - Why deferred: out of scope for the data-layer slice; `completeTask` has additional side effects (emitChange, recurrence, unlock) that make a shared helper subtle
+  - Resolve when: next touch to `completeTask` or the disposition loop
+
+### From /review
+- [ ] `app/web_ui/js/data.js:2249` — an unrecognized disposition string (not one of the four valid values) falls into the `else` branch: writes a tombstone and removes the task with no archive entry, silently losing it.
+  - Why deferred: not reachable by any current or planned caller — `?? "keep"` already handles the absent-key case, and Slice 2 UI presents exactly four options; "Not currently reachable via any caller"
+  - Resolve when: Slice 2 implementation — add an explicit `else if (disposition === "delete")` without a catch-all, or add a guard/warn for unknown values
+
+- [ ] `app/web_ui/js/data.js:2257` — `createSkipSnapshot` called without `skipped` → `snapshot.skippedCount = undefined`, which is omitted from JSON; an explicit `null` would be more consistent with recurring-task skip entries.
+  - Why deferred: nit; semantically appropriate (no cycle count for a one-shot project-completion skip); `skippedCount` is not read by any current consumer
+  - Resolve when: next touch to `createSkipSnapshot`, or if a UI starts rendering `skippedCount` for archive entries

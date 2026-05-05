@@ -2221,18 +2221,55 @@ export class TaskManager extends EventTarget {
     return moved;
   }
 
-  completeProject(projectId, closureNotes = {}) {
+  completeProject(projectId, closureNotes = {}, { dispositions = {} } = {}) {
     const projectIndex = this.state.projects.findIndex((p) => p.id === projectId);
     if (projectIndex === -1) {
       this.notify("error", "Project not found.");
       return null;
     }
     const [project] = this.state.projects.splice(projectIndex, 1);
-    this.state.tasks.forEach((task) => {
-      if (task.projectId === projectId) {
-        task.projectId = null;
+
+    if (Object.keys(dispositions).length > 0) {
+      const now = nowIso();
+      this.state._tombstones = this.state._tombstones || {};
+      this.state.completionLog = this.state.completionLog || [];
+      const remaining = [];
+      const newEntries = [];
+
+      for (const task of this.state.tasks) {
+        if (task.projectId !== projectId) {
+          remaining.push(task);
+          continue;
+        }
+        const disposition = dispositions[task.id] ?? "keep";
+        if (disposition === "keep") {
+          task.projectId = null;
+          remaining.push(task);
+        } else {
+          this.state._tombstones[task.id] = now;
+          if (disposition === "complete") {
+            if (task.doingStartedAt) _closeDoingSession(task, now);
+            normalizeTaskTags(task);
+            newEntries.push(createCompletionSnapshot(task, now, "completed"));
+          } else if (disposition === "skip") {
+            newEntries.push(createSkipSnapshot(task, { skippedAt: now, archiveType: "skipped-with-project" }));
+          } else if (disposition === "delete") {
+            newEntries.push(createCompletionSnapshot(task, now, "deleted"));
+          }
+        }
       }
-    });
+
+      this.state.tasks = remaining;
+      if (newEntries.length > 0) {
+        this.state.completionLog = [...newEntries.reverse(), ...this.state.completionLog];
+        this._completionsDirty = true;
+      }
+    } else {
+      this.state.tasks.forEach((task) => {
+        if (task.projectId === projectId) task.projectId = null;
+      });
+    }
+
     const entry = normalizeCompletedProject({
       id: project.id,
       name: project.name,
@@ -4005,9 +4042,9 @@ function createCompletionSnapshot(task, completedAt, archiveType = "reference") 
   };
 }
 
-function createSkipSnapshot(task, { skippedAt, skipped, skippedThrough, nextDate }) {
+function createSkipSnapshot(task, { skippedAt, skipped, skippedThrough, nextDate, archiveType = "skipped" }) {
   const stamp = skippedAt || new Date().toISOString();
-  const snapshot = createCompletionSnapshot(task, stamp, "skipped");
+  const snapshot = createCompletionSnapshot(task, stamp, archiveType);
   snapshot.id = generateId("skip");
   snapshot.status = STATUS.NEXT;
   snapshot.skippedCount = skipped;

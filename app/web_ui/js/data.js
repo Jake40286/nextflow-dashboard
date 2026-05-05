@@ -2235,7 +2235,6 @@ export class TaskManager extends EventTarget {
       this.state.completionLog = this.state.completionLog || [];
       const remaining = [];
       const newEntries = [];
-      const removedIds = new Set();
 
       for (const task of this.state.tasks) {
         if (task.projectId !== projectId) {
@@ -2248,7 +2247,6 @@ export class TaskManager extends EventTarget {
           remaining.push(task);
         } else {
           this.state._tombstones[task.id] = now;
-          removedIds.add(task.id);
           if (disposition === "complete") {
             if (task.doingStartedAt) _closeDoingSession(task, now);
             normalizeTaskTags(task);

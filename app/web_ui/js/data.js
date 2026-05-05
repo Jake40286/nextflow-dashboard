@@ -2243,32 +2243,27 @@ export class TaskManager extends EventTarget {
           continue;
         }
         const disposition = dispositions[task.id] ?? "keep";
-        if (disposition === "complete") {
-          this.state._tombstones[task.id] = now;
-          if (task.doingStartedAt) _closeDoingSession(task, now);
-          normalizeTaskTags(task);
-          newEntries.push(createCompletionSnapshot(task, now, "completed"));
-          removedIds.add(task.id);
-        } else if (disposition === "skip") {
-          this.state._tombstones[task.id] = now;
-          newEntries.push(createSkipSnapshot(task, { skippedAt: now, archiveType: "skipped-with-project" }));
-          removedIds.add(task.id);
-        } else if (disposition === "delete") {
-          this.state._tombstones[task.id] = now;
-          newEntries.push(createCompletionSnapshot(task, now, "deleted"));
-          removedIds.add(task.id);
-        } else {
+        if (disposition === "keep") {
           task.projectId = null;
           remaining.push(task);
+        } else {
+          this.state._tombstones[task.id] = now;
+          removedIds.add(task.id);
+          if (disposition === "complete") {
+            if (task.doingStartedAt) _closeDoingSession(task, now);
+            normalizeTaskTags(task);
+            newEntries.push(createCompletionSnapshot(task, now, "completed"));
+          } else if (disposition === "skip") {
+            newEntries.push(createSkipSnapshot(task, { skippedAt: now, archiveType: "skipped-with-project" }));
+          } else if (disposition === "delete") {
+            newEntries.push(createCompletionSnapshot(task, now, "deleted"));
+          }
         }
       }
 
       this.state.tasks = remaining;
       if (newEntries.length > 0) {
         this.state.completionLog = [...newEntries.reverse(), ...this.state.completionLog];
-        this.state.projects.forEach((p) => {
-          p.tasks = (p.tasks || []).filter((id) => !removedIds.has(id));
-        });
         this._completionsDirty = true;
       }
     } else {

@@ -2218,6 +2218,163 @@ test("deleteProject({ deleteTasks: true }) only deletes tasks with the matching 
   assert.equal(manager.state._tombstones[orphan.id], undefined);
 });
 
+// ── completeProject disposition tests ─────────────────────────────────────────
+
+test("completeProject with no options orphans all tasks (back-compat)", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Old project", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Task 1", projectId: "p-1" });
+  const t2 = manager.addTask({ title: "Task 2", projectId: "p-1" });
+
+  manager.completeProject("p-1");
+
+  assert.equal(manager.state.tasks.length, 2, "both tasks remain active");
+  assert.equal(manager.state.tasks.find((t) => t.id === t1.id)?.projectId, null, "task 1 orphaned");
+  assert.equal(manager.state.tasks.find((t) => t.id === t2.id)?.projectId, null, "task 2 orphaned");
+  assert.equal(manager.state.completionLog.length, 0, "no completionLog entries");
+  assert.equal(manager.state._tombstones?.[t1.id], undefined, "no tombstone for task 1");
+});
+
+test("completeProject with disposition=complete writes completed entry and removes from active", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Done", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Finish me", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "complete" } });
+
+  assert.equal(manager.state.tasks.length, 0, "task removed from active");
+  assert.equal(manager.state.completionLog.length, 1, "one completionLog entry");
+  assert.equal(manager.state.completionLog[0].archiveType, "completed");
+  assert.ok(manager.state._tombstones?.[t1.id], "tombstone written");
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("completeProject with disposition=skip writes skipped-with-project entry and tombstones", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Done", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Skip me", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "skip" } });
+
+  assert.equal(manager.state.tasks.length, 0, "task removed from active");
+  assert.equal(manager.state.completionLog.length, 1, "one completionLog entry");
+  assert.equal(manager.state.completionLog[0].archiveType, "skipped-with-project", "correct archiveType");
+  assert.ok(manager.state._tombstones?.[t1.id], "tombstone written");
+});
+
+test("completeProject with disposition=keep orphans only that task", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Done", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Keep me", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "keep" } });
+
+  assert.equal(manager.state.tasks.length, 1, "task still in active list");
+  assert.equal(manager.state.tasks[0].projectId, null, "task orphaned");
+  assert.equal(manager.state.completionLog.length, 0, "no completionLog entries");
+  assert.equal(manager.state._tombstones?.[t1.id], undefined, "no tombstone");
+});
+
+test("completeProject with disposition=delete writes deleted entry and tombstones", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Done", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Delete me", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "delete" } });
+
+  assert.equal(manager.state.tasks.length, 0, "task removed from active");
+  assert.equal(manager.state.completionLog.length, 1, "one completionLog entry");
+  assert.equal(manager.state.completionLog[0].archiveType, "deleted");
+  assert.ok(manager.state._tombstones?.[t1.id], "tombstone written");
+});
+
+test("completeProject with mixed dispositions applies each correctly", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Mixed", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Complete", projectId: "p-1" });
+  const t2 = manager.addTask({ title: "Skip", projectId: "p-1" });
+  const t3 = manager.addTask({ title: "Keep", projectId: "p-1" });
+  const t4 = manager.addTask({ title: "Delete", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, {
+    dispositions: {
+      [t1.id]: "complete",
+      [t2.id]: "skip",
+      [t3.id]: "keep",
+      [t4.id]: "delete",
+    },
+  });
+
+  assert.equal(manager.state.tasks.length, 1, "only 'keep' task remains active");
+  assert.equal(manager.state.tasks[0].id, t3.id, "correct task kept");
+  assert.equal(manager.state.tasks[0].projectId, null, "kept task orphaned");
+
+  const log = manager.state.completionLog;
+  assert.equal(log.length, 3, "three log entries");
+  const archiveTypes = log.map((e) => e.archiveType).sort();
+  assert.deepEqual(archiveTypes, ["completed", "deleted", "skipped-with-project"]);
+
+  assert.ok(manager.state._tombstones?.[t1.id], "tombstone for complete");
+  assert.ok(manager.state._tombstones?.[t2.id], "tombstone for skip");
+  assert.equal(manager.state._tombstones?.[t3.id], undefined, "no tombstone for keep");
+  assert.ok(manager.state._tombstones?.[t4.id], "tombstone for delete");
+
+  assert.equal(manager.state.completedProjects.length, 1, "project archived");
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("completeProject: tasks not in dispositions map fall back to keep (orphan)", () => {
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Partial", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Specified", projectId: "p-1" });
+  const t2 = manager.addTask({ title: "Unspecified", projectId: "p-1" });
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "complete" } });
+
+  assert.equal(manager.state.tasks.length, 1, "only unspecified task remains");
+  assert.equal(manager.state.tasks[0].id, t2.id);
+  assert.equal(manager.state.tasks[0].projectId, null, "unspecified task orphaned");
+  assert.equal(manager.state.completionLog.length, 1, "only specified task logged");
+});
+
+test("tombstone from disposition=skip survives a remote merge from stale device", () => {
+  const { mergeStates } = __testing;
+
+  const manager = createManager({
+    projects: [{ id: "p-1", name: "Done", tasks: [], status: "Active" }],
+  });
+  const t1 = manager.addTask({ title: "Skip survivor", projectId: "p-1" });
+  const taskUpdatedAt = manager.state.tasks.find((t) => t.id === t1.id).updatedAt;
+
+  manager.completeProject("p-1", {}, { dispositions: { [t1.id]: "skip" } });
+
+  const localState = manager.state;
+
+  // Stale remote still has the task (updatedAt predates tombstone)
+  const remoteState = {
+    tasks: [{ id: t1.id, title: "Skip survivor", updatedAt: taskUpdatedAt, projectId: "p-1" }],
+    _tombstones: {},
+    projects: [],
+    completedProjects: [],
+    completionLog: [],
+    reference: [],
+    settings: localState.settings,
+    checklist: [],
+    analytics: { history: [] },
+  };
+
+  const merged = mergeStates(localState, remoteState);
+  const surviving = merged.tasks.find((t) => t.id === t1.id);
+  assert.equal(surviving, undefined, "tombstone suppresses stale remote copy");
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

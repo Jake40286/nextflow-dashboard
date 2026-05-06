@@ -6476,6 +6476,79 @@ body.doing-bar-visible .app {
   }
 }
 
+/* ── Urgent bar ──────────────────────────────────────── */
+.urgent-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: color-mix(in srgb, #dc2626 10%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, #dc2626 28%, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.urgent-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.urgent-bar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #dc2626;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.urgent-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-3);
+  background: color-mix(in srgb, #dc2626 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, #dc2626 35%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.13s, border-color 0.13s;
+}
+
+.urgent-chip:hover {
+  background: color-mix(in srgb, #dc2626 22%, var(--surface));
+  border-color: color-mix(in srgb, #dc2626 55%, transparent);
+}
+
+/* urgent task meta pill on task cards */
+.task-meta-urgent {
+  background: color-mix(in srgb, #dc2626 18%, var(--surface));
+  color: #b91c1c;
+}
+
+/* urgent toggle in task edit flyout */
+.task-edit-field--urgent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.task-edit-field--urgent input[type="checkbox"] {
+  accent-color: #dc2626;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
 .trash-toolbar {
   display: flex;
   align-items: center;

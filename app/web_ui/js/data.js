@@ -27,7 +27,7 @@ const OP_LOG_SHARED_MAX = 100;
 const REV_KEY = "nextflow-last-rev";
 const TRASH_RETENTION_DAYS = 30;
 // Fields tracked in the op log and eligible for per-field-group merge
-const OP_LOG_FIELDS = ["status", "myDayDate", "calendarDate", "calendarTime", "dueDate", "followUpDate"];
+const OP_LOG_FIELDS = ["status", "myDayDate", "calendarDate", "calendarTime", "dueDate", "followUpDate", "urgent"];
 // Field groups for per-field-group merge logic in mergeTasks()
 const MERGE_FIELD_GROUPS = {
   scheduling: ["myDayDate", "calendarDate", "calendarTime"],
@@ -35,6 +35,7 @@ const MERGE_FIELD_GROUPS = {
   dueDate: ["dueDate"],
   followUpDate: ["followUpDate"],
   prerequisites: ["prerequisiteTaskIds"],
+  urgency: ["urgent", "urgentSince"],
 };
 // Field groups for per-field-group merge logic in mergeSettings().
 // NOTE: theme/customTheme/customThemePalettes are intentionally excluded — they are
@@ -927,6 +928,10 @@ export class TaskManager extends EventTarget {
     });
   }
 
+  getUrgentTasks() {
+    return this.state.tasks.filter((t) => t.urgent && !t.completedAt);
+  }
+
   getTaskById(id) {
     return this.state.tasks.find((task) => task.id === id);
   }
@@ -1092,7 +1097,9 @@ export class TaskManager extends EventTarget {
       originDevice: this.deviceInfo?.label || "Unknown device",
       originDeviceId: this.deviceInfo?.id || null,
       prerequisiteTaskIds: Array.isArray(payload.prerequisiteTaskIds) ? [...payload.prerequisiteTaskIds] : [],
-      _fieldTimestamps: { scheduling: nowIso(), status: nowIso(), dueDate: nowIso(), followUpDate: nowIso(), prerequisites: nowIso() },
+      urgent: payload.urgent || null,
+      urgentSince: payload.urgent ? nowIso() : null,
+      _fieldTimestamps: { scheduling: nowIso(), status: nowIso(), dueDate: nowIso(), followUpDate: nowIso(), prerequisites: nowIso(), urgency: nowIso() },
     };
     const enforceContext = task.status !== STATUS.INBOX;
     normalizeTaskTags(task, { enforceContext });
@@ -1138,6 +1145,19 @@ export class TaskManager extends EventTarget {
     const nextUpdates = { ...(updates || {}) };
     const hasCalendarDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "calendarDate");
     const hasMyDayDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "myDayDate");
+    if ("urgent" in nextUpdates) {
+      const togglingOn  = nextUpdates.urgent && !task.urgent;
+      const togglingOff = !nextUpdates.urgent && task.urgent;
+      if (togglingOn) {
+        nextUpdates.urgentSince = nowIso();
+        if (!hasMyDayDateUpdate) {
+          const todayIso = new Date().toISOString().slice(0, 10);
+          if (!task.myDayDate || task.myDayDate < todayIso) nextUpdates.myDayDate = todayIso;
+        }
+      } else if (togglingOff) {
+        nextUpdates.urgentSince = null;
+      }
+    }
     if (hasCalendarDateUpdate && !hasMyDayDateUpdate) {
       nextUpdates.myDayDate = nextUpdates.calendarDate || null;
     }
@@ -1176,6 +1196,7 @@ export class TaskManager extends EventTarget {
     if ("dueDate" in nextUpdates) ft.dueDate = now;
     if ("followUpDate" in nextUpdates) ft.followUpDate = now;
     if ("prerequisiteTaskIds" in nextUpdates) ft.prerequisites = now;
+    if ("urgent" in nextUpdates) ft.urgency = now;
     task._fieldTimestamps = ft;
     OP_LOG_FIELDS.forEach((f) => {
       const prev = String(originalFields[f] ?? "");
@@ -4075,6 +4096,8 @@ function normalizeTask(task) {
     peopleTag: task.peopleTag ?? task.peopleContext ?? null,
     effortLevel: task.effortLevel ?? task.energyLevel ?? null,
     timeRequired: task.timeRequired ?? null,
+    urgent: task.urgent || null,
+    urgentSince: task.urgentSince || null,
     myDayDate: linkedSchedule.myDayDate,
     followUpDate: task.followUpDate || null,
     areaOfFocus:

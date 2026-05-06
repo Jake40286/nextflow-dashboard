@@ -1068,6 +1068,7 @@ export class UIController {
     this.renderAreaScopeRow();
     this.renderSummary();
     this.renderDoingBar();
+    this.renderUrgentBar();
     this.renderAssociationFlyout();
     this.applySearchVisibility();
     this.updateCounts();
@@ -1210,6 +1211,35 @@ export class UIController {
     }
     doingBar.innerHTML = "";
     doingBar.append(fragment);
+  }
+
+  renderUrgentBar() {
+    const { urgentBar } = this.elements;
+    if (!urgentBar) return;
+    const urgentTasks = this.taskManager.getUrgentTasks();
+    if (!urgentTasks.length) {
+      urgentBar.hidden = true;
+      urgentBar.innerHTML = "";
+      return;
+    }
+    urgentBar.hidden = false;
+    const fragment = document.createDocumentFragment();
+    const label = document.createElement("span");
+    label.className = "urgent-bar-label";
+    label.textContent = "Urgent";
+    fragment.append(label);
+    for (const task of urgentTasks) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "urgent-chip";
+      chip.dataset.taskId = task.id;
+      chip.textContent = task.title;
+      chip.title = task.title;
+      chip.addEventListener("click", () => this.openTaskFlyout(task.id));
+      fragment.append(chip);
+    }
+    urgentBar.innerHTML = "";
+    urgentBar.append(fragment);
   }
 
   _formatDoingElapsed(startedAt, baseSecs = 0) {
@@ -1650,17 +1680,21 @@ export class UIController {
     const sorted = [...tasks];
     const blockedIds = new Set(sorted.filter((t) => this.taskManager.isBlocked(t.id)).map((t) => t.id));
     const blockedLast = (a, b) => (blockedIds.has(a.id) ? 1 : 0) - (blockedIds.has(b.id) ? 1 : 0);
+    // Urgent tasks always float above non-urgent within any sort order
+    const urgentFirst = (a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0);
     switch (this.taskSort) {
       case "updated-asc":
-        return sorted.sort((a, b) => blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+        return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
       case "updated-desc":
-        return sorted.sort((a, b) => blockedLast(a, b) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
       case "title-asc":
-        return sorted.sort((a, b) => blockedLast(a, b) || (a.title || "").localeCompare(b.title || ""));
+        return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (a.title || "").localeCompare(b.title || ""));
       case "title-desc":
-        return sorted.sort((a, b) => blockedLast(a, b) || (b.title || "").localeCompare(a.title || ""));
+        return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (b.title || "").localeCompare(a.title || ""));
       case "due-asc":
         return sorted.sort((a, b) => {
+          const uf = urgentFirst(a, b);
+          if (uf !== 0) return uf;
           const bl = blockedLast(a, b);
           if (bl !== 0) return bl;
           const da = a.dueDate || a.calendarDate || "9999";
@@ -1668,7 +1702,7 @@ export class UIController {
           return da.localeCompare(db);
         });
       case "stale-first":
-        return sorted.sort((a, b) => blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+        return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));
       default: {
         const todayIso = new Date().toISOString().slice(0, 10);
         const taskRiskScore = (task) => {
@@ -1679,6 +1713,8 @@ export class UIController {
           return 0;
         };
         return sorted.sort((a, b) => {
+          const uf = urgentFirst(a, b);
+          if (uf !== 0) return uf;
           const bl = blockedLast(a, b);
           if (bl !== 0) return bl;
           const sa = taskRiskScore(a), sb = taskRiskScore(b);
@@ -3490,6 +3526,9 @@ export class UIController {
     const meta = document.createElement("div");
     meta.className = "task-row-meta";
     const metaItems = [];
+    if (task.urgent) {
+      metaItems.push(this.createMetaSpan("⚡ URGENT", "task-meta-pill task-meta-urgent"));
+    }
     if (this.isTaskOverdue(task)) {
       metaItems.push(this.createMetaSpan("OVERDUE", "task-meta-pill task-meta-overdue"));
     }
@@ -7581,6 +7620,13 @@ export class UIController {
     };
     contextGroup.append(contextList);
 
+    const urgentGroup = document.createElement("label");
+    urgentGroup.className = "task-edit-field task-edit-field--urgent";
+    const urgentCheckbox = document.createElement("input");
+    urgentCheckbox.type = "checkbox";
+    urgentCheckbox.checked = Boolean(task.urgent);
+    urgentGroup.append(urgentCheckbox, document.createTextNode(" Mark as urgent"));
+
     const effortGroup = document.createElement("label");
     effortGroup.className = "task-edit-field";
     effortGroup.textContent = "Effort level";
@@ -7825,6 +7871,7 @@ export class UIController {
       const updates = {
         title: trimmedTitle,
         description: descriptionInput.value.trim(),
+        urgent: urgentCheckbox.checked || null,
         contexts: contextInput.getValues(),
         areaOfFocus: areaInput.value.trim() || null,
         effortLevel: effortInput.value || null,
@@ -7947,6 +7994,7 @@ export class UIController {
       titleGroup,
       descriptionGroup,
       slugGroup,
+      urgentGroup,
       contextGroup,
       areaGroup,
       effortGroup,
@@ -9832,6 +9880,7 @@ function mapElements() {
     projectCompleteFollowUp: byId("projectCompleteFollowUp"),
     projectCompleteCancel: byId("projectCompleteCancel"),
     doingBar: byId("doingBar"),
+    urgentBar: byId("urgentBar"),
     projectMergeModal: byId("projectMergeModal"),
     projectMergeBackdrop: byId("projectMergeBackdrop"),
     closeProjectMergeModal: byId("closeProjectMergeModal"),

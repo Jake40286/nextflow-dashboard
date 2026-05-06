@@ -1,0 +1,105 @@
+# nextflow
+
+## What This Is
+
+A mostly-built self-hosted personal productivity web app — Python 3.11 backend, vanilla ES-module JS SPA, Docker Compose. Tasks, projects, and calendar events live in a single JSON file that every browser on the local network shares in real time. Current focus is refining existing features and clearing the feedback backlog.
+
+## Core Value
+
+Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
+
+## Current State
+
+| Attribute | Value |
+|-----------|-------|
+| Type | Application |
+| Version | 0.1.0 |
+| Status | Beta / Active refinement |
+| Last Updated | 2026-05-06 |
+
+**Production URLs:**
+- http://localhost:8002 — Local dev / Docker
+
+## Requirements
+
+### Core Features
+
+- **Capture** — Quickly dump anything into the Inbox; no context required. Fast-entry starting point for everything.
+- **Clarify** — Process each inbox item through a guided 9-step modal that asks the right questions (actionable? who owns it? which project? energy level?) and routes it to the correct bucket automatically.
+- **Work** — Execute tasks via My Day (focused daily planning), Kanban board (drag tasks through status columns), or Pending Tasks (filtered by context like @Home or @Phone).
+- **Review** — Run the Weekly Review workflow to process open loops, check delegated items, clear the inbox, and keep the system trustworthy.
+- **Track projects & delegation** — Group related tasks under Projects to see progress; use the Delegated view to follow up on anything waiting on another person or task.
+
+### Validated (Shipped)
+
+- [x] Inbox capture — fast entry, no context required
+- [x] 9-step clarify modal with auto-routing
+- [x] My Day, Kanban, Pending Tasks panels
+- [x] Weekly Review workflow
+- [x] Projects & Delegated views
+- [x] Real-time multi-browser sync (optimistic locking, conflict resolution)
+- [x] Google Calendar sync
+- [x] Service worker / offline support
+- [x] Gzip state compression, atomic writes, tombstone-based deletion
+
+### Active (In Progress)
+
+- [ ] Feedback backlog clearance — ongoing
+
+### Planned (Next)
+
+- To be defined during /paul:plan
+
+### Out of Scope
+
+- None declared
+
+## Constraints
+
+### Technical Constraints
+
+- No build tools — frontend served directly from `app/web_ui/`; no transpilation or bundling step
+- State persistence is flat JSON (no database); complex queries must be done in-memory
+- Docker bind-mounts: code changes to `app/` are live; changes to `docker-compose.yml` or volumes require full rebuild
+
+### Business Constraints
+
+- None declared
+
+## Key Decisions
+
+| Decision | Rationale | Date | Status |
+|----------|-----------|------|--------|
+| No framework (vanilla JS) | Zero build tooling, fast iteration, no dependency churn | Pre-2026 | Active |
+| Flat JSON state | Simple, portable, inspectable; fits single-user self-hosted scale | Pre-2026 | Active |
+| Python ThreadingHTTPServer | No framework overhead; full control over request handling | Pre-2026 | Active |
+
+## Success Metrics
+
+| Metric | Target | Current | Status |
+|--------|--------|---------|--------|
+| Feedback log items resolved | 0 open | TBD | Not started |
+
+## Tech Stack / Tools
+
+| Layer | Technology | Notes |
+|-------|------------|-------|
+| Backend | Python 3.11 `ThreadingHTTPServer` | No frameworks |
+| Frontend | Vanilla ES-module JS SPA | No build step |
+| Persistence | JSON files on disk | `state.json` + `completed.json` |
+| Sync | Optimistic locking + LWW merge | `_rev`, `_fieldTimestamps`, `_tombstones` |
+| Deployment | Docker Compose | Port 8002, bind-mounted `./app` and `./data` |
+| Calendar | Google Calendar sync | `app/google_calendar.py` |
+| Testing | Node built-in test runner | `tests/taskManager.test.js` |
+
+## Links
+
+| Resource | URL |
+|----------|-----|
+| Repository | /home/jssmith/docker/nextflow |
+| App (local) | http://localhost:8002 |
+| Feedback log | GET /feedback (server endpoint) |
+
+---
+*PROJECT.md — Updated when requirements or context change*
+*Last updated: 2026-05-06*

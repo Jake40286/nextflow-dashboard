@@ -5,8 +5,15 @@
 !/secrets/.gitkeep
 /app/web_ui/data/*
 /memory/
-# Claude Code — track settings.json and commands/, ignore user-local overrides
+# Claude Code — track settings.json only; ignore commands/ and other local files
 .claude/settings.local.json
+.claude/commands/
+.claude/agents/
+.claude/archived-commands/
 __pycache__/
 *.pyc
 *.pyo
+
+# Claude Mod
+TECHNICAL_DEBT.md
+.claude/pr-description.md

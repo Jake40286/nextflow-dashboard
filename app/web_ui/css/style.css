@@ -300,7 +300,7 @@ body {
   margin: 0 auto;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   gap: var(--space-5);
   padding: clamp(16px, 2vw, 26px);
 }
@@ -6483,7 +6483,8 @@ body.doing-bar-visible .app {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: color-mix(in srgb, #dc2626 10%, var(--surface));
-  border-bottom: 1px solid color-mix(in srgb, #dc2626 28%, transparent);
+  border: 1px solid color-mix(in srgb, #dc2626 28%, transparent);
+  border-radius: var(--radius-md);
   overflow-x: auto;
   scrollbar-width: none;
   flex-shrink: 0;

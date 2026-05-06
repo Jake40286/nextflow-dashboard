@@ -7960,6 +7960,7 @@ export class UIController {
       field.addEventListener("change", scheduleAutoSave);
     });
     contextInput._contextList.addEventListener("change", scheduleAutoSave);
+    urgentCheckbox.addEventListener("change", scheduleAutoSave);
 
     const actions = document.createElement("div");
     actions.className = "task-edit-actions";

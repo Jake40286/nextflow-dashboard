@@ -84,3 +84,43 @@ _Captured automatically after /simplify and /review. Review before starting rela
 - [ ] `app/web_ui/js/data.js:2257` — `createSkipSnapshot` called without `skipped` → `snapshot.skippedCount = undefined`, which is omitted from JSON; an explicit `null` would be more consistent with recurring-task skip entries.
   - Why deferred: nit; semantically appropriate (no cycle count for a one-shot project-completion skip); `skippedCount` is not read by any current consumer
   - Resolve when: next touch to `createSkipSnapshot`, or if a UI starts rendering `skippedCount` for archive entries
+
+## 2026-05-06 — feature/urgent-flag
+
+### From /simplify
+- [ ] `app/web_ui/js/ui.js:1219` — `renderUrgentBar()` is structurally identical to `renderDoingBar()` (line 1181); both share the same fragment/chip/click-handler skeleton with only data source, label, and chip class differing; a shared `_renderStatusBar(barEl, tasks, labelText, chipClass, chipContentFn)` helper would eliminate the duplication.
+  - Why deferred: would require modifying pre-existing `renderDoingBar()`; doing-bar has additional state (body class toggle, timer span child elements) that makes a shared helper non-trivial; out of scope for the urgent-flag feature
+  - Resolve when: a third status bar is added, or as a standalone cleanup PR
+
+- [ ] `app/web_ui/css/style.css:6480` — `urgent-bar` / `urgent-chip` block duplicates ~8 declarations already present in the pre-existing `doing-bar` / `doing-chip` block (line 6403): `display:flex; align-items:center; gap; overflow-x:auto; scrollbar-width:none; flex-shrink:0; border-radius:var(--radius-pill); transition`; a shared `.status-bar` / `.status-chip` base class would eliminate the repetition.
+  - Why deferred: all duplicated rules live in pre-existing doing-bar CSS; modifying it is out of scope for the urgent-flag feature
+  - Resolve when: the `_renderStatusBar` helper above is extracted, at which point the CSS base class refactor is natural to do in the same PR
+
+- [ ] `app/web_ui/js/data.js:931` — `getUrgentTasks()` is a one-line filter that duplicates what `getTasks()` already handles (minus an `urgent` param); adding `urgent` as a boolean filter param to `getTasks()` would eliminate the dedicated method and follow the existing `status` / `context` / `effort` filter pattern.
+  - Why deferred: adding a param to `getTasks()` modifies a heavily-used method with many callers; risk outweighs the gain from a single dedicated method that is clear and low-risk
+  - Resolve when: a second caller of urgent-filtered tasks appears, or as part of a `getTasks()` filter audit
+
+- [ ] `app/web_ui/js/ui.js:1685` — `urgentFirst` and `blockedLast` in `sortTasks()` are the same pattern (map task to binary `0|1` score, subtract); a `flagComparator(predFn, pushDown)` helper would prevent this pattern from multiplying if a third sort-priority dimension is added (e.g. `pinnedFirst`).
+  - Why deferred: LOW severity; `blockedLast` is pre-existing code; two one-liners don't yet justify a shared abstraction
+  - Resolve when: a third sort-priority comparator is added alongside these two
+
+### From /review
+- [ ] `tests/taskManager.test.js` — no test coverage for urgency logic: `getUrgentTasks()` (completed exclusion), the auto-`myDayDate` side effect in `updateTask()` when marking urgent, and the `urgency` merge field group (newer "clear urgent" beats older "set urgent").
+  - Why deferred: nit; not blocking correctness today but the merge group behavior is subtle enough to deserve a regression test
+  - Resolve when: next touch to urgency logic, or when test coverage is added for the doing-bar equivalents
+
+- [ ] `app/web_ui/css/style.css` (`.urgent-bar`) — `scrollbar-width: none` hides overflow with no visual indicator; users with many urgent tasks won't know chips are off-screen.
+  - Why deferred: nit; edge case for high urgent-task counts
+  - Resolve when: add a right-edge fade-out gradient via `::after` pseudo-element — natural to do alongside the `_renderStatusBar` CSS base class refactor above
+
+- [ ] `app/web_ui/js/ui.js:1685` (sort order) — `urgentFirst` runs before `blockedLast`, so urgent-but-blocked tasks float to the top of every panel even though they're unactionable.
+  - Why deferred: deliberate design decision but undocumented; product call on whether urgent > blocked or blocked > urgent
+  - Resolve when: user reports confusion, or add a comment to `sortTasks()` explaining the intentional priority ordering
+
+- [ ] `app/web_ui/js/data.js:4094` (`normalizeTask`) — `urgent: task.urgent || null` (never `false`) is consistent with the codebase but undocumented; a future reader may wonder why `false` is absent.
+  - Why deferred: nit; consistent with other optional fields like `dueDate`/`followUpDate`
+  - Resolve when: next touch to `normalizeTask` — add a one-liner comment: "optional fields use null (not false) as the absent sentinel"
+
+- [ ] `app/web_ui/js/ui.js` (task edit flyout) — urgent checkbox is placed between slug and context fields; as a high-salience action it would be more discoverable near the top of the flyout or grouped with status metadata.
+  - Why deferred: nit; functional but not optimally placed
+  - Resolve when: a flyout field-order audit or UX polish pass

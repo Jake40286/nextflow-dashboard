@@ -1978,6 +1978,7 @@ export class UIController {
       });
     }
 
+    const _prevScrollTop = content.scrollTop;
     content.innerHTML = "";
 
     const allTasks = this.taskManager.getTasks({ includeCompleted: false });
@@ -2053,9 +2054,14 @@ export class UIController {
       lines.forEach((title) => {
         this.taskManager.addTask({ title, status: STATUS.INBOX, projectId: project.id });
       });
-      // statechange re-renders the flyout synchronously, so focus the replacement textarea
+      // statechange re-renders the flyout synchronously; focus the replacement textarea
+      // and scroll the Inbox section into view so the added task is immediately visible.
       const newTextarea = content.querySelector(".project-quick-add-form textarea");
       if (newTextarea) newTextarea.focus();
+      const inboxSection = content.querySelector(".project-task-group[data-status='inbox']");
+      if (inboxSection) {
+        inboxSection.scrollIntoView({ block: "nearest" });
+      }
     });
     content.append(addForm);
 
@@ -2090,6 +2096,7 @@ export class UIController {
         const section = document.createElement("section");
         section.className = "project-task-group";
         section.dataset.projectId = project.id;
+        section.dataset.status = group.status;
         const heading = document.createElement("h4");
         heading.textContent = group.label;
         section.append(heading);
@@ -2258,6 +2265,7 @@ export class UIController {
     footer.append(deleteBtn);
 
     content.append(footer);
+    content.scrollTop = _prevScrollTop;
   }
 
   renderProjectEditor(project) {

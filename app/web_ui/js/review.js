@@ -856,20 +856,33 @@ export class ReviewController {
     observer.observe(flyout, { attributes: true, attributeFilter: ["class"] });
   }
 
-  // Re-render the review card once the clarify modal closes.
+  // Re-render the review card once the clarify modal closes or the task state
+  // changes — whichever comes first. The statechange fallback handles the case
+  // where an active processSession advances to the next inbox item without ever
+  // removing is-open from the clarify modal.
   _watchClarifyClose() {
     const clarifyModal = document.getElementById("clarifyModal");
     if (!clarifyModal) {
       this._renderCurrentItem();
       return;
     }
-    const observer = new MutationObserver(() => {
-      if (!clarifyModal.classList.contains("is-open")) {
-        observer.disconnect();
-        this._renderCurrentItem();
-      }
+
+    let done = false;
+    const renderOnce = () => {
+      if (done) return;
+      done = true;
+      clarifyObserver.disconnect();
+      this.taskManager.removeEventListener("statechange", onStateChange);
+      this._renderCurrentItem();
+    };
+
+    const clarifyObserver = new MutationObserver(() => {
+      if (!clarifyModal.classList.contains("is-open")) renderOnce();
     });
-    observer.observe(clarifyModal, { attributes: true, attributeFilter: ["class"] });
+    clarifyObserver.observe(clarifyModal, { attributes: true, attributeFilter: ["class"] });
+
+    const onStateChange = () => renderOnce();
+    this.taskManager.addEventListener("statechange", onStateChange, { once: true });
   }
 
   // ─── Topbar indicator ──────────────────────────────────────────────────────

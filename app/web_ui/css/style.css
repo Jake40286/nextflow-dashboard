@@ -5911,6 +5911,10 @@ body.flyout-open .feedback-widget {
 }
 
 @media (max-width: 860px) {
+  body.is-admin .alerts {
+    bottom: calc(var(--space-5) + 44px + var(--space-2));
+  }
+
   .association-flyout {
     top: auto;
     bottom: 14px;
@@ -5920,6 +5924,20 @@ body.flyout-open .feedback-widget {
 
   body.doing-bar-visible .association-flyout {
     bottom: 62px;
+  }
+
+  /* Raise above feedback widget button when admin is logged in */
+  body.is-admin .association-flyout {
+    bottom: calc(var(--space-5) + 44px + var(--space-2));
+  }
+
+  body.doing-bar-visible.is-admin .association-flyout {
+    bottom: calc(var(--space-5) + 44px + var(--space-2));
+  }
+
+  /* Hide when task flyout is open (full-screen overlay on mobile) */
+  body.flyout-open .association-flyout {
+    display: none;
   }
 
   .association-flyout-toggle {

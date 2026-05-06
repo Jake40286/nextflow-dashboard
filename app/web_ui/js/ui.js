@@ -62,6 +62,9 @@ const SIDEBAR_EXPANDED_KEY = "nextflow-sidebar-expanded";
     /* noop — localStorage unavailable */
   }
 })();
+// Urgent tasks always float above non-urgent within any sort order
+const urgentFirst = (a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0);
+
 const ENTITY_LINK_TOKEN_PATTERN = /([@#+][A-Za-z0-9][A-Za-z0-9_-]*)/g;
 const URL_PATTERN = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/;
 const MARKDOWN_INLINE_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
@@ -1680,8 +1683,6 @@ export class UIController {
     const sorted = [...tasks];
     const blockedIds = new Set(sorted.filter((t) => this.taskManager.isBlocked(t.id)).map((t) => t.id));
     const blockedLast = (a, b) => (blockedIds.has(a.id) ? 1 : 0) - (blockedIds.has(b.id) ? 1 : 0);
-    // Urgent tasks always float above non-urgent within any sort order
-    const urgentFirst = (a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0);
     switch (this.taskSort) {
       case "updated-asc":
         return sorted.sort((a, b) => urgentFirst(a, b) || blockedLast(a, b) || (a.updatedAt || "").localeCompare(b.updatedAt || ""));

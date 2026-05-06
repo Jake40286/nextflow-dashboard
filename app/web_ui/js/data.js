@@ -1146,15 +1146,13 @@ export class TaskManager extends EventTarget {
     const hasCalendarDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "calendarDate");
     const hasMyDayDateUpdate = Object.prototype.hasOwnProperty.call(nextUpdates, "myDayDate");
     if ("urgent" in nextUpdates) {
-      const togglingOn  = nextUpdates.urgent && !task.urgent;
-      const togglingOff = !nextUpdates.urgent && task.urgent;
-      if (togglingOn) {
+      if (nextUpdates.urgent && !task.urgent) {
         nextUpdates.urgentSince = nowIso();
         if (!hasMyDayDateUpdate) {
           const todayIso = new Date().toISOString().slice(0, 10);
           if (!task.myDayDate || task.myDayDate < todayIso) nextUpdates.myDayDate = todayIso;
         }
-      } else if (togglingOff) {
+      } else if (!nextUpdates.urgent && task.urgent) {
         nextUpdates.urgentSince = null;
       }
     }

@@ -15,7 +15,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Type | Application |
 | Version | 0.1.0 |
 | Status | Beta / Active refinement |
-| Last Updated | 2026-05-06 |
+| Last Updated | 2026-05-07 |
 
 **Production URLs:**
 - http://localhost:8002 — Local dev / Docker
@@ -41,6 +41,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 - [x] Google Calendar sync
 - [x] Service worker / offline support
 - [x] Gzip state compression, atomic writes, tombstone-based deletion
+- [x] Top-bar status sections — My Day + Neglected (Phase 2.5)
 
 ### Active (In Progress)
 
@@ -73,6 +74,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | No framework (vanilla JS) | Zero build tooling, fast iteration, no dependency churn | Pre-2026 | Active |
 | Flat JSON state | Simple, portable, inspectable; fits single-user self-hosted scale | Pre-2026 | Active |
 | Python ThreadingHTTPServer | No framework overhead; full control over request handling | Pre-2026 | Active |
+| Top-bar pattern: hardcoded hex blended via `color-mix(... var(--surface))` | Mirrors existing urgent-bar; defer migration to theme variables until urgent-bar also migrates | 2026-05-07 | Active (Phase 2.5) |
 
 ## Success Metrics
 
@@ -102,4 +104,4 @@ Users can track tasks, projects, and calendar events across any browser on their
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-05-06*
+*Last updated: 2026-05-07 after Phase 2.5*

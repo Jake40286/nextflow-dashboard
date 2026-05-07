@@ -5,27 +5,33 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 1: Bug Fixes
+**Current focus:** v1.0 Feedback Clearance & Polish — Phase 2.5: Top-Bar Status Sections (top-priority insertion)
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 2 of 6 (Inbox & Clarify) — All scope shipped + UAT remediation complete; phase transition pending
-Plan: 02-01-FIX complete (SUMMARY written); 02-01 fully closed including UAT
-Status: Phase 2 ready to transition — both PLAN files have SUMMARYs, UAT-001 resolved, 152/152 tests pass; awaiting commit + /paul:transition (or proceed to Phase 3)
-Last activity: 2026-05-06 — 02-01-FIX UNIFY: SUMMARY written, UAT-001 moved to Resolved, STATE updated
+Phase: 2.5 of 7 (Top-Bar Status Sections) — Complete
+Plan: 02.5-01 closed (PLAN/APPLY/UNIFY all ✓)
+Status: Loop complete, transition pending
+Last activity: 2026-05-07 — UNIFY complete for 02.5-01. SUMMARY.md written. Tests 160/160. Awaiting phase transition (commit + ROADMAP update + next-phase routing).
 
 Progress:
-- Milestone: [██░░░░░░░░] 17%
-- Phase 2: [██████████] 100% scope shipped (UAT pending)
+- Milestone: [████░░░░░░] 43% (3 of 7 phases complete — 1, 2, 2.5)
+- Phase 2.5: [██████████] 100% — Loop closed, transition pending
 
 ## Loop Position
 
 Current loop state:
 ```
-02-01:      PLAN ──▶ APPLY ──▶ UNIFY ──▶ VERIFY    [✓ closed]
-02-01-FIX:  PLAN ──▶ APPLY ──▶ UNIFY               [✓ closed; UAT-001 resolved]
-              ✓        ✓        ✓     [Phase 2 loop fully closed — transition next]
+Phase 2 (closed):
+  02-01 + 02-01-FIX:  PLAN ──▶ APPLY ──▶ UNIFY ──▶ VERIFY    [✓ closed, merged via PRs #26, #27]
+
+Phase 2.5 (closed):
+  02.5-01:            PLAN ──▶ APPLY ──▶ UNIFY
+                        ✓        ✓        ✓     [✓ closed, transition pending]
+
+Phase 3 (queued — next):
+  03-01, 03-02:       ○ ──── ○ ──── ○
 ```
 
 ## Accumulated Context
@@ -36,11 +42,17 @@ Current loop state:
 - Used `display: none` for association flyout when task flyout is open (not z-index) — hides invisible tap target cleanly
 - convertedProjectId captured before _completeClarifyStep (state resets during close) — must capture early in finalizeClarifyRouting
 - Auto-open project flyout skipped during process sessions (batch clarify) — would conflict with next queued task
+- 2026-05-07: Phase 3 re-scoped from a live `GET /feedback` query rather than the 2026-05-06 stripped scope, after finding the prior audit had over-stripped. Future phase audits should always re-query `/feedback` rather than diff against a static snapshot.
+- 2026-05-07: Phase 2.5 inserted ahead of Phase 3 by user request. Mirrors urgent-bar pattern (data.js `getUrgentTasks` + ui.js `renderUrgentBar`) for "My Day" (myDayDate==today OR dueDate==today, uncapped) and "Neglected" (top 5 active tasks past `staleTaskThresholds.stale`, default 14 days).
+- 2026-05-07: My Day + Neglected CSS uses hardcoded hex (`#2563eb`, `#b45309`) blended via `color-mix(... var(--surface))` — mirrors the existing urgent-bar at `style.css:6498` (`#dc2626`) instead of introducing new `--myday-accent`/`--neglected-accent` theme variables. If the urgent-bar is ever migrated to variables, migrate all three bars together.
+- 2026-05-07: Inbox tasks excluded from `getNeglectedTasks()` (inbox is unprocessed, not stale). My Day kept uncapped, Neglected hard-capped at 5; settings UI to tune both deferred to a future plan.
 
 ### Deferred Issues
 
 - Process session case for auto-flyout (0bf1bf88): when batch-clarifying, the project flyout is not opened after convert routing to avoid conflict with the next queued task.
-- 32 open feedback items not currently in ROADMAP scope (audit 2026-05-06). Milestone tagline says "clearing the full feedback backlog" but 32 open items are unscoped. Decide later whether to bucket them into existing phases, draft new phases, or descope the milestone tagline.
+- 57 open feedback items not currently in ROADMAP scope. Decide later whether to bucket more into Phases 3–6, draft new phases, or descope the milestone tagline.
+- `483a286b` (rename "Move to waiting" + delegate-to-person) is task-flyout work; sitting outside Phase 3 scope but flagged as a candidate.
+- Phase 2.5 follow-up candidates (out of scope for 02.5-01): settings UI to tune the Neglected cap (currently hardcoded 5) and the My Day cap (currently uncapped); shared "status-bar" base class refactor of urgent + my-day + neglected once the new bars prove stable.
 
 ### Blockers/Concerns
 
@@ -48,15 +60,15 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-06
-Stopped at: 02-01-FIX UNIFY complete; Phase 2 fully closed pending transition
-Next action: Phase transition — commit branch `fix/clarify-modal-gaps` (02-01 + FIX edits), then `/paul:transition` to update ROADMAP/PROJECT and route to Phase 3
+Last session: 2026-05-07
+Stopped at: 02.5-01 UNIFY complete; awaiting Phase 2.5 → Phase 3 transition (git commit, ROADMAP update, next-phase routing).
+Next action: Run phase transition (commit Phase 2.5, mark ROADMAP complete, then `/paul:plan` for Phase 3).
 Resume context:
-- Branch: fix/clarify-modal-gaps (5 edits in app/web_ui/js/ui.js from 02-01 + 1 edit index.html + 7 lines ui.js from FIX, no commits yet)
-- npm test: 152/152 pass
-- ROADMAP audit complete: 12 resolved items stripped, Phase 2 scope now exactly matches what 02-01 shipped
-- SUMMARYs: .paul/phases/02-inbox-clarify/02-01-SUMMARY.md (original) + 02-01-FIX-SUMMARY.md (UAT remediation)
-- UAT-001 resolved (label fix verified in browser); out-of-band intent change (convert-to-project semantics) still needs to be captured as new feedback record
+- Branch: `feature/top-bar-status-sections` (already created, all changes uncommitted)
+- npm test: 160/160 passing (152 prior + 8 new selector tests)
+- Summary: `.paul/phases/02.5-top-bar-status/02.5-01-SUMMARY.md`
+- Files modified: `app/web_ui/index.html`, `app/web_ui/css/style.css`, `app/web_ui/js/data.js`, `app/web_ui/js/ui.js`, `tests/taskManager.test.js`, plus `.paul/` state files
+- Phase 3 scope (next): `1448576c` (rename "Active Projects" → "Projects", clarify add-project area), `3ff676c5` (suppress no-next-action warning when delegated task exists)
 
 ---
 *STATE.md — Updated after every significant action*

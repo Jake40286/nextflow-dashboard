@@ -1072,6 +1072,8 @@ export class UIController {
     this.renderSummary();
     this.renderDoingBar();
     this.renderUrgentBar();
+    this.renderMyDayBar();
+    this.renderNeglectedBar();
     this.renderAssociationFlyout();
     this.applySearchVisibility();
     this.updateCounts();
@@ -1243,6 +1245,64 @@ export class UIController {
     }
     urgentBar.innerHTML = "";
     urgentBar.append(fragment);
+  }
+
+  renderMyDayBar() {
+    const { myDayBar } = this.elements;
+    if (!myDayBar) return;
+    const tasks = this.taskManager.getMyDayTopBar();
+    if (!tasks.length) {
+      myDayBar.hidden = true;
+      myDayBar.innerHTML = "";
+      return;
+    }
+    myDayBar.hidden = false;
+    const fragment = document.createDocumentFragment();
+    const label = document.createElement("span");
+    label.className = "myday-bar-label";
+    label.textContent = "My Day";
+    fragment.append(label);
+    for (const task of tasks) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "myday-chip";
+      chip.dataset.taskId = task.id;
+      chip.textContent = task.title;
+      chip.title = task.title;
+      chip.addEventListener("click", () => this.openTaskFlyout(task.id));
+      fragment.append(chip);
+    }
+    myDayBar.innerHTML = "";
+    myDayBar.append(fragment);
+  }
+
+  renderNeglectedBar() {
+    const { neglectedBar } = this.elements;
+    if (!neglectedBar) return;
+    const tasks = this.taskManager.getNeglectedTasks();
+    if (!tasks.length) {
+      neglectedBar.hidden = true;
+      neglectedBar.innerHTML = "";
+      return;
+    }
+    neglectedBar.hidden = false;
+    const fragment = document.createDocumentFragment();
+    const label = document.createElement("span");
+    label.className = "neglected-bar-label";
+    label.textContent = "Neglected";
+    fragment.append(label);
+    for (const task of tasks) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "neglected-chip";
+      chip.dataset.taskId = task.id;
+      chip.textContent = task.title;
+      chip.title = task.title;
+      chip.addEventListener("click", () => this.openTaskFlyout(task.id));
+      fragment.append(chip);
+    }
+    neglectedBar.innerHTML = "";
+    neglectedBar.append(fragment);
   }
 
   _formatDoingElapsed(startedAt, baseSecs = 0) {
@@ -9914,6 +9974,8 @@ function mapElements() {
     projectCompleteCancel: byId("projectCompleteCancel"),
     doingBar: byId("doingBar"),
     urgentBar: byId("urgentBar"),
+    myDayBar: byId("myDayBar"),
+    neglectedBar: byId("neglectedBar"),
     projectMergeModal: byId("projectMergeModal"),
     projectMergeBackdrop: byId("projectMergeBackdrop"),
     closeProjectMergeModal: byId("closeProjectMergeModal"),

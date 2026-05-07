@@ -6545,6 +6545,108 @@ body.doing-bar-visible .app {
   border-color: color-mix(in srgb, #dc2626 55%, transparent);
 }
 
+/* ── My Day bar ──────────────────────────────────────── */
+.myday-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: color-mix(in srgb, #2563eb 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, #2563eb 28%, transparent);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.myday-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.myday-bar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #2563eb;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.myday-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-3);
+  background: color-mix(in srgb, #2563eb 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, #2563eb 35%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.13s, border-color 0.13s;
+}
+
+.myday-chip:hover {
+  background: color-mix(in srgb, #2563eb 22%, var(--surface));
+  border-color: color-mix(in srgb, #2563eb 55%, transparent);
+}
+
+/* ── Neglected bar ───────────────────────────────────── */
+.neglected-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: color-mix(in srgb, #b45309 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, #b45309 28%, transparent);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.neglected-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.neglected-bar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #b45309;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.neglected-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-3);
+  background: color-mix(in srgb, #b45309 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, #b45309 35%, transparent);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.13s, border-color 0.13s;
+}
+
+.neglected-chip:hover {
+  background: color-mix(in srgb, #b45309 22%, var(--surface));
+  border-color: color-mix(in srgb, #b45309 55%, transparent);
+}
+
 /* urgent task meta pill on task cards */
 .task-meta-urgent {
   background: color-mix(in srgb, #dc2626 18%, var(--surface));

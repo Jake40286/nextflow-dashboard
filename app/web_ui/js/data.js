@@ -399,6 +399,13 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function _todayLocalISODate(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function createSlug(seed = "") {
   const input = seed || `${Math.random()}-${Date.now()}`;
   let hash = 0;
@@ -930,6 +937,40 @@ export class TaskManager extends EventTarget {
 
   getUrgentTasks() {
     return this.state.tasks.filter((t) => t.urgent && !t.completedAt);
+  }
+
+  getMyDayTopBar() {
+    const today = _todayLocalISODate();
+    const matches = this.state.tasks.filter(
+      (t) => !t.completedAt && (t.myDayDate === today || t.dueDate === today),
+    );
+    return [...matches].sort((a, b) => {
+      const at = a.calendarTime ? a.calendarTime : "~";
+      const bt = b.calendarTime ? b.calendarTime : "~";
+      if (at !== bt) return at < bt ? -1 : 1;
+      const au = a.updatedAt || a.createdAt || "";
+      const bu = b.updatedAt || b.createdAt || "";
+      return au < bu ? -1 : au > bu ? 1 : 0;
+    });
+  }
+
+  getNeglectedTasks() {
+    const thresholdDays = this.getStaleTaskThresholds().stale;
+    const cutoff = Date.now() - thresholdDays * 86400000;
+    const candidates = this.state.tasks.filter((t) => {
+      if (t.completedAt) return false;
+      if (t.status === "inbox") return false;
+      const ref = t.updatedAt || t.createdAt;
+      if (!ref) return false;
+      return new Date(ref).getTime() < cutoff;
+    });
+    return [...candidates]
+      .sort((a, b) => {
+        const au = a.updatedAt || a.createdAt;
+        const bu = b.updatedAt || b.createdAt;
+        return au < bu ? -1 : au > bu ? 1 : 0;
+      })
+      .slice(0, 5);
   }
 
   getTaskById(id) {

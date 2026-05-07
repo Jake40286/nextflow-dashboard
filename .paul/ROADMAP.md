@@ -8,18 +8,19 @@ nextflow is a mature self-hosted productivity app. This milestone focuses on qua
 
 **v1.0 Feedback Clearance & Polish** (v1.0.0)
 Status: In progress
-Phases: 0 of 6 complete
+Phases: 3 of 7 complete
 
 ## Phases
 
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
-| 1 | Bug Fixes | TBD | In progress | - |
-| 2 | Inbox & Clarify | TBD | Planning | - |
-| 3 | Projects Panel — UX | TBD | Not started | - |
-| 4 | Projects Panel — Features | TBD | Not started | - |
-| 5 | Active Task Views | TBD | Not started | - |
-| 6 | Settings & Misc | TBD | Not started | - |
+| 1 | Bug Fixes | 1 | Complete | 2026-05-06 |
+| 2 | Inbox & Clarify | 2 | Complete | 2026-05-06 |
+| 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
+| 3 | Projects Panel — UX | 2 | Not started | - |
+| 4 | Projects Panel — Features | 1 | Not started | - |
+| 5 | Active Task Views | 3 | Not started | - |
+| 6 | Settings & Misc | 2 | Not started | - |
 
 ## Phase Details
 
@@ -48,18 +49,39 @@ Phases: 0 of 6 complete
 **Plans:**
 - [ ] 02-01: Inbox & Clarify improvements
 
+### Phase 2.5: Top-Bar Status Sections
+
+**Goal:** Mirror the existing urgent-tasks top bar with two new at-a-glance sections — "My Day" (tasks scheduled or due today) and "Neglected" (top 5 stale tasks).
+**Depends on:** Phase 2 (uses task data shape; no Phase 3 dependency)
+**Research:** Unlikely (mirrors an existing rendering pattern in `ui.js`)
+**Priority:** Top priority — inserted ahead of Phase 3 by user request 2026-05-07.
+
+**Scope:**
+- New "My Day" top bar — chips for tasks where `myDayDate == today` OR `dueDate == today`, sorted by `calendarTime` then `updatedAt`, no cap
+- New "Neglected" top bar — top 5 active tasks whose `updatedAt` is older than `settings.staleTaskThresholds.stale` days, sorted oldest-first
+- Both bars render via `renderAll()` and hide when empty, matching `renderUrgentBar()` behavior
+
+**Plans:**
+- [x] 02.5-01: My Day and Neglected top-bar sections — completed 2026-05-07
+
 ### Phase 3: Projects Panel — UX
 
-**Goal:** Redesign the project page layout and improve visual clarity across the panel.
-**Depends on:** Phase 2
+**Goal:** Improve clarity and reduce noise on the Projects panel — naming, affordances, and warning behavior.
+**Depends on:** Phase 2.5
 **Research:** Unlikely (layout and visual hierarchy work)
 
 **Scope:**
-- _All originally-scoped items already resolved in feedback at the time of the audit. Phase plans below may be obsolete — revisit before drafting._
+- `1448576c` — Rename "Active Projects" → "Projects" (panel includes all projects, not just active); clarify the add-project area is for adding a new project
+- `3ff676c5` — Suppress "no next action" warning on a project when a delegated task exists (delegated work is implicitly "next")
 
 **Plans:**
-- [ ] 03-01: Project page layout redesign
-- [ ] 03-02: Filter indicator, stats click, and undo completion
+- [ ] 03-01: Projects panel renames and add-project affordance
+- [ ] 03-02: Refine "no next action" warning logic
+
+**Notes:**
+- Re-scoped 2026-05-07 after live `GET /feedback` audit. The 2026-05-06 audit incorrectly marked Phase 3 as having zero open scope; two `panel: projects` items were either missed or filed after the audit.
+- `483a286b` (rename "Move to waiting" + delegate-to-person) sits on the task flyout, not the Projects panel — left in Phase 5 candidate pool unless surfacing in Phase 3 makes more sense during planning.
+- Originally-listed plans (project page layout redesign, filter indicator, stats click, undo completion) were retired with the 2026-05-06 audit; current scope no longer needs them.
 
 ### Phase 4: Projects Panel — Features
 
@@ -124,3 +146,6 @@ Out of scope for this milestone — large-scope features requiring separate plan
 ---
 *Roadmap created: 2026-05-06*
 *Last updated: 2026-05-06 — Stripped 12 already-resolved items from Phase 1/2/3/4 scope per audit against `data/feedback.json`.*
+*Last updated: 2026-05-07 — Re-scoped Phase 3 with `1448576c` and `3ff676c5` after live feedback audit found the 2026-05-06 sweep had over-stripped Phase 3.*
+*Last updated: 2026-05-07 — Inserted Phase 2.5 (Top-Bar Status Sections: My Day + Neglected) ahead of Phase 3 by user request. Phase 3 now depends on 2.5.*
+*Last updated: 2026-05-07 — Phase 2.5 complete (plan 02.5-01 shipped). 3 of 7 phases done. Phase 3 (Projects Panel — UX) is next.*

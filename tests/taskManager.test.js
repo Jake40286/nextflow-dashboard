@@ -2375,6 +2375,110 @@ test("tombstone from disposition=skip survives a remote merge from stale device"
   assert.equal(surviving, undefined, "tombstone suppresses stale remote copy");
 });
 
+function _todayStr(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function _daysAgoIso(days) {
+  return new Date(Date.now() - days * 86400000).toISOString();
+}
+
+test("getMyDayTopBar includes tasks with myDayDate == today", () => {
+  const manager = createManager();
+  const today = _todayStr();
+  const tomorrow = _todayStr(new Date(Date.now() + 86400000));
+  const a = manager.addTask({ title: "On my day" });
+  manager.updateTask(a.id, { myDayDate: today });
+  const b = manager.addTask({ title: "Future" });
+  manager.updateTask(b.id, { myDayDate: tomorrow });
+  const result = manager.getMyDayTopBar();
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, a.id);
+});
+
+test("getMyDayTopBar includes tasks with dueDate == today", () => {
+  const manager = createManager();
+  const today = _todayStr();
+  const t = manager.addTask({ title: "Due today" });
+  manager.updateTask(t.id, { dueDate: today });
+  const result = manager.getMyDayTopBar();
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, t.id);
+});
+
+test("getMyDayTopBar excludes completed tasks", () => {
+  const manager = createManager();
+  const today = _todayStr();
+  const t = manager.addTask({ title: "Done already" });
+  manager.updateTask(t.id, { myDayDate: today });
+  manager.completeTask(t.id, { archive: "reference" });
+  assert.equal(manager.getMyDayTopBar().length, 0);
+});
+
+test("getMyDayTopBar sorts by calendarTime then updatedAt", () => {
+  const manager = createManager();
+  const today = _todayStr();
+  const late = manager.addTask({ title: "Late" });
+  manager.updateTask(late.id, { myDayDate: today, calendarTime: "15:00" });
+  const early = manager.addTask({ title: "Early" });
+  manager.updateTask(early.id, { myDayDate: today, calendarTime: "08:00" });
+  const untimed = manager.addTask({ title: "Untimed" });
+  manager.updateTask(untimed.id, { myDayDate: today });
+  const result = manager.getMyDayTopBar();
+  assert.deepEqual(
+    result.map((t) => t.title),
+    ["Early", "Late", "Untimed"],
+  );
+});
+
+test("getNeglectedTasks returns only tasks older than the stale threshold", () => {
+  const manager = createManager();
+  const fresh = manager.addTask({ title: "Fresh", status: "next" });
+  manager.state.tasks.find((t) => t.id === fresh.id).updatedAt = _daysAgoIso(2);
+  const stale = manager.addTask({ title: "Stale", status: "next" });
+  manager.state.tasks.find((t) => t.id === stale.id).updatedAt = _daysAgoIso(30);
+  const result = manager.getNeglectedTasks();
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, stale.id);
+});
+
+test("getNeglectedTasks caps at 5", () => {
+  const manager = createManager();
+  for (let i = 0; i < 8; i += 1) {
+    const t = manager.addTask({ title: `Stale ${i}`, status: "next" });
+    manager.state.tasks.find((x) => x.id === t.id).updatedAt = _daysAgoIso(30 + i);
+  }
+  assert.equal(manager.getNeglectedTasks().length, 5);
+});
+
+test("getNeglectedTasks excludes inbox and completed tasks", () => {
+  const manager = createManager();
+  const inboxStale = manager.addTask({ title: "Inbox stale" });
+  manager.state.tasks.find((t) => t.id === inboxStale.id).updatedAt = _daysAgoIso(30);
+  const completedStale = manager.addTask({ title: "Completed stale", status: "next" });
+  manager.state.tasks.find((t) => t.id === completedStale.id).updatedAt = _daysAgoIso(30);
+  manager.completeTask(completedStale.id, { archive: "reference" });
+  assert.equal(manager.getNeglectedTasks().length, 0);
+});
+
+test("getNeglectedTasks sorts oldest first", () => {
+  const manager = createManager();
+  const mid = manager.addTask({ title: "Mid", status: "next" });
+  manager.state.tasks.find((t) => t.id === mid.id).updatedAt = _daysAgoIso(20);
+  const oldest = manager.addTask({ title: "Oldest", status: "next" });
+  manager.state.tasks.find((t) => t.id === oldest.id).updatedAt = _daysAgoIso(60);
+  const newer = manager.addTask({ title: "Newer", status: "next" });
+  manager.state.tasks.find((t) => t.id === newer.id).updatedAt = _daysAgoIso(15);
+  const result = manager.getNeglectedTasks();
+  assert.deepEqual(
+    result.map((t) => t.title),
+    ["Oldest", "Mid", "Newer"],
+  );
+});
+
 test.after(() => {
   globalThis.fetch = originalFetch;
 });

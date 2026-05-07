@@ -30,10 +30,7 @@ Phases: 0 of 6 complete
 **Research:** Unlikely (bugs in existing code)
 
 **Scope:**
-- `88ea7198` — Project Task "Add" button no longer functional
-- `cc3779df` — Weekly review live updates: inbox clarify changes not reflecting
-- `fb039fa2` — Sync toast covered by feedback button
-- `9dd4165f` — Mobile: association filter flyout conflict
+- _All originally-scoped items shipped by plan 01-01 and marked resolved in feedback._
 
 **Plans:**
 - [ ] 01-01: Fix all 4 open bugs
@@ -47,8 +44,6 @@ Phases: 0 of 6 complete
 **Scope:**
 - `0bf1bf88` — Show newly assigned project immediately after assignment
 - `160e0923` — Description visible during clarification flyout
-- `bb6a0dba` — Clarify menu: add "add to My Day" option in date section
-- `c4c05706` — Completion notes for quick (<2 min) tasks in clarification
 
 **Plans:**
 - [ ] 02-01: Inbox & Clarify improvements
@@ -60,11 +55,7 @@ Phases: 0 of 6 complete
 **Research:** Unlikely (layout and visual hierarchy work)
 
 **Scope:**
-- `eba74bf6` — Project page layout redesign
-- `a8c9f66a` — Project notes visual hierarchy (move higher)
-- `7b22e7ce` — Active filter indicator while scrolling
-- `c0477361` — Statistics page project click — investigate behavior
-- `84e95ceb` — Undo button on task completion (5-second toast)
+- _All originally-scoped items already resolved in feedback at the time of the audit. Phase plans below may be obsolete — revisit before drafting._
 
 **Plans:**
 - [ ] 03-01: Project page layout redesign
@@ -77,11 +68,9 @@ Phases: 0 of 6 complete
 **Research:** Likely (project merge touches sync/merge logic; activity log needs data model decisions)
 
 **Scope:**
-- `1cc10982` — Project merge (combine two projects into one)
 - `7868b077` — Project activity/change log
 
 **Plans:**
-- [ ] 04-01: Project merge
 - [ ] 04-02: Project activity/change log
 
 ### Phase 5: Active Task Views
@@ -134,4 +123,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 
 ---
 *Roadmap created: 2026-05-06*
-*Last updated: 2026-05-06*
+*Last updated: 2026-05-06 — Stripped 12 already-resolved items from Phase 1/2/3/4 scope per audit against `data/feedback.json`.*

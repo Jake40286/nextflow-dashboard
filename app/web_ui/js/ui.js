@@ -5001,6 +5001,7 @@ export class UIController {
       if (!project) return;
       this.clarifyState.projectId = project.id;
       this.clarifyState.projectName = project.name;
+      this.clarifyState.convertedProjectId = project.id;
       if (this.elements.clarifyNewProjectInline) this.elements.clarifyNewProjectInline.hidden = true;
       if (this.elements.clarifyProjectPicker) this.elements.clarifyProjectPicker.hidden = false;
       this.populateProjectSelect();
@@ -5287,7 +5288,12 @@ export class UIController {
       areaOfFocus: "",
       singleActionChosen: false,
       hasReachedWhen: false,
+      convertedProjectId: null,
     };
+    if (this.elements.clarifyDescSummary) {
+      this.elements.clarifyDescSummary.hidden = true;
+      this.elements.clarifyDescSummary.textContent = "";
+    }
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
 
@@ -5815,6 +5821,10 @@ export class UIController {
       el.textContent = task.title || "(No title)";
     });
     this._renderClarifyPreviewDescription(task?.description || "");
+    if (this.elements.clarifyDescSummary) {
+      this.elements.clarifyDescSummary.hidden = false;
+      this.elements.clarifyDescSummary.textContent = task?.description || "";
+    }
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
     }
@@ -6169,7 +6179,8 @@ export class UIController {
     if (this.elements.clarifyProjectPicker) this.elements.clarifyProjectPicker.hidden = true;
     if (inline) inline.hidden = false;
     if (input) {
-      input.value = "";
+      input.value = this.clarifyState.previewText || "";
+      input.select();
       input.focus();
     }
   }
@@ -6441,8 +6452,13 @@ export class UIController {
     if (sessionActive) {
       actions.push({ label: "Next item →", onClick: () => {} });
     }
+    const convertedProjectId = this.clarifyState.convertedProjectId || null;
+    const inSession = !!this.processSession;
     this.taskManager.notify("info", `✓ Routed to ${dest}`, { actions });
     this._completeClarifyStep("routed");
+    if (convertedProjectId && !inSession) {
+      this.openProjectFlyout(convertedProjectId);
+    }
   }
 
   _computeRouteDestination(updates) {

@@ -66,9 +66,10 @@ None.
 
 ### Git State
 
-- Last commit: `8416a00` — feat(projects-panel): rename "Active Projects" → "Projects" and add new-project heading (Plan 03-01)
-- Branch: `feature/projects-panel-ux` (one commit ahead of main; will hold 03-02 work too before merging)
+- Last commit: `f9c34fc` — fix(projects-panel): suppress "no next action" warning when delegated or doing tasks exist (Plan 03-02)
+- Branch: `feature/projects-panel-ux` (TWO commits ahead of main: `8416a00` 03-01 + `f9c34fc` 03-02)
 - Working tree: clean
+- Pending merge to main (Phase 3 transition).
 - Phase 2.5 already merged to main (`52abf0b`).
 
 ## Session Continuity

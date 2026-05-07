@@ -10,14 +10,14 @@ See: .paul/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 4 of 7 (Projects Panel — Features) — Not started
-Plan: not started
-Status: Ready to plan (Phase 3 just closed)
-Last activity: 2026-05-07 — Phase 3 closed: 03-01 + 03-02 both shipped on feature/projects-panel-ux. Transition complete.
+Phase: 4 of 7 (Projects Panel — Features) — In progress (04-01 closed; 04-02 next)
+Plan: 04-01 closed (PLAN/APPLY/UNIFY all ✓); 04-02 ready to plan
+Status: 04-01 loop closed
+Last activity: 2026-05-07 — UNIFY complete for 04-01. SUMMARY written, work committed on feature/projects-activity-log. 179/179 tests passing.
 
 Progress:
 - Milestone: [██████░░░░] 57% (4 of 7 phases complete — 1, 2, 2.5, 3)
-- Phase 4: [░░░░░░░░░░] 0% — Not started
+- Phase 4: [███████░░░] 70% — 04-01 closed; 04-02 (UI tab) ready to plan
 
 ## Loop Position
 
@@ -33,8 +33,9 @@ Phase 3 (closed):
   03-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   03-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 
-Phase 4 (next — ready to plan):
-  04-02:              ○ ──── ○ ──── ○             [Project activity log; research likely]
+Phase 4 (active):
+  04-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+  04-02:              ○ ──── ○ ──── ○             [UI tab; ready to plan]
 ```
 
 ## Accumulated Context
@@ -66,22 +67,25 @@ None.
 
 ### Git State
 
-- Last commit: `f9c34fc` — fix(projects-panel): suppress "no next action" warning when delegated or doing tasks exist (Plan 03-02)
-- Branch: `feature/projects-panel-ux` (TWO commits ahead of main: `8416a00` 03-01 + `f9c34fc` 03-02)
-- Working tree: clean
-- Pending merge to main (Phase 3 transition).
-- Phase 2.5 already merged to main (`52abf0b`).
+- Last commit on main: `3c80027` — chore(paul): record Phase 3 transition state after commit f9c34fc
+- Branch: `main` (Phase 3 already merged + pushed via fast-forward)
+- Working tree: dirty (Phase 4 PLAN + STATE/ROADMAP updates)
+- Phase 2.5 already merged to main (`52abf0b`); Phase 3 already merged to main (`3c80027`).
+- For Phase 4 APPLY: create `feature/projects-activity-log` off main.
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: Phase 3 closed; ready to plan Phase 4.
-Next action: `/paul:plan` for Phase 4 (Projects Panel — Features: project activity log via feedback `7868b077`). Optional: merge `feature/projects-panel-ux` → `main`.
+Stopped at: 04-01 closed on feature/projects-activity-log; ready to plan 04-02 (UI tab).
+Next action: `/paul:plan` for 04-02 — surface the activity log in a project-flyout tab.
 Resume context:
-- Branch: `feature/projects-panel-ux` (holds 03-01 + 03-02; pending merge decision)
-- npm test baseline: 160/160 passing
-- Phase 4 scope: `7868b077` — project activity / change log (Research: likely — data model decisions needed)
-- Phase 4 dependency: Phase 3 (just closed); no blockers
+- Branch: `feature/projects-activity-log` (1 commit ahead of main; will hold 04-02 too before merging)
+- npm test baseline: 179/179 passing
+- Summary: `.paul/phases/04-projects-features/04-01-SUMMARY.md`
+- Discovery: `.paul/phases/04-projects-features/DISCOVERY.md`
+- 04-02 hooks already available: `taskManager.getProjectActivity(projectId)` returns scoped, sorted entries; entries shaped `{id, type, projectId, taskId, taskTitle, actor, ts, before, after}`
+- 04-02 must lazy-load via `ensureCompletedLoaded()` (the activity log lives in `completed.json`, not `state.json`)
+- After 04-02 UNIFY: phase transition triggers (commit + ROADMAP mark complete + merge feature/projects-activity-log to main)
 
 ---
 *STATE.md — Updated after every significant action*

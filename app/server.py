@@ -666,7 +666,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self._send_json(payload)
 
     def _handle_completed_get(self):
-        """Return the completion-log portion of state (completionLog, reference, completedProjects)."""
+        """Return the completion-log portion of state (completionLog, reference, completedProjects, projectActivityLog)."""
         self._ensure_state_dir()
         with STATE_LOCK:
             try:
@@ -760,7 +760,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     return
 
             core_payload = dict(payload or {})
-            _COMPLETION_KEYS = ("completionLog", "reference", "completedProjects")
+            _COMPLETION_KEYS = ("completionLog", "reference", "completedProjects", "projectActivityLog")
             if any(k in core_payload for k in _COMPLETION_KEYS):
                 # Old-protocol client sent completion fields. Merge with existing
                 # completed.json rather than replacing it, so a stale device cannot
@@ -795,6 +795,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         existing.get("completedProjects", []),
                         core_payload.pop("completedProjects", []),
                         "updatedAt",
+                    ),
+                    "projectActivityLog": _merge_collection(
+                        existing.get("projectActivityLog", []),
+                        core_payload.pop("projectActivityLog", []),
+                        "ts",
                     ),
                 }
                 _atomic_write(COMPLETED_FILE, completed_payload)

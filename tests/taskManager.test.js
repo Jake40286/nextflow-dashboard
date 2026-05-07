@@ -23,6 +23,7 @@ function createManager(initialState = {}) {
     completionLog: [],
     projects: [],
     completedProjects: [],
+    projectActivityLog: [],
     checklist: [],
     analytics: { history: [] },
     settings: {
@@ -2185,6 +2186,7 @@ test("deleteProject({ deleteTasks: true }) restoreFromTrash brings back individu
 test("deleteProject({ deleteTasks: true }) on empty project leaves _completionsDirty unset", () => {
   const manager = createManager();
   const project = manager.addProject("Empty project");
+  manager._completionsDirty = false; // reset after setup; project.created emission flips it
 
   manager.deleteProject(project.id, { deleteTasks: true });
 
@@ -2477,6 +2479,304 @@ test("getNeglectedTasks sorts oldest first", () => {
     result.map((t) => t.title),
     ["Oldest", "Mid", "Newer"],
   );
+});
+
+// ─────────────────────────────────────────────────────────
+// Project activity log — task-event emission (Phase 04-01)
+// ─────────────────────────────────────────────────────────
+
+test("addTask with projectId emits task.projectAssign with before=null", () => {
+  const manager = createManager();
+  const project = manager.addProject("P1");
+  // project.created entry will already exist; isolate the task entries
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.addTask({ title: "Buy chips", status: "next", projectId: project.id });
+  const newEntries = manager.state.projectActivityLog.slice(beforeCount);
+  assert.equal(newEntries.length, 1);
+  const entry = newEntries[0];
+  assert.equal(entry.type, "task.projectAssign");
+  assert.equal(entry.projectId, project.id);
+  assert.equal(entry.before, null);
+  assert.equal(entry.after, project.id);
+  assert.equal(entry.taskTitle, "Buy chips");
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("addTask without projectId emits no activity entry", () => {
+  const manager = createManager();
+  const beforeCount = manager.state.projectActivityLog?.length || 0;
+  manager.addTask({ title: "Floating task", status: "inbox" });
+  const afterCount = manager.state.projectActivityLog?.length || 0;
+  assert.equal(afterCount, beforeCount);
+});
+
+test("updateTask status change on a project task emits task.statusChange", () => {
+  const manager = createManager();
+  const project = manager.addProject("P1");
+  const task = manager.addTask({ title: "Email vendor", status: "next", projectId: project.id });
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateTask(task.id, { status: "doing" });
+  const newEntries = manager.state.projectActivityLog.slice(beforeCount);
+  const statusEntries = newEntries.filter((e) => e.type === "task.statusChange");
+  assert.equal(statusEntries.length, 1);
+  assert.equal(statusEntries[0].before, "next");
+  assert.equal(statusEntries[0].after, "doing");
+  assert.equal(statusEntries[0].projectId, project.id);
+});
+
+test("updateTask status change on a task with NO project emits no statusChange entry", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Floating", status: "next" });
+  const beforeCount = manager.state.projectActivityLog?.length || 0;
+  manager.updateTask(task.id, { status: "doing" });
+  const afterCount = manager.state.projectActivityLog?.length || 0;
+  assert.equal(afterCount, beforeCount);
+});
+
+test("updateTask project move between two projects emits TWO entries (source + destination)", () => {
+  const manager = createManager();
+  const projA = manager.addProject("Project A");
+  const projB = manager.addProject("Project B");
+  const task = manager.addTask({ title: "Wandering task", status: "next", projectId: projA.id });
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateTask(task.id, { projectId: projB.id });
+  const newEntries = manager.state.projectActivityLog.slice(beforeCount);
+  const moves = newEntries.filter((e) => e.type === "task.projectAssign");
+  assert.equal(moves.length, 2);
+  const onA = moves.find((e) => e.projectId === projA.id);
+  const onB = moves.find((e) => e.projectId === projB.id);
+  assert.ok(onA, "expected an entry on source project A");
+  assert.ok(onB, "expected an entry on destination project B");
+  assert.equal(onA.before, projA.id);
+  assert.equal(onA.after, projB.id);
+  assert.equal(onB.before, projA.id);
+  assert.equal(onB.after, projB.id);
+});
+
+test("updateTask project null → set emits ONE entry on the destination", () => {
+  const manager = createManager();
+  const proj = manager.addProject("P1");
+  const task = manager.addTask({ title: "Free agent", status: "next" }); // no projectId
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateTask(task.id, { projectId: proj.id });
+  const moves = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.projectAssign");
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].projectId, proj.id);
+  assert.equal(moves[0].before, null);
+  assert.equal(moves[0].after, proj.id);
+});
+
+test("updateTask project set → null emits ONE entry on the source", () => {
+  const manager = createManager();
+  const proj = manager.addProject("P1");
+  const task = manager.addTask({ title: "Leaving home", status: "next", projectId: proj.id });
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateTask(task.id, { projectId: null });
+  const moves = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.projectAssign");
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].projectId, proj.id);
+  assert.equal(moves[0].before, proj.id);
+  assert.equal(moves[0].after, null);
+});
+
+test("completeTask with project emits task.completed and sets _completionsDirty", () => {
+  const manager = createManager();
+  const proj = manager.addProject("P1");
+  const task = manager.addTask({ title: "Done deal", status: "next", projectId: proj.id });
+  manager._completionsDirty = false;
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.completeTask(task.id);
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.completed");
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].projectId, proj.id);
+  assert.equal(newEntries[0].after, "completed");
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("completeTask without project emits no task.completed entry", () => {
+  const manager = createManager();
+  const task = manager.addTask({ title: "Solo done", status: "next" });
+  const beforeCount = manager.state.projectActivityLog?.length || 0;
+  manager.completeTask(task.id);
+  const newEntries = (manager.state.projectActivityLog || [])
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.completed");
+  assert.equal(newEntries.length, 0);
+});
+
+test("deleteTask emits task.deleted with the task's title captured", () => {
+  const manager = createManager();
+  const proj = manager.addProject("P1");
+  const task = manager.addTask({ title: "Going away", status: "next", projectId: proj.id });
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.deleteTask(task.id);
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.deleted");
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].projectId, proj.id);
+  assert.equal(newEntries[0].taskTitle, "Going away");
+});
+
+test("restoreCompletedTask emits task.restored on the original project", () => {
+  const manager = createManager();
+  const proj = manager.addProject("P1");
+  const task = manager.addTask({ title: "Yo-yo", status: "next", projectId: proj.id });
+  manager.completeTask(task.id);
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.restoreCompletedTask(task.id);
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "task.restored");
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].projectId, proj.id);
+  assert.equal(newEntries[0].after, "next");
+});
+
+// ─────────────────────────────────────────────────────────
+// Project activity log — project-event emission + merge (Phase 04-01)
+// ─────────────────────────────────────────────────────────
+
+test("addProject emits project.created", () => {
+  const manager = createManager();
+  const beforeCount = manager.state.projectActivityLog.length;
+  const project = manager.addProject("Brand new");
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "project.created" && e.projectId === project.id);
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].after, "Active");
+  assert.equal(manager._completionsDirty, true);
+});
+
+test("updateProject Active → OnHold emits project.statusChange with correct before/after", () => {
+  const manager = createManager();
+  const project = manager.addProject("Mover");
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateProject(project.id, { statusTag: "OnHold" });
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "project.statusChange");
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].before, "Active");
+  assert.equal(newEntries[0].after, "OnHold");
+});
+
+test("updateProject without status change emits NO project.statusChange entry", () => {
+  const manager = createManager();
+  const project = manager.addProject("Static");
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.updateProject(project.id, { vision: "renewed mission" });
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "project.statusChange");
+  assert.equal(newEntries.length, 0);
+});
+
+test("completeProject emits project.completed", () => {
+  const manager = createManager();
+  const project = manager.addProject("Wrap up");
+  const beforeCount = manager.state.projectActivityLog.length;
+  manager.completeProject(project.id);
+  const newEntries = manager.state.projectActivityLog
+    .slice(beforeCount)
+    .filter((e) => e.type === "project.completed" && e.projectId === project.id);
+  assert.equal(newEntries.length, 1);
+  assert.equal(newEntries[0].after, "completed");
+});
+
+test("getProjectActivity returns entries scoped to that project, sorted oldest first", () => {
+  const manager = createManager();
+  const projA = manager.addProject("A");
+  const projB = manager.addProject("B");
+  // Scope-isolation cross-talk: add an event to B between two events on A
+  const taskA = manager.addTask({ title: "T-A", status: "next", projectId: projA.id });
+  manager.addTask({ title: "T-B", status: "next", projectId: projB.id });
+  manager.updateTask(taskA.id, { status: "doing" });
+
+  const aLog = manager.getProjectActivity(projA.id);
+  const bLog = manager.getProjectActivity(projB.id);
+
+  // A should have: project.created, task.projectAssign, task.statusChange
+  const aTypes = aLog.map((e) => e.type);
+  assert.deepEqual(aTypes, ["project.created", "task.projectAssign", "task.statusChange"]);
+
+  // B should only have: project.created, task.projectAssign
+  const bTypes = bLog.map((e) => e.type);
+  assert.deepEqual(bTypes, ["project.created", "task.projectAssign"]);
+
+  // Sort: timestamps should be non-decreasing
+  for (let i = 1; i < aLog.length; i++) {
+    assert.ok(aLog[i - 1].ts <= aLog[i].ts, "expected oldest-first sort on project A");
+  }
+});
+
+test("getProjectActivity with unknown projectId returns []", () => {
+  const manager = createManager();
+  manager.addProject("Real one");
+  assert.deepEqual(manager.getProjectActivity("nope"), []);
+});
+
+test("getProjectActivity does not mutate state.projectActivityLog", () => {
+  const manager = createManager();
+  const project = manager.addProject("Untouched");
+  const ref = manager.state.projectActivityLog;
+  manager.getProjectActivity(project.id);
+  assert.equal(manager.state.projectActivityLog, ref, "state array reference should be unchanged");
+});
+
+test("server-merge accumulates projectActivityLog without dropping entries", () => {
+  // Replicates the server-side _merge_collection behavior at the unit level.
+  // Local state has 3 entries; remote state has 2 entries (1 overlapping id, 1 new).
+  // Expected merged: 4 entries; the overlap keeps the entry with the newer ts.
+  const localEntries = [
+    { id: "act-1", projectId: "p1", type: "project.created", ts: "2026-01-01T00:00:00.000Z", actor: "device-A" },
+    { id: "act-2", projectId: "p1", type: "task.statusChange", ts: "2026-01-02T00:00:00.000Z", actor: "device-A" },
+    { id: "act-3", projectId: "p1", type: "task.completed", ts: "2026-01-03T00:00:00.000Z", actor: "device-A" },
+  ];
+  const remoteEntries = [
+    // Overlapping id (same as local act-2) but newer ts — newer should win
+    { id: "act-2", projectId: "p1", type: "task.statusChange", ts: "2026-01-02T05:00:00.000Z", actor: "device-B" },
+    // New entry only on remote
+    { id: "act-4", projectId: "p1", type: "task.deleted", ts: "2026-01-04T00:00:00.000Z", actor: "device-B" },
+  ];
+
+  const localState = {
+    tasks: [],
+    reference: [],
+    completionLog: [],
+    projects: [],
+    completedProjects: [],
+    projectActivityLog: localEntries,
+    settings: { _fieldTimestamps: {} },
+  };
+  const remoteState = {
+    tasks: [],
+    reference: [],
+    completionLog: [],
+    projects: [],
+    completedProjects: [],
+    projectActivityLog: remoteEntries,
+    settings: { _fieldTimestamps: {} },
+  };
+
+  const merged = __testing.mergeStates(localState, remoteState);
+  const log = merged.projectActivityLog || [];
+
+  // Should have 4 unique ids
+  const ids = log.map((e) => e.id).sort();
+  assert.deepEqual(ids, ["act-1", "act-2", "act-3", "act-4"], "all 4 unique ids preserved");
+
+  // The overlapping id (act-2) should keep the newer ts (remote)
+  const act2 = log.find((e) => e.id === "act-2");
+  assert.equal(act2.actor, "device-B", "newer ts (remote) wins for overlapping id");
+  assert.equal(act2.ts, "2026-01-02T05:00:00.000Z");
 });
 
 test.after(() => {

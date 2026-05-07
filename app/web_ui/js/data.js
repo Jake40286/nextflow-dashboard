@@ -172,6 +172,7 @@ const EMPTY_STATE = {
   completionLog: [],
   projects: [],
   completedProjects: [],
+  projectActivityLog: [],
   templates: [],
 };
 
@@ -195,6 +196,7 @@ const defaultState = () => ({
   completionLog: [],
   projects: [],
   completedProjects: [],
+  projectActivityLog: [],
   templates: [],
   checklist: [
     { id: "c-1", label: "Get inbox to zero", done: false },
@@ -399,6 +401,22 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function _logActivity(state, { type, projectId, taskId = null, taskTitle = null, actor = "unknown", before = null, after = null }) {
+  if (!projectId || !type) return;
+  state.projectActivityLog = state.projectActivityLog || [];
+  state.projectActivityLog.push({
+    id: generateId("act"),
+    type,
+    projectId,
+    taskId,
+    taskTitle,
+    actor,
+    ts: nowIso(),
+    before,
+    after,
+  });
+}
+
 function _todayLocalISODate(now = new Date()) {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -588,10 +606,12 @@ export class TaskManager extends EventTarget {
         const mergedActiveTasks = (nextState.tasks || []).filter((t) => t && !t._deleted).length;
         const remoteCompletions = (remoteStateFull.completionLog || []).length +
           (remoteStateFull.reference || []).length +
-          (remoteStateFull.completedProjects || []).length;
+          (remoteStateFull.completedProjects || []).length +
+          (remoteStateFull.projectActivityLog || []).length;
         const mergedCompletions = (nextState.completionLog || []).length +
           (nextState.reference || []).length +
-          (nextState.completedProjects || []).length;
+          (nextState.completedProjects || []).length +
+          (nextState.projectActivityLog || []).length;
         if (mergedActiveTasks > remoteActiveTasks || mergedCompletions > remoteCompletions) {
           this._completionsDirty = mergedCompletions > remoteCompletions;
           this.persistRemotely();
@@ -679,6 +699,7 @@ export class TaskManager extends EventTarget {
         completionLog: mergeById(this.state.completionLog, completed.completionLog),
         reference: mergeById(this.state.reference, completed.reference),
         completedProjects: mergeById(this.state.completedProjects, completed.completedProjects),
+        projectActivityLog: mergeById(this.state.projectActivityLog, completed.projectActivityLog),
       };
       this._completedDataLoaded = true;
     } catch (error) {
@@ -718,6 +739,7 @@ export class TaskManager extends EventTarget {
         delete sendPayload.completionLog;
         delete sendPayload.reference;
         delete sendPayload.completedProjects;
+        delete sendPayload.projectActivityLog;
       }
       let rev = this.lastKnownRev;
       const MAX_RETRIES = 3;
@@ -977,6 +999,18 @@ export class TaskManager extends EventTarget {
     return this.state.tasks.find((task) => task.id === id);
   }
 
+  getProjectActivity(projectId) {
+    const log = Array.isArray(this.state.projectActivityLog) ? this.state.projectActivityLog : [];
+    return log
+      .filter((entry) => entry && entry.projectId === projectId)
+      .slice()
+      .sort((a, b) => {
+        const at = a.ts || "";
+        const bt = b.ts || "";
+        return at < bt ? -1 : at > bt ? 1 : 0;
+      });
+  }
+
   getCompletedTaskById(id, { includeDeleted = false } = {}) {
     const resolved = this.resolveCompletedTaskEntry(id);
     if (!resolved) return null;
@@ -1164,6 +1198,16 @@ export class TaskManager extends EventTarget {
           project.tasks.unshift(task.id);
         }
       }
+      _logActivity(this.state, {
+        type: "task.projectAssign",
+        projectId: task.projectId,
+        taskId: task.id,
+        taskTitle: task.title,
+        actor: this.deviceInfo?.label || "unknown",
+        before: null,
+        after: task.projectId,
+      });
+      this._completionsDirty = true;
     }
     this.emitChange();
     const destLabel = {
@@ -1215,6 +1259,9 @@ export class TaskManager extends EventTarget {
     }
     const originalFields = {};
     OP_LOG_FIELDS.forEach((f) => { originalFields[f] = task[f]; });
+    const originalProjectId = task.projectId || null;
+    const originalStatus = task.status;
+    const originalTitle = task.title;
     Object.assign(task, draft);
     const now = nowIso();
     task.updatedAt = now;
@@ -1230,6 +1277,18 @@ export class TaskManager extends EventTarget {
         _logDoingSessionStart(task, now);
       } else if (nextUpdates.status !== STATUS.DOING && wasAlreadyDoing) {
         _closeDoingSession(task, now);
+      }
+      if (task.projectId && originalStatus !== task.status) {
+        _logActivity(this.state, {
+          type: "task.statusChange",
+          projectId: task.projectId,
+          taskId: task.id,
+          taskTitle: task.title || originalTitle,
+          actor: this.deviceInfo?.label || "unknown",
+          before: originalStatus,
+          after: task.status,
+        });
+        this._completionsDirty = true;
       }
     }
     if ("dueDate" in nextUpdates) ft.dueDate = now;
@@ -1255,6 +1314,34 @@ export class TaskManager extends EventTarget {
       }
     });
     if (ops.length) appendOpLogEntries(this.storage, ops);
+    const newProjectId = task.projectId || null;
+    if (originalProjectId !== newProjectId) {
+      const actor = this.deviceInfo?.label || "unknown";
+      const titleForLog = task.title || originalTitle;
+      if (originalProjectId) {
+        _logActivity(this.state, {
+          type: "task.projectAssign",
+          projectId: originalProjectId,
+          taskId: task.id,
+          taskTitle: titleForLog,
+          actor,
+          before: originalProjectId,
+          after: newProjectId,
+        });
+      }
+      if (newProjectId) {
+        _logActivity(this.state, {
+          type: "task.projectAssign",
+          projectId: newProjectId,
+          taskId: task.id,
+          taskTitle: titleForLog,
+          actor,
+          before: originalProjectId,
+          after: newProjectId,
+        });
+      }
+      this._completionsDirty = true;
+    }
     this.emitChange();
     return task;
   }
@@ -1719,6 +1806,17 @@ export class TaskManager extends EventTarget {
       this.state.completionLog.unshift(snapshot);
     }
     this._completionsDirty = true;
+    if (task.projectId) {
+      _logActivity(this.state, {
+        type: "task.completed",
+        projectId: task.projectId,
+        taskId: task.id,
+        taskTitle: task.title,
+        actor: this.deviceInfo?.label || "unknown",
+        before: task.status,
+        after: "completed",
+      });
+    }
     this.state.projects.forEach((project) => {
       project.tasks = project.tasks.filter((taskId) => taskId !== id);
     });
@@ -1879,6 +1977,16 @@ export class TaskManager extends EventTarget {
       if (project && !project.tasks.includes(restored.id)) {
         project.tasks.push(restored.id);
       }
+      _logActivity(this.state, {
+        type: "task.restored",
+        projectId: restored.projectId,
+        taskId: restored.id,
+        taskTitle: restored.title,
+        actor: this.deviceInfo?.label || "unknown",
+        before: null,
+        after: restored.status,
+      });
+      this._completionsDirty = true;
     }
     this.emitChange();
     const destLabel = STATUS_LABELS[restored.status] || "Pending Tasks";
@@ -1988,6 +2096,17 @@ export class TaskManager extends EventTarget {
     this.state.completionLog = this.state.completionLog || [];
     this.state.completionLog.unshift(snapshot);
     this._completionsDirty = true;
+    if (task.projectId) {
+      _logActivity(this.state, {
+        type: "task.deleted",
+        projectId: task.projectId,
+        taskId: task.id,
+        taskTitle: task.title,
+        actor: this.deviceInfo?.label || "unknown",
+        before: task.status,
+        after: null,
+      });
+    }
     this.emitChange();
     this.notify("info", `"${task.title}" deleted.`, {
       action: { label: "Undo", onClick: () => this.restoreCompletedTask(task.id) },
@@ -2164,6 +2283,16 @@ export class TaskManager extends EventTarget {
     }
     project.updatedAt = nowIso();
     this.state.projects.push(project);
+    _logActivity(this.state, {
+      type: "project.created",
+      projectId: project.id,
+      taskId: null,
+      taskTitle: null,
+      actor: this.deviceInfo?.label || "unknown",
+      before: null,
+      after: project.statusTag || "Active",
+    });
+    this._completionsDirty = true;
     this.emitChange();
     this.notify("info", `Created project "${project.name}".`);
     return project;
@@ -2175,6 +2304,7 @@ export class TaskManager extends EventTarget {
       this.notify("error", "Project not found.");
       return null;
     }
+    const originalStatusTag = project.statusTag || null;
     if (updates.name !== undefined) {
       const trimmed = updates.name.trim();
       if (!trimmed) {
@@ -2195,6 +2325,18 @@ export class TaskManager extends EventTarget {
     }
     Object.assign(project, draft);
     project.updatedAt = nowIso();
+    if ((project.statusTag || null) !== originalStatusTag) {
+      _logActivity(this.state, {
+        type: "project.statusChange",
+        projectId: project.id,
+        taskId: null,
+        taskTitle: null,
+        actor: this.deviceInfo?.label || "unknown",
+        before: originalStatusTag,
+        after: project.statusTag || null,
+      });
+      this._completionsDirty = true;
+    }
     this.emitChange();
     return project;
   }
@@ -2341,6 +2483,15 @@ export class TaskManager extends EventTarget {
     this.state.completedProjects = this.state.completedProjects || [];
     this.state.completedProjects.unshift(entry);
     this._completionsDirty = true;
+    _logActivity(this.state, {
+      type: "project.completed",
+      projectId: project.id,
+      taskId: null,
+      taskTitle: null,
+      actor: this.deviceInfo?.label || "unknown",
+      before: project.statusTag || null,
+      after: "completed",
+    });
     this.emitChange();
     this.notify("info", `Marked project "${project.name}" as complete.`);
     return entry;
@@ -4658,10 +4809,31 @@ function mergeStates(remoteState = {}, localState = {}) {
   ]) {
     if (!merged._tombstones[id] || ts > merged._tombstones[id]) merged._tombstones[id] = ts;
   }
+  const mergeActivityEntries = (localArr = [], remoteArr = []) => {
+    const map = new Map();
+    [...remoteArr, ...localArr].forEach((item) => {
+      if (!item?.id) return;
+      const existing = map.get(item.id);
+      if (!existing) {
+        map.set(item.id, item);
+        return;
+      }
+      const existingTime = existing.ts || "";
+      const nextTime = item.ts || "";
+      if (nextTime >= existingTime) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values());
+  };
   merged.projects = mergeCollections(localState.projects, remoteState.projects);
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
   merged.completedProjects = mergeCollections(localState.completedProjects, remoteState.completedProjects);
+  merged.projectActivityLog = mergeActivityEntries(
+    localState.projectActivityLog,
+    remoteState.projectActivityLog,
+  );
   merged.templates = mergeCollections(localState.templates, remoteState.templates);
   merged.analytics = mergeAnalytics(localState.analytics || {}, remoteState.analytics || {});
   merged.settings = mergeSettings(localState.settings || {}, remoteState.settings || {});

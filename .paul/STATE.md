@@ -5,19 +5,19 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 2.5: Top-Bar Status Sections (top-priority insertion)
+**Current focus:** v1.0 Feedback Clearance & Polish — Phase 3: Projects Panel — UX
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 2.5 of 7 (Top-Bar Status Sections) — Complete
-Plan: 02.5-01 closed (PLAN/APPLY/UNIFY all ✓)
-Status: Loop complete, transition pending
-Last activity: 2026-05-07 — UNIFY complete for 02.5-01. SUMMARY.md written. Tests 160/160. Awaiting phase transition (commit + ROADMAP update + next-phase routing).
+Phase: 3 of 7 (Projects Panel — UX) — Not started
+Plan: not started
+Status: Ready to plan
+Last activity: 2026-05-07 — Phase 2.5 complete and committed (`addd7a7`). Transitioned to Phase 3.
 
 Progress:
 - Milestone: [████░░░░░░] 43% (3 of 7 phases complete — 1, 2, 2.5)
-- Phase 2.5: [██████████] 100% — Loop closed, transition pending
+- Phase 3: [░░░░░░░░░░] 0% — Not started
 
 ## Loop Position
 
@@ -27,10 +27,9 @@ Phase 2 (closed):
   02-01 + 02-01-FIX:  PLAN ──▶ APPLY ──▶ UNIFY ──▶ VERIFY    [✓ closed, merged via PRs #26, #27]
 
 Phase 2.5 (closed):
-  02.5-01:            PLAN ──▶ APPLY ──▶ UNIFY
-                        ✓        ✓        ✓     [✓ closed, transition pending]
+  02.5-01:            PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed, committed addd7a7]
 
-Phase 3 (queued — next):
+Phase 3 (next — ready to plan):
   03-01, 03-02:       ○ ──── ○ ──── ○
 ```
 
@@ -58,11 +57,18 @@ Phase 3 (queued — next):
 
 None.
 
+### Git State
+
+- Last commit: `addd7a7` — feat(top-bar): add My Day and Neglected status sections (Phase 2.5)
+- Branch: `feature/top-bar-status-sections` (NOT yet merged to main — left for user)
+- Uncommitted in working tree: `CLAUDE.md` (unrelated git-workflow doc update from earlier session)
+- Feature branches merged this phase: none
+
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: 02.5-01 UNIFY complete; awaiting Phase 2.5 → Phase 3 transition (git commit, ROADMAP update, next-phase routing).
-Next action: Run phase transition (commit Phase 2.5, mark ROADMAP complete, then `/paul:plan` for Phase 3).
+Stopped at: Phase 2.5 closed and committed; Phase 3 ready to plan.
+Next action: `/paul:plan` for Phase 3 (Projects Panel — UX). Optional: merge `feature/top-bar-status-sections` → `main` and push.
 Resume context:
 - Branch: `feature/top-bar-status-sections` (already created, all changes uncommitted)
 - npm test: 160/160 passing (152 prior + 8 new selector tests)

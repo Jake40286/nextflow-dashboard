@@ -70,10 +70,11 @@ None.
 
 ### Git State
 
-- Last commit: `aaaa4c0` — feat(activity-log): data layer + emission for project activity log (Plan 04-01)
-- Branch: `feature/projects-activity-log` (1 commit ahead of main; will hold 04-02 too before merging)
-- Working tree: clean (modulo this STATE update which will roll forward)
-- Phase 2.5 merged to main (`52abf0b`); Phase 3 merged to main (`3c80027`); Phase 4 pending merge after 04-02 ships.
+- Last commit: `d5a0070` — feat(activity-log): show project activity in the project flyout (Plan 04-02, Phase 4 closer)
+- Branch: `feature/projects-activity-log` (TWO commits ahead of main: `aaaa4c0` 04-01 + `d5a0070` 04-02)
+- Working tree: clean (modulo this STATE update)
+- Pending merge to main as Phase 4 transition.
+- Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`).
 
 ## Session Continuity
 

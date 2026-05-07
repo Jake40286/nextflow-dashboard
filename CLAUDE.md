@@ -158,9 +158,21 @@ Triggered asynchronously after each `PUT /state`. Requires `GOOGLE_CREDENTIALS_F
 
 ---
 
+## Feedback records
+
+Feedback lives in `data/feedback.json` (served by `GET /feedback`). Each record:
+
+| Field | Notes |
+|---|---|
+| `id`, `type` (`bug` \| `improvement`), `description`, `panel`, `sortOrder`, `createdAt` | Identification + display |
+| `resolved` (boolean) | **Source of truth for whether an item is open.** Items missing this field or with `resolved: false` are open; `resolved: true` means shipped or verified-as-already-implemented. |
+| `implementationNotes` (string, optional) | Set when an item is closed. Prefix `"Already implemented — …"` marks items the codebase already satisfied — verification work, not build work. |
+
+**Scoping rule:** When pulling feedback into a phase scope, plan, or roadmap, filter `resolved !== true` against the live endpoint or `data/feedback.json`. Do **not** scope from `.claude/feedback-grouped.md` alone — it's a snapshot and may include resolved items. Phantom-scoping a resolved item produces plans with nothing to build, which only get caught at the closing review step.
+
 ## Reference docs
 
-- `@.claude/feedback-grouped.md` — snapshot of the bug/feature backlog (source of truth is `GET /feedback`). Check before starting bug-fix or feature work to avoid duplicating analysis.
+- `@.claude/feedback-grouped.md` — snapshot of the bug/feature backlog. **Snapshot only — re-query `GET /feedback` or read `data/feedback.json` before scoping** (see Feedback records above).
 - `@.claude/project-context.md` — concise architectural reference. Useful as context for `/ask` architectural questions.
 
 Slash commands live in `.claude/commands/` (`/nextflow-add-panel`, `/nextflow-feedback-triage`, `/nextflow-sync-debug`).

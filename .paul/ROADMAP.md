@@ -8,7 +8,7 @@ nextflow is a mature self-hosted productivity app. This milestone focuses on qua
 
 **v1.0 Feedback Clearance & Polish** (v1.0.0)
 Status: In progress
-Phases: 3 of 7 complete
+Phases: 4 of 7 complete
 
 ## Phases
 
@@ -17,7 +17,7 @@ Phases: 3 of 7 complete
 | 1 | Bug Fixes | 1 | Complete | 2026-05-06 |
 | 2 | Inbox & Clarify | 2 | Complete | 2026-05-06 |
 | 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
-| 3 | Projects Panel — UX | 2 | Planning | - |
+| 3 | Projects Panel — UX | 2 | Complete | 2026-05-07 |
 | 4 | Projects Panel — Features | 1 | Not started | - |
 | 5 | Active Task Views | 3 | Not started | - |
 | 6 | Settings & Misc | 2 | Not started | - |
@@ -75,8 +75,8 @@ Phases: 3 of 7 complete
 - `3ff676c5` — Suppress "no next action" warning on a project when a delegated task exists (delegated work is implicitly "next")
 
 **Plans:**
-- [ ] 03-01: Projects panel renames and add-project affordance
-- [ ] 03-02: Refine "no next action" warning logic
+- [x] 03-01: Projects panel renames and add-project affordance — completed 2026-05-07
+- [x] 03-02: Refine "no next action" warning logic — completed 2026-05-07
 
 **Notes:**
 - Re-scoped 2026-05-07 after live `GET /feedback` audit. The 2026-05-06 audit incorrectly marked Phase 3 as having zero open scope; two `panel: projects` items were either missed or filed after the audit.
@@ -149,3 +149,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Re-scoped Phase 3 with `1448576c` and `3ff676c5` after live feedback audit found the 2026-05-06 sweep had over-stripped Phase 3.*
 *Last updated: 2026-05-07 — Inserted Phase 2.5 (Top-Bar Status Sections: My Day + Neglected) ahead of Phase 3 by user request. Phase 3 now depends on 2.5.*
 *Last updated: 2026-05-07 — Phase 2.5 complete (plan 02.5-01 shipped). 3 of 7 phases done. Phase 3 (Projects Panel — UX) is next.*
+*Last updated: 2026-05-07 — Phase 3 complete (plans 03-01, 03-02 shipped). 4 of 7 phases done. Phase 4 (Projects Panel — Features: project activity log) is next.*

@@ -16,7 +16,13 @@ export default {
     const taskCountByProject = new Map();
     allTasks.forEach((task) => {
       if (!task.projectId) return;
-      if (task.status === STATUS.NEXT) hasNextAction.set(task.projectId, true);
+      if (
+        task.status === STATUS.NEXT ||
+        task.status === STATUS.DOING ||
+        task.status === STATUS.WAITING
+      ) {
+        hasNextAction.set(task.projectId, true);
+      }
       taskCountByProject.set(task.projectId, (taskCountByProject.get(task.projectId) || 0) + 1);
     });
     const projects = (this.projectCache || []).filter((project) => {

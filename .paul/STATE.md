@@ -5,19 +5,19 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 3: Projects Panel — UX
+**Current focus:** v1.0 Feedback Clearance & Polish — Phase 4: Projects Panel — Features (project activity log)
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 3 of 7 (Projects Panel — UX) — In progress
-Plan: 03-01 closed (PLAN/APPLY/UNIFY all ✓); 03-02 ready to plan
-Status: 03-01 loop closed
-Last activity: 2026-05-07 — UNIFY complete for 03-01. SUMMARY.md written. 160/160 tests passing. On feature/projects-panel-ux.
+Phase: 4 of 7 (Projects Panel — Features) — Not started
+Plan: not started
+Status: Ready to plan (Phase 3 just closed)
+Last activity: 2026-05-07 — Phase 3 closed: 03-01 + 03-02 both shipped on feature/projects-panel-ux. Transition complete.
 
 Progress:
-- Milestone: [████░░░░░░] 43% (3 of 7 phases complete — 1, 2, 2.5)
-- Phase 3: [█████░░░░░] 50% — 03-01 closed, 03-02 ready to plan
+- Milestone: [██████░░░░] 57% (4 of 7 phases complete — 1, 2, 2.5, 3)
+- Phase 4: [░░░░░░░░░░] 0% — Not started
 
 ## Loop Position
 
@@ -29,9 +29,12 @@ Phase 2 (closed):
 Phase 2.5 (closed):
   02.5-01:            PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed, committed addd7a7]
 
-Phase 3 (active):
-  03-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed, awaiting commit + 03-02]
-  03-02:              ○ ──── ○ ──── ○             [Ready to plan]
+Phase 3 (closed):
+  03-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+  03-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+
+Phase 4 (next — ready to plan):
+  04-02:              ○ ──── ○ ──── ○             [Project activity log; research likely]
 ```
 
 ## Accumulated Context
@@ -63,22 +66,21 @@ None.
 
 ### Git State
 
-- Last commit: `addd7a7` — feat(top-bar): add My Day and Neglected status sections (Phase 2.5)
-- Branch: `feature/top-bar-status-sections` (NOT yet merged to main — left for user)
-- Uncommitted in working tree: `CLAUDE.md` (unrelated git-workflow doc update from earlier session)
-- Feature branches merged this phase: none
+- Last commit: `8416a00` — feat(projects-panel): rename "Active Projects" → "Projects" and add new-project heading (Plan 03-01)
+- Branch: `feature/projects-panel-ux` (one commit ahead of main; will hold 03-02 work too before merging)
+- Working tree: clean
+- Phase 2.5 already merged to main (`52abf0b`).
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: 03-01 UNIFY complete on `feature/projects-panel-ux`; ready to plan 03-02.
-Next action: `/paul:plan` for plan 03-02 (suppress "no next action" warning when delegated task exists, feedback `3ff676c5`).
+Stopped at: Phase 3 closed; ready to plan Phase 4.
+Next action: `/paul:plan` for Phase 4 (Projects Panel — Features: project activity log via feedback `7868b077`). Optional: merge `feature/projects-panel-ux` → `main`.
 Resume context:
-- Branch: `feature/projects-panel-ux` (active, awaiting either 03-02 work or merge to main after 03-02 ships)
+- Branch: `feature/projects-panel-ux` (holds 03-01 + 03-02; pending merge decision)
 - npm test baseline: 160/160 passing
-- Summary: `.paul/phases/03-projects-panel-ux/03-01-SUMMARY.md`
-- Files touched in 03-01: `app/web_ui/index.html`, `app/web_ui/js/ui.js`, `app/web_ui/css/style.css`
-- 03-02 scope hint: feedback `3ff676c5` — suppress the "missing next action" warning on a project when at least one delegated task exists. Likely touches the project-card render path in `ui.js` near the `toggleMissingNextAction` filter logic.
+- Phase 4 scope: `7868b077` — project activity / change log (Research: likely — data model decisions needed)
+- Phase 4 dependency: Phase 3 (just closed); no blockers
 
 ---
 *STATE.md — Updated after every significant action*

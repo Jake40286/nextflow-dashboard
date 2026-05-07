@@ -1976,6 +1976,7 @@ export class UIController {
     const content = this.elements.projectFlyoutContent;
     if (!content) return;
 
+    this._currentProjectFlyoutId = project.id;
     if (titleEl) titleEl.textContent = project.name;
 
     if (titleEl && this._flyoutNavList?.length > 1) {
@@ -2323,6 +2324,76 @@ export class UIController {
       this.taskManager.deleteProject(project.id, { deleteTasks: choice === "cascade" });
     });
     footer.append(deleteBtn);
+
+    // Activity log section (Phase 04-02)
+    const activitySection = document.createElement("section");
+    activitySection.className = "project-activity";
+    const activityLabel = document.createElement("span");
+    activityLabel.className = "muted small-text project-activity-label";
+    activityLabel.textContent = "Activity";
+    activitySection.append(activityLabel);
+
+    const completedLoaded = !!this.taskManager._completedDataLoaded;
+    if (!completedLoaded) {
+      const loading = document.createElement("div");
+      loading.className = "project-activity-loading muted small-text";
+      loading.textContent = "Loading activity…";
+      activitySection.append(loading);
+    } else {
+      const entries = this.taskManager.getProjectActivity(project.id).slice().reverse();
+      if (entries.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "project-activity-empty muted small-text";
+        empty.textContent = "No recorded activity for this project yet.";
+        activitySection.append(empty);
+      } else {
+        for (const entry of entries) {
+          const row = document.createElement("div");
+          row.className = "project-activity-row";
+
+          const marker = document.createElement("span");
+          marker.className = "project-activity-marker";
+          marker.setAttribute("aria-hidden", "true");
+          marker.textContent = activityMarkerFor(entry.type);
+          row.append(marker);
+
+          const text = document.createElement("span");
+          text.className = "project-activity-text";
+          text.textContent = formatActivityEntry(entry);
+          row.append(text);
+
+          const time = document.createElement("span");
+          time.className = "project-activity-time muted small-text";
+          time.textContent = formatActivityRelativeTime(entry.ts);
+          if (entry.ts) time.title = entry.ts;
+          row.append(time);
+
+          if (entry.actor && entry.actor !== "unknown") {
+            const actor = document.createElement("span");
+            actor.className = "project-activity-actor muted small-text";
+            actor.textContent = entry.actor;
+            row.append(actor);
+          }
+
+          activitySection.append(row);
+        }
+      }
+    }
+    content.append(activitySection);
+
+    // Lazy-load completed.json the first time a flyout opens this session,
+    // then re-render so real entries replace the "Loading…" placeholder.
+    if (!completedLoaded) {
+      this.taskManager.ensureCompletedLoaded?.().then(() => {
+        if (
+          this.elements.projectFlyout?.classList.contains("is-open") &&
+          this._currentProjectFlyoutId === project.id
+        ) {
+          const latest = (this.projectCache || []).find((p) => p.id === project.id) || project;
+          this.renderProjectFlyout(latest);
+        }
+      }).catch(() => { /* surfaces elsewhere; no UI escalation here */ });
+    }
 
     content.append(footer);
     content.scrollTop = _prevScrollTop;
@@ -9534,6 +9605,76 @@ Object.assign(UIController.prototype,
   BacklogPanel,
   TrashPanel,
 );
+
+function formatActivityEntry(entry) {
+  if (!entry || typeof entry !== "object") return "Recorded activity";
+  const title = entry.taskTitle ? `"${entry.taskTitle}"` : "task";
+  switch (entry.type) {
+    case "task.statusChange":
+      return `Moved ${title} from ${entry.before || "?"} to ${entry.after || "?"}`;
+    case "task.projectAssign":
+      if (entry.before === null || entry.before === undefined) return `Added ${title}`;
+      if (entry.after === null || entry.after === undefined) return `Removed ${title}`;
+      return `Moved ${title} between projects`;
+    case "task.completed":
+      return `Completed ${title}`;
+    case "task.deleted":
+      return `Deleted ${title}`;
+    case "task.restored":
+      return `Restored ${title}`;
+    case "project.created":
+      return "Project created";
+    case "project.statusChange":
+      return `Status changed from ${entry.before || "?"} to ${entry.after || "?"}`;
+    case "project.completed":
+      return "Project marked complete";
+    default:
+      return "Recorded activity";
+  }
+}
+
+function activityMarkerFor(type) {
+  switch (type) {
+    case "task.completed":
+    case "project.completed":
+      return "✓";
+    case "task.projectAssign":
+      return "+";
+    case "task.deleted":
+      return "−";
+    case "task.restored":
+      return "↺";
+    case "task.statusChange":
+    case "project.statusChange":
+      return "↻";
+    case "project.created":
+      return "★";
+    default:
+      return "•";
+  }
+}
+
+function formatActivityRelativeTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const diffMs = Date.now() - then;
+  if (diffMs < 0) return "just now";
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  const yr = Math.floor(day / 365);
+  return `${yr}y ago`;
+}
 
 function clearCustomThemeVariables(root) {
   if (!root?.style) return;

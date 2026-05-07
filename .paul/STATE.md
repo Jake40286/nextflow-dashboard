@@ -5,19 +5,19 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 4: Projects Panel — Features (project activity log)
+**Current focus:** v1.0 Feedback Clearance & Polish — Phase 5: Active Task Views (filtering, bulk edit, UX consistency across panels)
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 4 of 7 (Projects Panel — Features) — In progress (04-01 closed; 04-02 next)
-Plan: 04-01 closed (PLAN/APPLY/UNIFY all ✓); 04-02 ready to plan
-Status: 04-01 loop closed
-Last activity: 2026-05-07 — UNIFY complete for 04-01. SUMMARY written, work committed on feature/projects-activity-log. 179/179 tests passing.
+Phase: 5 of 7 (Active Task Views) — Not started
+Plan: not started
+Status: Ready to plan (Phase 4 just closed)
+Last activity: 2026-05-07 — Phase 4 closed: 04-01 + 04-02 both shipped on feature/projects-activity-log; transition complete.
 
 Progress:
-- Milestone: [██████░░░░] 57% (4 of 7 phases complete — 1, 2, 2.5, 3)
-- Phase 4: [███████░░░] 70% — 04-01 closed; 04-02 (UI tab) ready to plan
+- Milestone: [███████░░░] 71% (5 of 7 phases complete — 1, 2, 2.5, 3, 4)
+- Phase 5: [░░░░░░░░░░] 0% — Not started (3 plans queued)
 
 ## Loop Position
 
@@ -33,9 +33,12 @@ Phase 3 (closed):
   03-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   03-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 
-Phase 4 (active):
+Phase 4 (closed):
   04-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
-  04-02:              ○ ──── ○ ──── ○             [UI tab; ready to plan]
+  04-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+
+Phase 5 (next — ready to plan):
+  05-01, 05-02, 05-03: ○ ──── ○ ──── ○ ──── ○ ──── ○
 ```
 
 ## Accumulated Context
@@ -67,25 +70,23 @@ None.
 
 ### Git State
 
-- Last commit on main: `3c80027` — chore(paul): record Phase 3 transition state after commit f9c34fc
-- Branch: `main` (Phase 3 already merged + pushed via fast-forward)
-- Working tree: dirty (Phase 4 PLAN + STATE/ROADMAP updates)
-- Phase 2.5 already merged to main (`52abf0b`); Phase 3 already merged to main (`3c80027`).
-- For Phase 4 APPLY: create `feature/projects-activity-log` off main.
+- Last commit: `aaaa4c0` — feat(activity-log): data layer + emission for project activity log (Plan 04-01)
+- Branch: `feature/projects-activity-log` (1 commit ahead of main; will hold 04-02 too before merging)
+- Working tree: clean (modulo this STATE update which will roll forward)
+- Phase 2.5 merged to main (`52abf0b`); Phase 3 merged to main (`3c80027`); Phase 4 pending merge after 04-02 ships.
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: 04-01 closed on feature/projects-activity-log; ready to plan 04-02 (UI tab).
-Next action: `/paul:plan` for 04-02 — surface the activity log in a project-flyout tab.
+Stopped at: Phase 4 closed; ready to plan Phase 5.
+Next action: `/paul:plan` for Phase 5 (Active Task Views: 7 feedback items across 3 plans). Optional: merge `feature/projects-activity-log` → `main` first.
 Resume context:
-- Branch: `feature/projects-activity-log` (1 commit ahead of main; will hold 04-02 too before merging)
+- Branch: `feature/projects-activity-log` (will be merged to main as part of Phase 4 transition)
 - npm test baseline: 179/179 passing
-- Summary: `.paul/phases/04-projects-features/04-01-SUMMARY.md`
-- Discovery: `.paul/phases/04-projects-features/DISCOVERY.md`
-- 04-02 hooks already available: `taskManager.getProjectActivity(projectId)` returns scoped, sorted entries; entries shaped `{id, type, projectId, taskId, taskTitle, actor, ts, before, after}`
-- 04-02 must lazy-load via `ensureCompletedLoaded()` (the activity log lives in `completed.json`, not `state.json`)
-- After 04-02 UNIFY: phase transition triggers (commit + ROADMAP mark complete + merge feature/projects-activity-log to main)
+- Phase 5 scope (3 plans):
+  - 05-01: Association filters and flyout improvements (`059f0a1e` Area of Focus filter; `f3d948ce` flyout notes/lists always expanded)
+  - 05-02: Backlog panel improvements (`bb343993`, `8dac310e`, `1f7139ee`, `2dc7c45a`)
+  - 05-03: Bulk edit UX (`fb700fcc`)
 
 ---
 *STATE.md — Updated after every significant action*

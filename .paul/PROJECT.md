@@ -15,7 +15,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Type | Application |
 | Version | 0.1.0 |
 | Status | Beta / Active refinement |
-| Last Updated | 2026-05-07 (after Phase 3) |
+| Last Updated | 2026-05-07 (after Phase 4) |
 
 **Production URLs:**
 - http://localhost:8002 — Local dev / Docker
@@ -43,6 +43,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 - [x] Gzip state compression, atomic writes, tombstone-based deletion
 - [x] Top-bar status sections — My Day + Neglected (Phase 2.5)
 - [x] Projects panel UX — accurate panel label + clear add-project affordance + correct "no next action" warning logic (Phase 3)
+- [x] Project activity / change log — silently records task and project lifecycle events; visible in a bottom-of-flyout section per project (Phase 4)
 
 ### Active (In Progress)
 
@@ -77,6 +78,8 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Python ThreadingHTTPServer | No framework overhead; full control over request handling | Pre-2026 | Active |
 | Top-bar pattern: hardcoded hex blended via `color-mix(... var(--surface))` | Mirrors existing urgent-bar; defer migration to theme variables until urgent-bar also migrates | 2026-05-07 | Active (Phase 2.5) |
 | "Has next action" predicate matches NEXT, DOING, or WAITING (not just NEXT) | GTD semantics: delegated tasks are implicitly the next event; in-progress tasks ARE the action. Avoids noise on the at-risk warning. Future STATUS additions must reconsider this predicate | 2026-05-07 | Active (Phase 3) |
+| Project activity log mirrors the `completionLog` split-persistence pattern (lives in `completed.json`, server-merged accumulator, `_completionsDirty`-conditional sync) | Reuses three battle-tested mechanics; no new persistence machinery; cross-device merge is provably accumulative | 2026-05-07 | Active (Phase 4) |
+| Activity log scope: status-change + project-assign + lifecycle events; NOT note edits, dueDate, contexts, etc. | User feedback explicitly said "status of tasks etc. should be logged" / "I wouldn't want some information to become permanent, like notes" | 2026-05-07 | Active (Phase 4) |
 
 ## Success Metrics
 
@@ -106,4 +109,4 @@ Users can track tasks, projects, and calendar events across any browser on their
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-05-07 after Phase 3*
+*Last updated: 2026-05-07 after Phase 4*

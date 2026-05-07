@@ -8,7 +8,7 @@ nextflow is a mature self-hosted productivity app. This milestone focuses on qua
 
 **v1.0 Feedback Clearance & Polish** (v1.0.0)
 Status: In progress
-Phases: 4 of 7 complete
+Phases: 5 of 7 complete
 
 ## Phases
 
@@ -18,7 +18,7 @@ Phases: 4 of 7 complete
 | 2 | Inbox & Clarify | 2 | Complete | 2026-05-06 |
 | 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
 | 3 | Projects Panel — UX | 2 | Complete | 2026-05-07 |
-| 4 | Projects Panel — Features | 2 | Planning | - |
+| 4 | Projects Panel — Features | 2 | Complete | 2026-05-07 |
 | 5 | Active Task Views | 3 | Not started | - |
 | 6 | Settings & Misc | 2 | Not started | - |
 
@@ -93,8 +93,8 @@ Phases: 4 of 7 complete
 - `7868b077` — Project activity/change log
 
 **Plans:**
-- [ ] 04-01: Project activity log — data layer + emission + tests (no UI)
-- [ ] 04-02: Project activity log — UI surface (project-flyout tab)
+- [x] 04-01: Project activity log — data layer + emission + tests — completed 2026-05-07
+- [x] 04-02: Project activity log — UI surface (project-flyout section) — completed 2026-05-07
 
 **Notes:**
 - 2026-05-07: Renumbered plans after `/paul:discover` recommended splitting the work. Original ROADMAP listed only `04-02`; the discovery (HIGH confidence) called out the data/UI split as the de-risked staging path. See `.paul/phases/04-projects-features/DISCOVERY.md`.
@@ -155,3 +155,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Phase 2.5 complete (plan 02.5-01 shipped). 3 of 7 phases done. Phase 3 (Projects Panel — UX) is next.*
 *Last updated: 2026-05-07 — Phase 3 complete (plans 03-01, 03-02 shipped). 4 of 7 phases done. Phase 4 (Projects Panel — Features: project activity log) is next.*
 *Last updated: 2026-05-07 — Phase 4 split into 04-01 (data + emission + tests) and 04-02 (UI tab) per `/paul:discover` recommendation.*
+*Last updated: 2026-05-07 — Phase 4 complete (both plans shipped). 5 of 7 phases done. Phase 5 (Active Task Views) is next.*

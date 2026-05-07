@@ -5294,6 +5294,9 @@ export class UIController {
       this.elements.clarifyDescSummary.hidden = true;
       this.elements.clarifyDescSummary.textContent = "";
     }
+    if (this.elements.clarifyDescSummaryLabel) {
+      this.elements.clarifyDescSummaryLabel.hidden = true;
+    }
     const actionableFields = document.getElementById("clarifyActionableFields");
     if (actionableFields) actionableFields.hidden = true;
 
@@ -5824,6 +5827,9 @@ export class UIController {
     if (this.elements.clarifyDescSummary) {
       this.elements.clarifyDescSummary.hidden = false;
       this.elements.clarifyDescSummary.textContent = task?.description || "";
+    }
+    if (this.elements.clarifyDescSummaryLabel) {
+      this.elements.clarifyDescSummaryLabel.hidden = false;
     }
     if (this.elements.clarifyProjectPicker) {
       this.elements.clarifyProjectPicker.hidden = true;
@@ -9875,6 +9881,7 @@ function mapElements() {
     clarifyAreaNewBtn: byId("clarifyAreaNewBtn"),
     clarifyTitleSummary: byId("clarifyTitleSummary"),
     clarifyDescSummary: byId("clarifyDescSummary"),
+    clarifyDescSummaryLabel: byId("clarifyDescSummaryLabel"),
     clarifyContextList: byId("clarifyContextList"),
     clarifyAddContext: byId("clarifyAddContext"),
     clarifyPeopleList: byId("clarifyPeopleList"),

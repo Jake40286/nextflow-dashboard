@@ -10,10 +10,10 @@ See: .paul/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 2 of 6 (Inbox & Clarify) — Plan 02-01 loop closed; UAT + transition pending
-Plan: 02-01 complete (SUMMARY written)
-Status: Loop closed — Phase 2 scope fully covered after ROADMAP audit (12 ghost-scoped items stripped); awaiting /paul:verify UAT then phase transition
-Last activity: 2026-05-06 — ROADMAP audit + 12 resolved items removed from scope; CLAUDE.md updated with feedback-record schema/scoping rule
+Phase: 2 of 6 (Inbox & Clarify) — All scope shipped + UAT remediation complete; phase transition pending
+Plan: 02-01-FIX complete (SUMMARY written); 02-01 fully closed including UAT
+Status: Phase 2 ready to transition — both PLAN files have SUMMARYs, UAT-001 resolved, 152/152 tests pass; awaiting commit + /paul:transition (or proceed to Phase 3)
+Last activity: 2026-05-06 — 02-01-FIX UNIFY: SUMMARY written, UAT-001 moved to Resolved, STATE updated
 
 Progress:
 - Milestone: [██░░░░░░░░] 17%
@@ -23,8 +23,9 @@ Progress:
 
 Current loop state:
 ```
-PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Loop complete — phase transition deferred pending scope decision]
+02-01:      PLAN ──▶ APPLY ──▶ UNIFY ──▶ VERIFY    [✓ closed]
+02-01-FIX:  PLAN ──▶ APPLY ──▶ UNIFY               [✓ closed; UAT-001 resolved]
+              ✓        ✓        ✓     [Phase 2 loop fully closed — transition next]
 ```
 
 ## Accumulated Context
@@ -48,13 +49,14 @@ None.
 ## Session Continuity
 
 Last session: 2026-05-06
-Stopped at: 02-01 loop closed; ROADMAP audited; UAT + commit + Phase 2 transition pending
-Next action: Run /paul:verify .paul/phases/02-inbox-clarify/02-01-PLAN.md (manual UAT in browser)
+Stopped at: 02-01-FIX UNIFY complete; Phase 2 fully closed pending transition
+Next action: Phase transition — commit branch `fix/clarify-modal-gaps` (02-01 + FIX edits), then `/paul:transition` to update ROADMAP/PROJECT and route to Phase 3
 Resume context:
-- Branch: fix/clarify-modal-gaps (5 edits in app/web_ui/js/ui.js, no commits yet)
+- Branch: fix/clarify-modal-gaps (5 edits in app/web_ui/js/ui.js from 02-01 + 1 edit index.html + 7 lines ui.js from FIX, no commits yet)
 - npm test: 152/152 pass
 - ROADMAP audit complete: 12 resolved items stripped, Phase 2 scope now exactly matches what 02-01 shipped
-- SUMMARY at .paul/phases/02-inbox-clarify/02-01-SUMMARY.md (scope-gap notes still need a quick correction; non-blocking)
+- SUMMARYs: .paul/phases/02-inbox-clarify/02-01-SUMMARY.md (original) + 02-01-FIX-SUMMARY.md (UAT remediation)
+- UAT-001 resolved (label fix verified in browser); out-of-band intent change (convert-to-project semantics) still needs to be captured as new feedback record
 
 ---
 *STATE.md — Updated after every significant action*

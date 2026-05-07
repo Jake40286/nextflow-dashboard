@@ -1368,6 +1368,13 @@ body.is-admin .alerts {
   min-width: 180px;
 }
 
+.project-create-heading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text);
+}
+
 .project-create {
   display: flex;
   flex-wrap: wrap;

@@ -17,7 +17,7 @@ Phases: 3 of 7 complete
 | 1 | Bug Fixes | 1 | Complete | 2026-05-06 |
 | 2 | Inbox & Clarify | 2 | Complete | 2026-05-06 |
 | 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
-| 3 | Projects Panel — UX | 2 | Not started | - |
+| 3 | Projects Panel — UX | 2 | Planning | - |
 | 4 | Projects Panel — Features | 1 | Not started | - |
 | 5 | Active Task Views | 3 | Not started | - |
 | 6 | Settings & Misc | 2 | Not started | - |

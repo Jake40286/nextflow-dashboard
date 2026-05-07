@@ -986,7 +986,7 @@ export class UIController {
     if (STATUS_LABELS[panel]) return STATUS_LABELS[panel];
     if (panel === "my-day") return "My Day";
     if (panel === "kanban") return "Kanban";
-    if (panel === "projects") return "Active Projects";
+    if (panel === "projects") return "Projects";
     if (panel === "calendar") return "Calendar";
     if (panel === "reports") return "Complete";
     if (panel === "statistics") return "Statistics";

@@ -10,14 +10,14 @@ See: .paul/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 5 of 7 (Active Task Views) — Not started
-Plan: not started
-Status: Ready to plan (Phase 4 just closed)
-Last activity: 2026-05-07 — Phase 4 closed: 04-01 + 04-02 both shipped on feature/projects-activity-log; transition complete.
+Phase: 5 of 7 (Active Task Views) — In progress (05-01 closed; 05-02 next)
+Plan: 05-01 closed (PLAN/APPLY/UNIFY all ✓); 05-02 ready to plan
+Status: 05-01 loop closed
+Last activity: 2026-05-07 — UNIFY complete for 05-01. SUMMARY written. 179/179 tests passing.
 
 Progress:
 - Milestone: [███████░░░] 71% (5 of 7 phases complete — 1, 2, 2.5, 3, 4)
-- Phase 5: [░░░░░░░░░░] 0% — Not started (3 plans queued)
+- Phase 5: [████░░░░░░] 40% — 05-01 closed; 05-02 + 05-03 queued
 
 ## Loop Position
 
@@ -37,8 +37,10 @@ Phase 4 (closed):
   04-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   04-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 
-Phase 5 (next — ready to plan):
-  05-01, 05-02, 05-03: ○ ──── ○ ──── ○ ──── ○ ──── ○
+Phase 5 (active):
+  05-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+  05-02:              ○ ──── ○ ──── ○             [Ready to plan]
+  05-03:              ○ ──── ○ ──── ○             [Queued — bulk-edit redesign]
 ```
 
 ## Accumulated Context
@@ -62,6 +64,7 @@ Phase 5 (next — ready to plan):
 - Process session case for auto-flyout (0bf1bf88): when batch-clarifying, the project flyout is not opened after convert routing to avoid conflict with the next queued task.
 - 57 open feedback items not currently in ROADMAP scope. Decide later whether to bucket more into Phases 3–6, draft new phases, or descope the milestone tagline.
 - `483a286b` (rename "Move to waiting" + delegate-to-person) is task-flyout work; sitting outside Phase 3 scope but flagged as a candidate.
+- `bb343993` (apply Backlog UX elements to other pages) descoped from v1.0 milestone 2026-05-07 per user. Feedback record stays open for a future milestone; revisit if user clarifies which elements + which pages.
 - Phase 2.5 follow-up candidates (out of scope for 02.5-01): settings UI to tune the Neglected cap (currently hardcoded 5) and the My Day cap (currently uncapped); shared "status-bar" base class refactor of urgent + my-day + neglected once the new bars prove stable.
 
 ### Blockers/Concerns
@@ -70,24 +73,20 @@ None.
 
 ### Git State
 
-- Last commit: `d5a0070` — feat(activity-log): show project activity in the project flyout (Plan 04-02, Phase 4 closer)
-- Branch: `feature/projects-activity-log` (TWO commits ahead of main: `aaaa4c0` 04-01 + `d5a0070` 04-02)
-- Working tree: clean (modulo this STATE update)
-- Pending merge to main as Phase 4 transition.
-- Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`).
+- Phase 4 already merged to main as `6164484` (fast-forward).
+- Active branch: `feature/active-task-views` for Phase 5; will hold all three Phase 5 plans before merging.
+- Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`); Phase 4 (`6164484`).
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: Phase 4 closed; ready to plan Phase 5.
-Next action: `/paul:plan` for Phase 5 (Active Task Views: 7 feedback items across 3 plans). Optional: merge `feature/projects-activity-log` → `main` first.
+Stopped at: 05-01 closed on feature/active-task-views; ready to plan 05-02.
+Next action: `/paul:plan` for 05-02 — Backlog panel improvements.
 Resume context:
-- Branch: `feature/projects-activity-log` (will be merged to main as part of Phase 4 transition)
+- Branch: `feature/active-task-views` (1 commit ahead of main; will hold 05-02 + 05-03 too before merging)
 - npm test baseline: 179/179 passing
-- Phase 5 scope (3 plans):
-  - 05-01: Association filters and flyout improvements (`059f0a1e` Area of Focus filter; `f3d948ce` flyout notes/lists always expanded)
-  - 05-02: Backlog panel improvements (`bb343993`, `8dac310e`, `1f7139ee`, `2dc7c45a`)
-  - 05-03: Bulk edit UX (`fb700fcc`)
+- 05-02 scope: `8dac310e` (Weekly Review → Next Actions guidance copy), `1f7139ee` (Backlog "resolve all" button), `2dc7c45a` (Edit/delete context buttons missing)
+- 05-03 scope: `fb700fcc` item 3 — bulk-edit draft+Apply redesign, plus Contexts as a multi-value field
 
 ---
 *STATE.md — Updated after every significant action*

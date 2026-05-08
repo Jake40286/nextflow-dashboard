@@ -108,16 +108,18 @@ Phases: 5 of 7 complete
 **Scope:**
 - `059f0a1e` — Area of Focus in association filters
 - `f3d948ce` — Flyout notes and lists always expanded
-- `fb700fcc` — Multi-select/bulk edit UX issues
-- `bb343993` — Apply Backlog UX elements to other pages
+- `fb700fcc` — Multi-select/bulk edit UX issues (3 sub-items split across 05-01 and 05-03)
 - `8dac310e` — Weekly Review → Next Actions page guidance
 - `1f7139ee` — Backlog page "resolve all" button
 - `2dc7c45a` — Delete/edit context buttons missing
 
-**Plans:**
-- [ ] 05-01: Association filters and flyout improvements
-- [ ] 05-02: Backlog panel improvements
-- [ ] 05-03: Bulk edit UX
+**Plans (per `/paul:discover` recommendation 2026-05-07):**
+- [ ] 05-01: Pending Tasks panel polish (`059f0a1e`, `f3d948ce`, `fb700fcc` items 1+2)
+- [ ] 05-02: Backlog panel improvements (`8dac310e`, `1f7139ee`, `2dc7c45a`)
+- [ ] 05-03: Bulk-edit redesign — draft + Apply/Cancel (`fb700fcc` item 3)
+
+**Notes:**
+- 2026-05-07: `bb343993` ("Apply Backlog UX elements to other pages") descoped from this milestone per user request — feedback record stays open for a future milestone but not actively planned here. Deferred-issues list updated.
 
 ### Phase 6: Settings & Misc
 

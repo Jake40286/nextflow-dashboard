@@ -141,6 +141,7 @@ export class UIController {
     this.isAdmin = isAdmin;
     this.filters = {
       context: ["all"],
+      area: ["all"],
       project: ["all"],
       person: ["all"],
       waiting: ["all"],
@@ -1460,6 +1461,7 @@ export class UIController {
 
     this.elements.associationFlyoutClear?.addEventListener("click", () => {
       this.filters.context = ["all"];
+      this.filters.area = ["all"];
       this.filters.project = ["all"];
       this.filters.person = ["all"];
       this.filters.waiting = ["all"];
@@ -1557,6 +1559,7 @@ export class UIController {
 
   renderAssociationFlyout() {
     const contextContainer = this.elements.associationContextOptions;
+    const areaContainer = this.elements.associationAreaOptions;
     const peopleContainer = this.elements.associationPeopleOptions;
     const projectContainer = this.elements.associationProjectOptions;
     const waitingContainer = this.elements.associationWaitingOptions;
@@ -1598,8 +1601,14 @@ export class UIController {
     const effort = Array.from(effortLevels).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
     const time = Array.from(timeEstimates).filter(Boolean).sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v }));
 
+    const areas = (this.taskManager.getAreasOfFocus() || [])
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+      .map((v) => ({ value: v, label: v }));
+
     this.renderAssociationFlyoutGroup("person", peopleContainer, people, "No people tags yet.");
     this.renderAssociationFlyoutGroup("context", contextContainer, contexts, "No contexts yet.");
+    this.renderAssociationFlyoutGroup("area", areaContainer, areas, "No areas defined.");
     this.renderAssociationFlyoutGroup("project", projectContainer, projects, "No projects yet.");
     this.renderAssociationFlyoutGroup("waiting", waitingContainer, waiting, "No waiting items.");
     this.renderAssociationFlyoutGroup("effort", effortContainer, effort, "No effort levels used.");
@@ -1729,6 +1738,7 @@ export class UIController {
   buildTaskFilters(overrides = {}) {
     return {
       context: overrides.context ?? this.filters.context,
+      area: overrides.area ?? this.filters.area,
       projectId: overrides.projectId ?? this.filters.project,
       person: overrides.person ?? this.filters.person,
       waitingFor: overrides.waitingFor ?? this.filters.waiting,
@@ -3897,7 +3907,7 @@ export class UIController {
   }
 
   updateMultiEditBar() {
-    const { multiEditBar, multiEditCount, multiEditStatus, multiEditProject, multiEditArea } = this.elements;
+    const { multiEditBar, multiEditCount, multiEditStatus, multiEditProject, multiEditArea, multiEditEffort, multiEditTime } = this.elements;
     if (!multiEditBar) return;
     const count = this.selectedTaskIds.size;
     if (count === 0) {
@@ -3961,6 +3971,26 @@ export class UIController {
       });
       if (currentAreaVal) multiEditArea.value = currentAreaVal;
     }
+
+    // Populate effort options (once — fixed list)
+    if (multiEditEffort && multiEditEffort.options.length === 1) {
+      EFFORT_LEVELS.forEach((level) => {
+        const opt = document.createElement("option");
+        opt.value = level;
+        opt.textContent = level;
+        multiEditEffort.append(opt);
+      });
+    }
+
+    // Populate time-required options (once — fixed list)
+    if (multiEditTime && multiEditTime.options.length === 1) {
+      TIME_REQUIREMENTS.forEach((value) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = value;
+        multiEditTime.append(opt);
+      });
+    }
   }
 
   applyBulkField(field, value) {
@@ -3988,7 +4018,7 @@ export class UIController {
   }
 
   setupMultiEditBar() {
-    const { multiEditStatus, multiEditProject, multiEditArea, multiEditClear, multiEditBar } = this.elements;
+    const { multiEditStatus, multiEditProject, multiEditArea, multiEditEffort, multiEditTime, multiEditClear, multiEditBar } = this.elements;
     if (!multiEditBar) return;
 
     multiEditStatus?.addEventListener("change", () => {
@@ -4007,6 +4037,18 @@ export class UIController {
       if (multiEditArea.value) {
         this.applyBulkField("areaOfFocus", multiEditArea.value);
         multiEditArea.value = "";
+      }
+    });
+    multiEditEffort?.addEventListener("change", () => {
+      if (multiEditEffort.value) {
+        this.applyBulkField("effortLevel", multiEditEffort.value);
+        multiEditEffort.value = "";
+      }
+    });
+    multiEditTime?.addEventListener("change", () => {
+      if (multiEditTime.value) {
+        this.applyBulkField("timeRequired", multiEditTime.value);
+        multiEditTime.value = "";
       }
     });
     multiEditClear?.addEventListener("click", () => this.clearSelection());
@@ -7235,11 +7277,19 @@ export class UIController {
     body.hidden = !hasPrereqs;
 
     toggleBtn.setAttribute("aria-expanded", String(hasPrereqs));
-    toggleBtn.addEventListener("click", () => {
+    const togglePrereqs = () => {
       const willExpand = body.hidden;
       body.hidden = !willExpand;
       toggleBtn.setAttribute("aria-expanded", String(willExpand));
       toggleBtn.classList.toggle("is-active", willExpand);
+    };
+    toggleBtn.addEventListener("click", togglePrereqs);
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
+      if (btn === toggleBtn) return;
+      togglePrereqs();
     });
 
     header.append(heading, toggleBtn);
@@ -7365,11 +7415,19 @@ export class UIController {
     toggleBtn.setAttribute("aria-expanded", String(isWaiting));
     toggleBtn.classList.toggle("is-active", isWaiting);
     toggleBtn.textContent = "⏱";
-    toggleBtn.addEventListener("click", () => {
+    const toggleFollowup = () => {
       const willExpand = body.hidden;
       body.hidden = !willExpand;
       toggleBtn.setAttribute("aria-expanded", String(willExpand));
       toggleBtn.classList.toggle("is-active", willExpand);
+    };
+    toggleBtn.addEventListener("click", toggleFollowup);
+    header.style.cursor = "pointer";
+    header.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && btn !== toggleBtn) return;
+      if (btn === toggleBtn) return; // already handled
+      toggleFollowup();
     });
 
     header.append(heading, toggleBtn);
@@ -9817,6 +9875,7 @@ function mapElements() {
     associationFlyoutSummary: byId("associationFlyoutSummary"),
     associationFlyoutClear: byId("associationFlyoutClear"),
     associationContextOptions: byId("associationContextOptions"),
+    associationAreaOptions: byId("associationAreaOptions"),
     associationPeopleOptions: byId("associationPeopleOptions"),
     associationProjectOptions: byId("associationProjectOptions"),
     associationWaitingOptions: byId("associationWaitingOptions"),
@@ -9926,6 +9985,8 @@ function mapElements() {
     multiEditStatus: byId("multiEditStatus"),
     multiEditProject: byId("multiEditProject"),
     multiEditArea: byId("multiEditArea"),
+    multiEditEffort: byId("multiEditEffort"),
+    multiEditTime: byId("multiEditTime"),
     multiEditClear: byId("multiEditClear"),
     taskContextMenu: byId("taskContextMenu"),
     taskNoteContextMenu: byId("taskNoteContextMenu"),

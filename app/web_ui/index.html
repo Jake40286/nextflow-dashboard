@@ -99,6 +99,10 @@
           <h3 id="associationFlyoutContextLabel">Contexts</h3>
           <div id="associationContextOptions" class="association-flyout-options"></div>
         </section>
+        <section class="association-flyout-group" aria-labelledby="associationFlyoutAreaLabel">
+          <h3 id="associationFlyoutAreaLabel">Area of Focus</h3>
+          <div id="associationAreaOptions" class="association-flyout-options"></div>
+        </section>
         <section class="association-flyout-group" aria-labelledby="associationFlyoutProjectLabel">
           <h3 id="associationFlyoutProjectLabel">Projects</h3>
           <div id="associationProjectOptions" class="association-flyout-options"></div>
@@ -1449,6 +1453,12 @@
         </select>
         <select id="multiEditArea" class="multi-edit-select" aria-label="Set area for selected tasks">
           <option value="">Set area…</option>
+        </select>
+        <select id="multiEditEffort" class="multi-edit-select" aria-label="Set effort for selected tasks">
+          <option value="">Set effort…</option>
+        </select>
+        <select id="multiEditTime" class="multi-edit-select" aria-label="Set time required for selected tasks">
+          <option value="">Set time required…</option>
         </select>
       </div>
       <button id="multiEditClear" class="btn btn-icon multi-edit-clear" type="button" title="Clear selection" aria-label="Clear selection">✕</button>

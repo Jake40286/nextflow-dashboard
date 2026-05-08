@@ -894,6 +894,8 @@ export class TaskManager extends EventTarget {
     status,
     context,
     contexts,
+    area,
+    areas,
     projectId,
     projectIds,
     searchTerm,
@@ -913,6 +915,7 @@ export class TaskManager extends EventTarget {
   } = {}) {
     const filterRules = {
       context: contexts ?? context,
+      area: areas ?? area,
       projectId: projectIds ?? projectId,
       person: people ?? person,
       waitingFor: waitingFors ?? waitingFor,
@@ -5216,6 +5219,9 @@ function matchesPeopleFilter(task, filter) {
 function matchesTaskFilters(task, filters = {}) {
   if (!filters) return true;
   if (!matchesContextsFilter(task.contexts, filters.contexts ?? filters.context)) {
+    return false;
+  }
+  if (!matchesFilterValue(task.areaOfFocus, filters.areas ?? filters.area)) {
     return false;
   }
   if (!matchesFilterValue(task.projectId, filters.projectIds ?? filters.projectId)) {

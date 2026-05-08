@@ -2325,7 +2325,11 @@ kbd {
   border-left: 4px solid color-mix(in srgb, var(--line-strong) 70%, var(--line));
   border-radius: var(--radius-sm);
   background: var(--surface);
-  padding: 10px 12px;
+  /* Left padding reserves space for the absolutely-positioned multi-select
+     checkbox (.task-row-select at left: 8px, width 20px) so it never overlaps
+     the task title text — applies whether or not the checkbox is currently
+     visible, to avoid layout shift on hover. */
+  padding: 10px 12px 10px 36px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-3);
@@ -2649,14 +2653,14 @@ kbd {
 .task-row-select input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
-  top: 1px;
-  left: 4px;
+  top: 50%;
+  left: 50%;
   width: 5px;
   height: 9px;
   border: 2px solid var(--accent-contrast);
   border-top: 0;
   border-left: 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -60%) rotate(45deg);
 }
 .task-row-select input[type="checkbox"]:focus-visible {
   outline: none;
@@ -4140,6 +4144,14 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.task-notes-header:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .task-notes-header h3 {
@@ -4215,6 +4227,14 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.task-list-header:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .task-list-header h3 {
@@ -4309,6 +4329,14 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.task-followup-header:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .task-followup-header h3 {
@@ -4407,6 +4435,14 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.task-prereq-header:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .task-prereq-header h3 {

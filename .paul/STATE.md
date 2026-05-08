@@ -10,29 +10,27 @@ See: .paul/PROJECT.md (updated 2026-05-07)
 ## Current Position
 
 Milestone: v1.1 MCP Integration
-Phase: 2 of 3 — MCP Server / Full Tool Surface (in progress; 02-01 closed, 02-02 + 02-03 ahead)
-Plan: 02-01 closed (Project entity + flagship atomic decomposition shipped); 02-02 ready to plan
-Status: Loop closed for 02-01. Awaiting commit decision, then `/paul:plan` for 02-02 (task-side tools).
-Last activity: 2026-05-08 — UNIFY complete on 02-01. Atomicity proven (`_rev` Δ = +1 for project + 3 tasks).
+Phase: 2 of 3 — MCP Server / Full Tool Surface (2 of 3 plans closed; 02-03 ahead)
+Plan: 02-02 closed — SUMMARY published at `.paul/phases/02-mcp-server/02-02-SUMMARY.md`.
+Status: Loop closed; ready for 02-03 PLAN.
+Last activity: 2026-05-08 — UNIFY complete for 02-02. `app/mcp_server.py` 494 → 789 LoC; 5 new task-entity tools shipped (total 10). Per-group LWW timestamp pattern established for MCP-side mutations.
 
 Progress:
-- Milestone: [████░░░░░░] 40% (Phase 1 shipped; Phase 2 plan 1 of 3 closed)
+- Milestone: [█████░░░░░] 55% (Phase 1 shipped; Phase 2: 02-01 + 02-02 closed; 02-03 ahead)
 - Phase 1: [██████████] 100%
-- Phase 2: [████░░░░░░] 33% — 02-01 closed; 02-02 + 02-03 ahead
+- Phase 2: [██████░░░░] 67% — 02-01 closed, 02-02 closed, 02-03 ahead (tests + cleanup + likely refactor)
 - Phase 3: [░░░░░░░░░░] 0%
 
 ## Loop Position
 
 Current loop state:
 ```
-Phase 1 (CLOSED — merged to main, pushed to origin):
-  01-01:             [✓ closed]
-  01-02:             [✓ closed]
+Phase 1 (CLOSED — published):
+  01-01, 01-02:      [✓✓ closed]
 
 Phase 2 (active):
-  02-01:             PLAN ──▶ APPLY ──▶ UNIFY
-                       ✓        ✓        ✓     [Closed — flagship atomic decomposition shipped]
-  02-02:             not yet planned (task-side tools)
+  02-01:             [✓ closed — projects + atomic decomposition published]
+  02-02:             [✓ closed — task entity tools published]
   02-03:             not yet planned (tests + cleanup + likely refactor)
 ```
 
@@ -62,15 +60,23 @@ Phase 2 (active):
 - **Atomicity guarantee testable via `_rev` Δ.** Every multi-entity write tool MUST include an AC that captures `_rev` before/after and asserts `_rev_after == _rev_before + 1`. Any other delta means the implementation is doing N writes internally — a bug.
 - **Read tools don't acquire `_state_lock`.** The lock is for write serialization only; concurrent reads are safe. `_fetch_state` is called directly.
 - **Atomic decomposition cap: 50 tasks** (hardcoded). Phase 3 will refine to configurable + rate-limit + dry-run.
-- **`mcp_server.py` stays monolithic for now.** 494 LoC after 02-01; refactor to `app/mcp/` package becomes a stronger candidate in 02-03 once 02-02 adds task-side tools (projected ~700+ LoC).
+
+### Decisions (v1.1-specific — locked in 02-02)
+
+- **Per-group LWW timestamp bumps are required for any MCP-side write of a tracked field.** When mutating a field listed in `MERGE_FIELD_GROUPS` (data.js:32-39 — `status`, `myDayDate`, `calendarDate`, `calendarTime`, `dueDate`, `followUpDate`, `urgent`, `urgentSince`, `prerequisiteTaskIds`), also write `task._fieldTimestamps[<group>] = _now_iso()` in the same mutation. Without this, a stale browser PUT can silently overwrite the MCP-side change at merge time. Codified in `update_task_status`'s `_set_status` mutator; applies to every future tool that touches a tracked field.
+- **`projectId` is whole-task LWW, not field-group LWW.** `set_task_project` only bumps `task.updatedAt`. Confirmed via direct read of MERGE_FIELD_GROUPS — `projectId` is intentionally not tracked at field-group granularity.
+- **Single-task mutations route through `_update_task_in_state(state, task_id, mutator)`.** The helper centralizes find-by-id + apply-mutator + bump-updatedAt + rebuild-tasks-list. New single-task tools should reuse it.
+- **`mcp_server.py` refactor to `app/mcp/` package is now the recommended call for 02-03.** File grew 494 → 789 LoC after 02-02 (60% larger; past the comfortable monolith threshold). 02-03 plan will weigh tests-first vs refactor-first up front.
+- **Note `_source: 'mcp'` is a transient audit field.** Survives initial MCP PUT; dropped by JS `normalizeTaskNotes` (data.js:4514-4543) on the next browser-side normalize pass. Kept per AC-5; flagged as a Phase 3 candidate to either preserve in JS or remove from MCP writes.
 
 ### Decisions (v1.1-specific — still to be made)
 
-- _Phase 2 will still design: task-entity tool schemas, behavior of `add_task_note`, whether to emit synthetic `projectActivityLog` rows for MCP-created entities._
-- _Phase 3 will finalize: rate-limit / batch-cap policies, audit-trail UI shape, canonical "do not expose to internet" doc copy._
+- _02-03 will decide: test surface (especially 409 retry path + per-group LWW correctness), whether to refactor `mcp_server.py` into `app/mcp/` package up front, `create_task` ID format consistency (`task-<uuid>` vs bare hex), pin `starlette<2`, drop obsolete `version: "3.8"` from `docker-compose.yml`._
+- _Phase 3 will finalize: bearer-token auth + LAN-bind, rate-limit / batch-cap policies, audit-trail UI shape, complete-task tool over `completionLog`, edit-note / delete-note tools, arbitrary task-field updates (title/description/dueDate/contexts/peopleTags), note `_source` durability decision, canonical "do not expose to internet" doc copy._
 
 ### Deferred Issues
 
+- 2026-05-08: **Note `_source: 'mcp'` durability** — `normalizeTaskNotes` (data.js:4514-4543) drops `_source` on browser-side normalize. Phase 3 candidate: extend the JS normalizer to preserve it OR remove `_source` from MCP-written notes. Discovered in 02-02 Task 3.
 - 2026-05-08: Feedback panel removal (in-app `/feedback` superseded by GitHub Issues #28–#73) — eligible to bolt on as a final phase if v1.1 finishes early; otherwise its own future milestone.
 - v1.0 Process-session auto-flyout case (`0bf1bf88`): when batch-clarifying, the project flyout is not opened after convert routing to avoid conflict with the next queued task. Leave as-is unless it surfaces during v1.1.
 - v1.0 deferreds remaining in ROADMAP "Deferred (Someday)": `64227659` (guided tour), `a87a75af` (pop-out doing timers), `1f7139ee` (Backlog "resolve all"), `bb343993` (Apply Backlog UX elements), `483a286b` (rename "Move to waiting" + delegate-to-person), `8daaf79a` (complete-with-options + chaining + graph view), plus the original Someday list (`943c01b8` mobile, `346ac587` multi-user, `fc822ad6` trash bin, `3ad1d3e3` snooze, `00b83571` shopping list, `5953b8c8` email digests, `21377c43` chaining).
@@ -89,16 +95,13 @@ None at milestone creation. Phase 1 may surface an MCP-Python feasibility blocke
 ## Session Continuity
 
 Last session: 2026-05-08
-Stopped at: 02-01 closed (PLAN ✓ APPLY ✓ UNIFY ✓). 4 new MCP tools live; flagship atomic decomposition proven correct. Phase 2 work uncommitted on main.
-Next action: Decide commit strategy for 02-01 (likely: feature branch + merge, mirror Phase 1 pattern), then `/paul:plan` for 02-02 (task-side tools).
+Stopped at: 02-02 closed (UNIFY done; SUMMARY published). Phase 2 progress: 2 of 3 plans closed.
+Next action: `/paul:plan` for 02-03 (tests + cleanup + likely refactor of `mcp_server.py`).
 Resume context:
-- Branch: `main` (currently dirty with 02-01 work)
-- Stack state: `nextflow-mcp-1` running; 5 tools registered with Claude Code: `create_task` + `create_project` + `list_projects` + `get_project` + `create_project_with_tasks`.
-- Smoke-test artifact in user data: `project-c7fd2fac-...` "PAUL 02-01 atomicity test" + 3 tasks ("Atomicity check task A/B/C"). Safe to delete via UI.
-- `app/mcp_server.py`: 494 LoC. Refactor candidate but not blocking; will revisit in 02-03.
-- **02-02 scope (next plan):** Task-entity vertical slice — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. Mirror 02-01's pattern: read data.js task-handling functions FIRST, mirror field names verbatim.
-- **02-03 scope:** tests (especially 409 retry path), pin `starlette<2`, remove obsolete `version: "3.8"` from compose, possibly fix `create_task` ID format to `task-<uuid>` for consistency, refactor `mcp_server.py` if file size justifies.
-- Carried-forward deferreds: synthetic `projectActivityLog` row for MCP-created projects; `areaOfFocus`/`themeTag` validation against `state.settings.areaOptions`.
+- Branch: `main` — working tree dirty: `app/mcp_server.py` (+295 LoC), `.paul/STATE.md`, `.paul/paul.json`, `.paul/ROADMAP.md`, plus new `.paul/phases/02-mcp-server/02-02-PLAN.md` and `02-02-SUMMARY.md`. **Recommended commit:** `feat(mcp): task entity tools — list/get/update_status/set_project/add_note (Phase 2 plan 02)`.
+- Stack state: **10 MCP tools** registered. Project tools (5): `create_project`, `list_projects`, `get_project`, `create_project_with_tasks`, plus `create_task` from 01-02. Task tools (5, NEW in 02-02): `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. Sidecar healthy at http://127.0.0.1:8003/mcp; bind is loopback-only per Phase 1 PoC decision (Claude Desktop on the LAN must SSH-tunnel until Phase 3 ships the bearer token + LAN-bind).
+- 02-03 scope (next plan): **(1)** test suite — at minimum 409 retry path, per-group LWW status-bump correctness, append-only note semantics. **(2)** Refactor `mcp_server.py` (789 LoC) into `app/mcp/` package — recommended in 02-02 SUMMARY; needs explicit 02-03 plan call. **(3)** `create_task` ID format consistency (currently bare uuid hex; should be `task-<uuid>` to match `data.js generateId('task')`). **(4)** Pin `starlette<2` in `requirements-mcp.txt`. **(5)** Drop obsolete `version: "3.8"` from `docker-compose.yml` (warning fires on every compose run).
+- Carried-forward deferreds: synthetic `projectActivityLog` row for MCP-created entities; areaOfFocus/themeTag validation against `state.settings.areaOptions`; complete-task flow over `completionLog` (Phase 3); arbitrary field updates beyond status/project/notes (Phase 3); note `_source` durability (Phase 3).
 
 ---
 *STATE.md — Updated after every significant action*

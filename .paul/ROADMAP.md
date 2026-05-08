@@ -15,7 +15,7 @@ Phases: 1 of 3 complete
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
 | 1 | MCP Feasibility & PoC | 01-01, 01-02 | Complete | 2026-05-08 |
-| 2 | MCP Server — Full Tool Surface | 02-01 closed; 02-02, 02-03 ahead | In progress | - |
+| 2 | MCP Server — Full Tool Surface | 02-01, 02-02 closed; 02-03 ahead | In progress | - |
 | 3 | Safety, Audit & Security Hardening | TBD | Not started | - |
 
 ## Phase Details
@@ -57,8 +57,8 @@ Phases: 1 of 3 complete
 
 **Plans (3 projected; created on demand):**
 - [x] 02-01: Project entity + atomic decomposition flagship shipped — `create_project`, `list_projects`, `get_project`, `create_project_with_tasks` live; atomicity proven (`_rev` Δ = +1 for 4 entities). See `.paul/phases/02-mcp-server/02-01-SUMMARY.md` — completed 2026-05-08.
-- [ ] 02-02: Task entity tools — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. To be planned after 02-01.
-- [ ] 02-03: Tests + minor fixes — automated MCP server tests (especially 409 retry); pin `starlette<2`; remove obsolete `version: "3.8"` from compose. To be planned after 02-02.
+- [x] 02-02: Task entity tools shipped — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note` live (10 tools total). Per-group LWW timestamp pattern established. `app/mcp_server.py` 494 → 789 LoC. See `.paul/phases/02-mcp-server/02-02-SUMMARY.md` — completed 2026-05-08.
+- [ ] 02-03: Tests + cleanup + likely refactor — automated MCP server tests (409 retry, per-group LWW correctness, append-only notes); refactor `mcp_server.py` (789 LoC) into `app/mcp/` package (recommended call from 02-02 SUMMARY); fix `create_task` ID format consistency (`task-<uuid>`); pin `starlette<2`; drop obsolete `version: "3.8"` from compose.
 
 ### Phase 3: Safety, Audit & Security Hardening
 
@@ -110,3 +110,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — v1.0 complete (7 of 7 phases shipped).*
 *Last updated: 2026-05-08 — v1.1 MCP Integration milestone created. Phase 1 is a feasibility gate (research + walking-skeleton PoC); Phase 2 is the full server; Phase 3 is safety + security hardening. v1.0 collapsed into Previous Milestones section.*
 *Last updated: 2026-05-08 — Phase 1 complete (both plans shipped). 1 of 3 phases done. Walking-skeleton sidecar live and smoke-tested. Phase 2 (Full Tool Surface) is next.*
+*Last updated: 2026-05-08 — Phase 2 plan 02 (Task entity tools) closed. 2 of 3 Phase 2 plans done. 10 MCP tools live (5 project + 5 task). Per-group LWW timestamp pattern established for MCP-side mutations. 02-03 (tests + likely refactor) is next.*

@@ -2,147 +2,85 @@
 
 ## Overview
 
-nextflow is a mature self-hosted productivity app. This milestone focuses on quality and completeness — fixing all open bugs, polishing the core interaction flows, and clearing the full feedback backlog. Work proceeds from highest trust-impact (bugs) through the most-used flows (Inbox/Clarify, Projects) to supporting panels and settings.
+nextflow is a mature self-hosted productivity app. With v1.0 polish complete, v1.1 opens the data model to LLM-driven creation through a new MCP (Model Context Protocol) sidecar service. Goal: let any MCP-aware LLM (Claude Desktop, Claude Code, agents on the LAN) create tasks and projects on the user's behalf — including decomposing a vague project description into a project plus a sensible set of tasks — without breaking the optimistic-locking sync model that v1.0 relies on.
 
 ## Current Milestone
 
-**v1.0 Feedback Clearance & Polish** (v1.0.0)
-Status: Complete
-Phases: 7 of 7 complete
+**v1.1 MCP Integration** (v1.1.0)
+Status: 🚧 In Progress
+Phases: 1 of 3 complete
 
 ## Phases
 
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
-| 1 | Bug Fixes | 1 | Complete | 2026-05-06 |
-| 2 | Inbox & Clarify | 2 | Complete | 2026-05-06 |
-| 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
-| 3 | Projects Panel — UX | 2 | Complete | 2026-05-07 |
-| 4 | Projects Panel — Features | 2 | Complete | 2026-05-07 |
-| 5 | Active Task Views | 3 | Complete | 2026-05-07 |
-| 6 | Settings & Misc | 1 | Complete | 2026-05-07 |
+| 1 | MCP Feasibility & PoC | 01-01, 01-02 | Complete | 2026-05-08 |
+| 2 | MCP Server — Full Tool Surface | TBD | Not started | - |
+| 3 | Safety, Audit & Security Hardening | TBD | Not started | - |
 
 ## Phase Details
 
-### Phase 1: Bug Fixes
+### Phase 1: MCP Feasibility & PoC
 
-**Goal:** Fix all 4 open bugs — restore broken functionality before any polish work begins.
-**Depends on:** Nothing (first phase)
-**Research:** Unlikely (bugs in existing code)
+**Goal:** Decide whether MCP-in-Python is the right fit for nextflow, then prove it with a walking-skeleton PoC that creates one task end-to-end through the existing `PUT /state` path.
+**Depends on:** Nothing (first phase of v1.1)
+**Research:** Required (this phase IS the research)
 
 **Scope:**
-- _All originally-scoped items shipped by plan 01-01 and marked resolved in feedback._
+- Survey the Python MCP landscape: official `mcp` SDK vs. hand-rolled JSON-RPC over HTTP/SSE; maturity, license, dependency footprint, transport options.
+- Decide sidecar shape: Python image, port assignment, how it shares the `data/` volume (or whether it talks to the main app via HTTP only).
+- Prototype: a minimal MCP server exposing one tool (`create_task`) that succeeds end-to-end through `PUT /state` with `If-Match: <rev>` and is reachable from Claude Desktop or Claude Code.
+- Document the auth posture decision (localhost-only? shared secret? deferred to Phase 3?).
+- **Exit criterion:** go/no-go decision with a working PoC. If MCP-in-Python proves impractical, the milestone re-scopes or pauses rather than forcing the build.
 
 **Plans:**
-- [ ] 01-01: Fix all 4 open bugs
+- [x] 01-01: MCP feasibility research — DECISIONS.md produced (verdict: **GO**); see `.paul/phases/01-mcp-feasibility/01-01-SUMMARY.md` — completed 2026-05-08
+- [x] 01-02: Walking-skeleton PoC — sidecar shipped, `create_task` tool live, smoke-tested end-to-end; see `.paul/phases/01-mcp-feasibility/01-02-SUMMARY.md` — completed 2026-05-08
 
-### Phase 2: Inbox & Clarify
+**Notes:**
+- This phase is intentionally a feasibility gate. The PoC investment is small so a no-go answer is cheap.
+- The phase may surface a natural alignment between MCP tool schemas and a `data.js` extraction (e.g., shared GTD constants). If so, a clean JS-file split could escalate into scope; otherwise, leave structure alone.
 
-**Goal:** Polish the capture and clarification flow — the highest-frequency interaction in the app.
+### Phase 2: MCP Server — Full Tool Surface
+
+**Goal:** Promote the PoC to production. Expose the full read + write + atomic decomposition tool surface so an LLM can drive nextflow safely and idiomatically.
 **Depends on:** Phase 1
-**Research:** Unlikely (UI enhancements to existing flow)
+**Research:** Unlikely (Phase 1 produces the answers)
 
 **Scope:**
-- `0bf1bf88` — Show newly assigned project immediately after assignment
-- `160e0923` — Description visible during clarification flyout
+- Write tools: `create_task`, `create_project`, `create_project_with_tasks` (atomic project + N tasks in one `PUT /state`).
+- Read tools: `list_tasks`, `list_projects`, `get_task`, `get_project` with filters (by status, by project, by area).
+- Light update tools: `update_task_status`, `set_task_project`, possibly `add_task_note`.
+- LLM-author tagging on every write (single new field, e.g. `_source: "mcp"`, to keep merge code untouched).
+- Rich tool-schema descriptions for GTD-specific fields (status / contexts / areaOfFocus / peopleTags / effortLevel / timeRequired) — explain meaning and enums inline so LLM-generated tasks are semantically accurate, not just structurally valid.
+- 409-conflict retry loop matching the JS client's behavior (re-merge + retry, capped).
 
 **Plans:**
-- [ ] 02-01: Inbox & Clarify improvements
+- [ ] 02-01: TBD (defined during /paul:plan)
 
-### Phase 2.5: Top-Bar Status Sections
+### Phase 3: Safety, Audit & Security Hardening
 
-**Goal:** Mirror the existing urgent-tasks top bar with two new at-a-glance sections — "My Day" (tasks scheduled or due today) and "Neglected" (top 5 stale tasks).
-**Depends on:** Phase 2 (uses task data shape; no Phase 3 dependency)
-**Research:** Unlikely (mirrors an existing rendering pattern in `ui.js`)
-**Priority:** Top priority — inserted ahead of Phase 3 by user request 2026-05-07.
-
-**Scope:**
-- New "My Day" top bar — chips for tasks where `myDayDate == today` OR `dueDate == today`, sorted by `calendarTime` then `updatedAt`, no cap
-- New "Neglected" top bar — top 5 active tasks whose `updatedAt` is older than `settings.staleTaskThresholds.stale` days, sorted oldest-first
-- Both bars render via `renderAll()` and hide when empty, matching `renderUrgentBar()` behavior
-
-**Plans:**
-- [x] 02.5-01: My Day and Neglected top-bar sections — completed 2026-05-07
-
-### Phase 3: Projects Panel — UX
-
-**Goal:** Improve clarity and reduce noise on the Projects panel — naming, affordances, and warning behavior.
-**Depends on:** Phase 2.5
-**Research:** Unlikely (layout and visual hierarchy work)
-
-**Scope:**
-- `1448576c` — Rename "Active Projects" → "Projects" (panel includes all projects, not just active); clarify the add-project area is for adding a new project
-- `3ff676c5` — Suppress "no next action" warning on a project when a delegated task exists (delegated work is implicitly "next")
-
-**Plans:**
-- [x] 03-01: Projects panel renames and add-project affordance — completed 2026-05-07
-- [x] 03-02: Refine "no next action" warning logic — completed 2026-05-07
-
-**Notes:**
-- Re-scoped 2026-05-07 after live `GET /feedback` audit. The 2026-05-06 audit incorrectly marked Phase 3 as having zero open scope; two `panel: projects` items were either missed or filed after the audit.
-- `483a286b` (rename "Move to waiting" + delegate-to-person) sits on the task flyout, not the Projects panel — left in Phase 5 candidate pool unless surfacing in Phase 3 makes more sense during planning.
-- Originally-listed plans (project page layout redesign, filter indicator, stats click, undo completion) were retired with the 2026-05-06 audit; current scope no longer needs them.
-
-### Phase 4: Projects Panel — Features
-
-**Goal:** Implement the larger project-level features: merge, activity log.
-**Depends on:** Phase 3
-**Research:** Likely (project merge touches sync/merge logic; activity log needs data model decisions)
-
-**Scope:**
-- `7868b077` — Project activity/change log
-
-**Plans:**
-- [x] 04-01: Project activity log — data layer + emission + tests — completed 2026-05-07
-- [x] 04-02: Project activity log — UI surface (project-flyout section) — completed 2026-05-07
-
-**Notes:**
-- 2026-05-07: Renumbered plans after `/paul:discover` recommended splitting the work. Original ROADMAP listed only `04-02`; the discovery (HIGH confidence) called out the data/UI split as the de-risked staging path. See `.paul/phases/04-projects-features/DISCOVERY.md`.
-
-### Phase 5: Active Task Views
-
-**Goal:** Improve the Next/Active and Backlog panels — filtering, bulk edit, and UX consistency.
-**Depends on:** Phase 4
+**Goal:** Make the MCP surface safe for daily-driver use.
+**Depends on:** Phase 2
 **Research:** Unlikely
 
 **Scope:**
-- `059f0a1e` — Area of Focus in association filters
-- `f3d948ce` — Flyout notes and lists always expanded
-- `fb700fcc` — Multi-select/bulk edit UX issues (3 sub-items split across 05-01 and 05-03)
-- `8dac310e` — Weekly Review → Next Actions page guidance
-- `1f7139ee` — Backlog page "resolve all" button
-- `2dc7c45a` — Delete/edit context buttons missing
-
-**Plans (per `/paul:discover` recommendation 2026-05-07):**
-- [x] 05-01: Pending Tasks panel polish (`059f0a1e`, `f3d948ce`, `fb700fcc` items 1+2) — completed 2026-05-07
-- [x] 05-02: Backlog panel improvements (`8dac310e`, `2dc7c45a`) — completed 2026-05-07; `1f7139ee` descoped during planning (resolve-all UX deferred; feedback record stays open)
-- [x] 05-03: Bulk-edit redesign — draft + Apply/Cancel + tri-state Contexts chips (`fb700fcc` item 3) — completed 2026-05-07
-
-**Notes:**
-- 2026-05-07: `bb343993` ("Apply Backlog UX elements to other pages") descoped from this milestone per user request — feedback record stays open for a future milestone but not actively planned here. Deferred-issues list updated.
-
-### Phase 6: Settings & Misc
-
-**Goal:** Settings/onboarding polish.
-**Depends on:** Phase 5
-**Research:** Unlikely
-
-**Scope:**
-- `b4faaccd` — Rename "Inactive" label on completed tasks
-- `981dde72` — "Convert to Project" UX clarification (largely already implemented — verify + extend carry-over)
+- Optional `dry_run` flag on mutating tools — returns the diff without writing.
+- Rate-limit / batch-cap on `create_project_with_tasks` (LLM hallucinations can produce 100-task lists).
+- Settings UI: "view LLM-created items" filter for audit + bulk-undo of any MCP-created entries.
+- README + in-app docs documenting **LAN-only default + reverse-proxy-with-TLS guidance** for any internet exposure (explicit "do not expose without TLS termination" warning).
+- Auth model decision: shared secret? bearer token? localhost-only bind? Decision deferred from Phase 1, finalized here once transport reality is known.
 
 **Plans:**
-- [x] 06-01: Rename "Inactive" + Convert-to-Project carry-over (`b4faaccd`, `981dde72`) — completed 2026-05-07; bundled an auto-fix for a latent settings-render bug surfaced during UAT (proper resolution of `2dc7c45a`)
-
-**Notes:**
-- 2026-05-07: `64227659` (guided tour / "show me around") descoped from v1.0 milestone during 06-01 planning. Feature-shaped, not polish. Moved to "Deferred (Someday)" for a future milestone.
-- 2026-05-07: `a87a75af` (pop-out doing timers) descoped from v1.0 milestone after 06-01 closed. Feature-shaped, no urgent need. Moved to "Deferred (Someday)" for a future milestone.
+- [ ] 03-01: TBD (defined during /paul:plan)
 
 ## Deferred (Someday)
 
 Out of scope for this milestone — large-scope features requiring separate planning:
 
-- **Feedback panel removal** — Strip the in-app feedback page (UI + backend endpoints + `data/feedback.json`) now that GitHub Issues is the system of record. Touches `app/server.py` (`/feedback` CRUD), `app/web_ui/` (feedback panel HTML/JS), and the settings-panel admin list (`loadFeedbackList()` in `ui.js`). Strong v1.1 candidate; small-to-medium scope, polish-shaped, fits the v1.0 "polish" theme. **Verify the migration is complete** before removing — open issues should all be reflected in GitHub. Prerequisite: confirm no automation depends on `GET /feedback`.
+- **Feedback panel removal** — Strip the in-app feedback page (UI + backend endpoints + `data/feedback.json`) now that GitHub Issues is the system of record. Touches `app/server.py` (`/feedback` CRUD), `app/web_ui/` (feedback panel HTML/JS), and the settings-panel admin list (`loadFeedbackList()` in `ui.js`). Polish-shaped, fits naturally as a later v1.x milestone or as a final phase if v1.1 finishes early. Prerequisite: confirm no automation depends on `GET /feedback`.
+- **JS file restructure** — `ui.js` and `data.js` are getting long; consider splitting into more purpose-driven modules. Adjacent to v1.1 (MCP tool schemas may want to share constants with `data.js`); only escalate into scope if Phase 1 surfaces a clean alignment.
+- **Internet-exposure / mature auth** — multi-user, OAuth, or any "expose this app to the public internet" features. Wait until auth + audit are mature.
 - `943c01b8` — Mobile-friendly dashboard (full mobile pass)
 - `346ac587` — Multi-user support
 - `fc822ad6` — Task trash bin with 30-day auto-delete
@@ -150,23 +88,23 @@ Out of scope for this milestone — large-scope features requiring separate plan
 - `00b83571` — Shopping list feature
 - `5953b8c8` — Email digest summaries
 - `21377c43` — Chaining/prerequisite tasks
-- `8daaf79a` — Complete-with-options modal + chained follow-up tasks + "Graph View" (obsidian-style task graph) — overlaps with 21377c43 on chaining but adds a graph visualization
-- `64227659` — Guided tour / "show me around" (deferred from v1.0 Phase 6 — feature-shaped, not polish)
-- `a87a75af` — Pop-out window for "doing" timers (deferred from v1.0 Phase 6 — feature-shaped; requires design discussion)
-- `1f7139ee` — Backlog page "resolve all" button (deferred from v1.0 Phase 5 — UX direction not finalized)
-- `bb343993` — Apply Backlog UX elements to other pages (deferred from v1.0 — needs scoping clarification)
+- `8daaf79a` — Complete-with-options modal + chained follow-up tasks + "Graph View" (obsidian-style task graph)
+- `64227659` — Guided tour / "show me around" (deferred from v1.0 Phase 6)
+- `a87a75af` — Pop-out window for "doing" timers (deferred from v1.0 Phase 6)
+- `1f7139ee` — Backlog page "resolve all" button (deferred from v1.0 Phase 5)
+- `bb343993` — Apply Backlog UX elements to other pages (deferred from v1.0)
 
 ---
+
+## Previous Milestones
+
+### v1.0 Feedback Clearance & Polish — Complete (2026-05-07)
+
+7 phases shipped: Bug Fixes, Inbox & Clarify, Top-Bar Status Sections (My Day + Neglected), Projects Panel UX, Projects Panel Features (activity log), Active Task Views (bulk-edit redesign + filters), Settings & Misc (Inactive→Completed, Convert-to-Project carry-over). Closing commit `05d1fb1`. Full historical detail preserved in git history; phase directories under `.paul/phases/01-bug-fixes/` … `06-settings-misc/`.
+
+---
+
 *Roadmap created: 2026-05-06*
-*Last updated: 2026-05-06 — Stripped 12 already-resolved items from Phase 1/2/3/4 scope per audit against `data/feedback.json`.*
-*Last updated: 2026-05-07 — Re-scoped Phase 3 with `1448576c` and `3ff676c5` after live feedback audit found the 2026-05-06 sweep had over-stripped Phase 3.*
-*Last updated: 2026-05-07 — Inserted Phase 2.5 (Top-Bar Status Sections: My Day + Neglected) ahead of Phase 3 by user request. Phase 3 now depends on 2.5.*
-*Last updated: 2026-05-07 — Phase 2.5 complete (plan 02.5-01 shipped). 3 of 7 phases done. Phase 3 (Projects Panel — UX) is next.*
-*Last updated: 2026-05-07 — Phase 3 complete (plans 03-01, 03-02 shipped). 4 of 7 phases done. Phase 4 (Projects Panel — Features: project activity log) is next.*
-*Last updated: 2026-05-07 — Phase 4 split into 04-01 (data + emission + tests) and 04-02 (UI tab) per `/paul:discover` recommendation.*
-*Last updated: 2026-05-07 — Phase 4 complete (both plans shipped). 5 of 7 phases done. Phase 5 (Active Task Views) is next.*
-*Last updated: 2026-05-07 — 05-02 planning descoped `1f7139ee` (Backlog "resolve all" button) per user; remains an open feedback item for a future plan.*
-*Last updated: 2026-05-07 — Phase 5 complete (all 3 plans shipped, `fb700fcc` fully closed). 6 of 7 phases done. Phase 6 (Settings & Misc) is next.*
-*Last updated: 2026-05-07 — Phase 6 re-scoped during 06-01 planning: `64227659` (guided tour) deferred to a future milestone per user (greenfield feature, doesn't fit polish theme). Phase 6 now has 3 in-scope items across 2 plans.*
-*Last updated: 2026-05-07 — `a87a75af` (pop-out doing timers) deferred to a future milestone per user. Phase 6 closes with only 06-01. Milestone v1.0 complete.*
-*Last updated: 2026-05-08 — Added "Feedback panel removal" to Deferred (Someday) as a v1.1 candidate. Triggered by 2026-05-08 migration of 46 open feedback items to GitHub Issues #28–#73 and adoption of GitHub Issues as the system of record. Closing the loop requires removing the in-app feedback page itself.*
+*Last updated: 2026-05-07 — v1.0 complete (7 of 7 phases shipped).*
+*Last updated: 2026-05-08 — v1.1 MCP Integration milestone created. Phase 1 is a feasibility gate (research + walking-skeleton PoC); Phase 2 is the full server; Phase 3 is safety + security hardening. v1.0 collapsed into Previous Milestones section.*
+*Last updated: 2026-05-08 — Phase 1 complete (both plans shipped). 1 of 3 phases done. Walking-skeleton sidecar live and smoke-tested. Phase 2 (Full Tool Surface) is next.*

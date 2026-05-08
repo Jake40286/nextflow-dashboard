@@ -14,3 +14,21 @@ services:
       - ./app:/app
       - ./data:/data
       - ./secrets:/secrets
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    user: "1000:1000"
+    env_file:
+      - .env
+    environment:
+      - NEXTFLOW_API_URL=http://web:8000
+    ports:
+      - "127.0.0.1:8003:8001"
+    working_dir: /app
+    command: python mcp_server.py
+    volumes:
+      - ./app:/app
+    depends_on:
+      - web

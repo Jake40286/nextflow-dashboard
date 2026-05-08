@@ -46,10 +46,11 @@ Users can track tasks, projects, and calendar events across any browser on their
 - [x] Project activity / change log — silently records task and project lifecycle events; visible in a bottom-of-flyout section per project (Phase 4)
 - [x] Active Task Views polish — Area-of-Focus filter on association flyout; click-anywhere expand/collapse on Notes / List / Follow-up / Prerequisites flyout sections; multi-edit bar redesigned with draft+Apply/Cancel, "(Mixed)" placeholder for heterogeneous selections, tri-state Contexts chip group (observed all/some/none × intent add/remove); Weekly Review Pending Tasks step gained guidance copy; Settings → Tags & Contexts now visible by default (Phase 5)
 - [x] Settings & Convert polish — "Inactive" → "Completed" terminology on Settings task counts; Convert-to-Project carries task.notes → project.vision and task.dueDate → project.deadline alongside the existing areaOfFocus; latent ES-module-scope bug fixed that had silently aborted Settings panel rendering for the Features and Tags & Contexts sections (Phase 6)
+- [x] **MCP feasibility & walking-skeleton sidecar (v1.1 Phase 1)** — New `mcp` service in docker-compose stack (`Dockerfile.mcp`, `app/mcp_server.py`, sidecar-scoped `requirements-mcp.txt`). Built on official Anthropic `mcp` Python SDK 1.27.0 via FastMCP decorator API. Localhost-only port `127.0.0.1:8003`. One tool exposed: `create_task(title, status="inbox")`. Routes all writes through main app's `PUT /state` with `If-Match` optimistic locking; ports `flushRemoteQueue`'s 3-retry 409 pattern verbatim. Smoke-tested end-to-end (LLM creates task → appears in browser, tagged `_source: "mcp"`). Architectural anchor at `.paul/phases/01-mcp-feasibility/DECISIONS.md`.
 
 ### Active (In Progress)
 
-- _v1.0 Feedback Clearance & Polish milestone closed 2026-05-07. No active work in progress. Next milestone TBD via /paul:discuss-milestone._
+- **v1.1 MCP Integration** — Phase 1 complete (2026-05-08). Phase 2 next: full tool surface (`create_project`, `create_project_with_tasks` atomic decomposition, list/get/update tools, rich GTD-aware schema descriptions). Phase 3: safety + security hardening (dry-run, rate-limit, audit, LAN-only docs warning).
 
 ### Planned (Next)
 

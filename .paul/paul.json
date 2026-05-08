@@ -1,14 +1,14 @@
 {
   "name": "nextflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "milestone": {
     "name": "v1.0 Feedback Clearance & Polish",
     "version": "1.0.0",
-    "status": "in_progress"
+    "status": "complete"
   },
   "phase": {
-    "number": 5,
-    "name": "Active Task Views",
+    "number": 6,
+    "name": "Settings & Misc",
     "status": "complete"
   },
   "loop": {

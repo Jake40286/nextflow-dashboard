@@ -5,19 +5,19 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 5 complete (6 of 7 phases shipped). Phase 6: Settings & Misc next.
+**Current focus:** v1.0 Feedback Clearance & Polish — **MILESTONE COMPLETE** (7 of 7 phases shipped). Ready to discuss next milestone.
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 6 of 7 (Settings & Misc) — In progress (06-01 closed; 06-02 next)
-Plan: 06-01 closed (PLAN/APPLY/UNIFY all ✓) with auto-fix for latent settings-render bug
-Status: 06-01 loop closed
-Last activity: 2026-05-07 — UNIFY complete for 06-01. SUMMARY written. Feedback b4faaccd + 981dde72 marked resolved; 2dc7c45a properly fixed and re-resolved. 179/179 tests passing.
+Phase: 6 of 7 (Settings & Misc) — Complete; **MILESTONE v1.0 COMPLETE**
+Plan: 06-01 closed; 06-02 (`a87a75af`) descoped to Deferred (Someday)
+Status: Milestone closed; ready to discuss next milestone or push v1.0 to origin
+Last activity: 2026-05-07 — Phase 6 transition complete. a87a75af deferred per user. Milestone closed.
 
 Progress:
-- Milestone: [████████░░] 86% (6 of 7 phases complete — 1, 2, 2.5, 3, 4, 5)
-- Phase 6: [░░░░░░░░░░] 0% — 06-01 planned; 06-02 queued
+- Milestone: [██████████] 100% (7 of 7 phases shipped — 1, 2, 2.5, 3, 4, 5, 6)
+- Phase 6: [██████████] 100% — 06-01 closed; 06-02 deferred
 
 ## Loop Position
 
@@ -42,9 +42,13 @@ Phase 5 (closed):
   05-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   05-03:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 
-Phase 6 (active):
+Phase 6 (closed):
   06-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
-  06-02:              ○ ──── ○ ──── ○             [Ready to plan — pop-out doing timers]
+  06-02:              ✗ ─── ✗ ─── ✗               [DEFERRED — a87a75af moved to Someday]
+
+═════════════════════════════════════════════════════════════
+v1.0 MILESTONE COMPLETE — 2026-05-07
+═════════════════════════════════════════════════════════════
 ```
 
 ## Accumulated Context
@@ -84,21 +88,25 @@ None.
 
 ### Git State
 
-- Phase 5 merged to main 2026-05-07 (commit `0556ca9`, fast-forward). Branch `feature/active-task-views` deleted post-merge. NOT YET pushed to origin.
-- Active branch: `feature/settings-misc` (created from main 2026-05-07; will hold 06-01 + 06-02 before merging).
+- Phase 5 merged to main 2026-05-07 (commit `0556ca9`, fast-forward). Branch `feature/active-task-views` deleted.
+- Phase 6 (06-01 only) merged to main 2026-05-07 as part of v1.0 closure. Branch `feature/settings-misc` deleted post-merge.
+- v1.0 commits awaiting push to origin: Phase 5 (`4bc9395`, `4afd45c`, `0556ca9`) + Phase 6 (`daa2d1c`) + this transition commit.
 - Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`); Phase 4 (`6164484`).
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: 06-01 closed on feature/settings-misc with auto-fix bundled; ready to plan 06-02.
-Next action: `/paul:plan` for 06-02 — pop-out doing timers (`a87a75af`). Last plan in Phase 6.
+Stopped at: v1.0 milestone complete; on main; commits not yet pushed to origin.
+Next action: Push v1.0 to origin when ready (`git push origin main`); then `/paul:discuss-milestone` to scope v1.1, or pick up deferred items individually.
 Resume context:
-- Branch: `feature/settings-misc` (will hold 06-02 before merging Phase 6 to main)
+- Branch: `main` (Phase 6 just merged; both feature branches deleted)
 - npm test baseline: 179/179 passing
-- 06-02 scope: `a87a75af` pop-out window for "doing" timers — feature-ish, will need design discussion (one-window or per-task pop-outs? localStorage state? close behavior?)
-- 64227659 (guided tour) descoped 2026-05-07 from v1.0 — moved to ROADMAP "Deferred (Someday)" for a future milestone
-- 2dc7c45a was re-opened mid-06-01 after user UAT exposed the wrong-layer 05-02 fix; properly resolved during 06-01 with the helper-duplicates fix
+- v1.0 deferred items in ROADMAP "Deferred (Someday)" that may want their own future milestone:
+  * `64227659` — Guided tour
+  * `a87a75af` — Pop-out doing timers
+  * `1f7139ee` — Backlog "resolve all" button
+  * `bb343993` — Apply Backlog UX elements to other pages
+- Plus the original Someday list: `943c01b8` (mobile dashboard), `346ac587` (multi-user), `fc822ad6` (trash bin), `3ad1d3e3` (sleep/snooze), `00b83571` (shopping list), `5953b8c8` (email digests), `21377c43` (chaining/prereqs)
 
 ---
 *STATE.md — Updated after every significant action*

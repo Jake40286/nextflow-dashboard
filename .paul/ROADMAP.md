@@ -7,8 +7,8 @@ nextflow is a mature self-hosted productivity app. This milestone focuses on qua
 ## Current Milestone
 
 **v1.0 Feedback Clearance & Polish** (v1.0.0)
-Status: In progress
-Phases: 6 of 7 complete
+Status: Complete
+Phases: 7 of 7 complete
 
 ## Phases
 
@@ -20,7 +20,7 @@ Phases: 6 of 7 complete
 | 3 | Projects Panel — UX | 2 | Complete | 2026-05-07 |
 | 4 | Projects Panel — Features | 2 | Complete | 2026-05-07 |
 | 5 | Active Task Views | 3 | Complete | 2026-05-07 |
-| 6 | Settings & Misc | 2 | Not started | - |
+| 6 | Settings & Misc | 1 | Complete | 2026-05-07 |
 
 ## Phase Details
 
@@ -123,21 +123,20 @@ Phases: 6 of 7 complete
 
 ### Phase 6: Settings & Misc
 
-**Goal:** Settings/onboarding polish and pop-out timer feature.
+**Goal:** Settings/onboarding polish.
 **Depends on:** Phase 5
 **Research:** Unlikely
 
 **Scope:**
 - `b4faaccd` — Rename "Inactive" label on completed tasks
 - `981dde72` — "Convert to Project" UX clarification (largely already implemented — verify + extend carry-over)
-- `a87a75af` — Pop-out window for "doing" timers
 
 **Plans:**
-- [ ] 06-01: Rename "Inactive" + Convert-to-Project carry-over (`b4faaccd`, `981dde72`)
-- [ ] 06-02: Pop-out doing timers (`a87a75af`)
+- [x] 06-01: Rename "Inactive" + Convert-to-Project carry-over (`b4faaccd`, `981dde72`) — completed 2026-05-07; bundled an auto-fix for a latent settings-render bug surfaced during UAT (proper resolution of `2dc7c45a`)
 
 **Notes:**
-- 2026-05-07: `64227659` (guided tour / "show me around") descoped from v1.0 milestone during 06-01 planning. It's a greenfield feature, not polish, and doesn't fit the milestone tagline. Feedback record stays open and is recorded under "Deferred (Someday)" below for a future milestone.
+- 2026-05-07: `64227659` (guided tour / "show me around") descoped from v1.0 milestone during 06-01 planning. Feature-shaped, not polish. Moved to "Deferred (Someday)" for a future milestone.
+- 2026-05-07: `a87a75af` (pop-out doing timers) descoped from v1.0 milestone after 06-01 closed. Feature-shaped, no urgent need. Moved to "Deferred (Someday)" for a future milestone.
 
 ## Deferred (Someday)
 
@@ -151,6 +150,9 @@ Out of scope for this milestone — large-scope features requiring separate plan
 - `5953b8c8` — Email digest summaries
 - `21377c43` — Chaining/prerequisite tasks
 - `64227659` — Guided tour / "show me around" (deferred from v1.0 Phase 6 — feature-shaped, not polish)
+- `a87a75af` — Pop-out window for "doing" timers (deferred from v1.0 Phase 6 — feature-shaped; requires design discussion)
+- `1f7139ee` — Backlog page "resolve all" button (deferred from v1.0 Phase 5 — UX direction not finalized)
+- `bb343993` — Apply Backlog UX elements to other pages (deferred from v1.0 — needs scoping clarification)
 
 ---
 *Roadmap created: 2026-05-06*
@@ -164,3 +166,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — 05-02 planning descoped `1f7139ee` (Backlog "resolve all" button) per user; remains an open feedback item for a future plan.*
 *Last updated: 2026-05-07 — Phase 5 complete (all 3 plans shipped, `fb700fcc` fully closed). 6 of 7 phases done. Phase 6 (Settings & Misc) is next.*
 *Last updated: 2026-05-07 — Phase 6 re-scoped during 06-01 planning: `64227659` (guided tour) deferred to a future milestone per user (greenfield feature, doesn't fit polish theme). Phase 6 now has 3 in-scope items across 2 plans.*
+*Last updated: 2026-05-07 — `a87a75af` (pop-out doing timers) deferred to a future milestone per user. Phase 6 closes with only 06-01. Milestone v1.0 complete.*

@@ -15,7 +15,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Type | Application |
 | Version | 0.1.0 |
 | Status | Beta / Active refinement |
-| Last Updated | 2026-05-07 (after Phase 5) |
+| Last Updated | 2026-05-07 (after Phase 6 — v1.0 milestone complete) |
 
 **Production URLs:**
 - http://localhost:8002 — Local dev / Docker
@@ -45,10 +45,11 @@ Users can track tasks, projects, and calendar events across any browser on their
 - [x] Projects panel UX — accurate panel label + clear add-project affordance + correct "no next action" warning logic (Phase 3)
 - [x] Project activity / change log — silently records task and project lifecycle events; visible in a bottom-of-flyout section per project (Phase 4)
 - [x] Active Task Views polish — Area-of-Focus filter on association flyout; click-anywhere expand/collapse on Notes / List / Follow-up / Prerequisites flyout sections; multi-edit bar redesigned with draft+Apply/Cancel, "(Mixed)" placeholder for heterogeneous selections, tri-state Contexts chip group (observed all/some/none × intent add/remove); Weekly Review Pending Tasks step gained guidance copy; Settings → Tags & Contexts now visible by default (Phase 5)
+- [x] Settings & Convert polish — "Inactive" → "Completed" terminology on Settings task counts; Convert-to-Project carries task.notes → project.vision and task.dueDate → project.deadline alongside the existing areaOfFocus; latent ES-module-scope bug fixed that had silently aborted Settings panel rendering for the Features and Tags & Contexts sections (Phase 6)
 
 ### Active (In Progress)
 
-- [ ] Feedback backlog clearance — ongoing
+- _v1.0 Feedback Clearance & Polish milestone closed 2026-05-07. No active work in progress. Next milestone TBD via /paul:discuss-milestone._
 
 ### Planned (Next)
 
@@ -83,6 +84,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Activity log scope: status-change + project-assign + lifecycle events; NOT note edits, dueDate, contexts, etc. | User feedback explicitly said "status of tasks etc. should be logged" / "I wouldn't want some information to become permanent, like notes" | 2026-05-07 | Active (Phase 4) |
 | Bulk-edit: draft + Apply/Cancel pattern, Mixed-placeholder for heterogeneous single-value selects, tri-state chips for multi-value fields (Contexts), selection survives Apply with DOM-based view reconciliation | Replaces immediate-apply pattern (which lost selection after every edit and silently overwrote heterogeneous values); follows established Gmail/Linear/Notion conventions | 2026-05-07 | Active (Phase 5) |
 | Multi-value bulk-edit fields use tri-state chip cycle (no-change → add → remove → no-change) with observed-state class × intent-state class | Future bulk-edit fields (people-tags, etc.) should mirror this pattern instead of inventing parallel UX | 2026-05-07 | Active (Phase 5) |
+| Helpers shared between `panels/<name>.js` modules and `ui.js` must be IMPORTED (or duplicated locally) — never referenced as free identifiers. Object.assign mixin pattern doesn't bridge ES module top-level scope | Two unimported references to ui.js helpers in panels/settings.js threw ReferenceError on every Settings render and silently aborted the function for months. Future panels must avoid the trap | 2026-05-07 | Active (Phase 6) |
 
 ## Success Metrics
 
@@ -112,4 +114,4 @@ Users can track tasks, projects, and calendar events across any browser on their
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-05-07 after Phase 5*
+*Last updated: 2026-05-07 after Phase 6 — v1.0 milestone complete*

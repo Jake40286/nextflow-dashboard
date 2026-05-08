@@ -77,7 +77,7 @@ v1.0 MILESTONE COMPLETE — 2026-05-07
 ### Deferred Issues
 
 - Process session case for auto-flyout (0bf1bf88): when batch-clarifying, the project flyout is not opened after convert routing to avoid conflict with the next queued task.
-- 57 open feedback items not currently in ROADMAP scope. Decide later whether to bucket more into Phases 3–6, draft new phases, or descope the milestone tagline.
+- 2026-05-08: Open feedback items migrated to GitHub Issues #28–#73; in-app feedback panel marked for removal (added to ROADMAP Deferred — v1.1 candidate). The "57 open feedback items" note from 2026-05-07 is superseded by the GitHub-issues triage report.
 - `483a286b` (rename "Move to waiting" + delegate-to-person) is task-flyout work; sitting outside Phase 3 scope but flagged as a candidate.
 - `bb343993` (apply Backlog UX elements to other pages) descoped from v1.0 milestone 2026-05-07 per user. Feedback record stays open for a future milestone; revisit if user clarifies which elements + which pages.
 - Phase 2.5 follow-up candidates (out of scope for 02.5-01): settings UI to tune the Neglected cap (currently hardcoded 5) and the My Day cap (currently uncapped); shared "status-bar" base class refactor of urgent + my-day + neglected once the new bars prove stable.

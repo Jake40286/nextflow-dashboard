@@ -142,6 +142,7 @@ Phases: 7 of 7 complete
 
 Out of scope for this milestone — large-scope features requiring separate planning:
 
+- **Feedback panel removal** — Strip the in-app feedback page (UI + backend endpoints + `data/feedback.json`) now that GitHub Issues is the system of record. Touches `app/server.py` (`/feedback` CRUD), `app/web_ui/` (feedback panel HTML/JS), and the settings-panel admin list (`loadFeedbackList()` in `ui.js`). Strong v1.1 candidate; small-to-medium scope, polish-shaped, fits the v1.0 "polish" theme. **Verify the migration is complete** before removing — open issues should all be reflected in GitHub. Prerequisite: confirm no automation depends on `GET /feedback`.
 - `943c01b8` — Mobile-friendly dashboard (full mobile pass)
 - `346ac587` — Multi-user support
 - `fc822ad6` — Task trash bin with 30-day auto-delete
@@ -149,6 +150,7 @@ Out of scope for this milestone — large-scope features requiring separate plan
 - `00b83571` — Shopping list feature
 - `5953b8c8` — Email digest summaries
 - `21377c43` — Chaining/prerequisite tasks
+- `8daaf79a` — Complete-with-options modal + chained follow-up tasks + "Graph View" (obsidian-style task graph) — overlaps with 21377c43 on chaining but adds a graph visualization
 - `64227659` — Guided tour / "show me around" (deferred from v1.0 Phase 6 — feature-shaped, not polish)
 - `a87a75af` — Pop-out window for "doing" timers (deferred from v1.0 Phase 6 — feature-shaped; requires design discussion)
 - `1f7139ee` — Backlog page "resolve all" button (deferred from v1.0 Phase 5 — UX direction not finalized)
@@ -167,3 +169,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Phase 5 complete (all 3 plans shipped, `fb700fcc` fully closed). 6 of 7 phases done. Phase 6 (Settings & Misc) is next.*
 *Last updated: 2026-05-07 — Phase 6 re-scoped during 06-01 planning: `64227659` (guided tour) deferred to a future milestone per user (greenfield feature, doesn't fit polish theme). Phase 6 now has 3 in-scope items across 2 plans.*
 *Last updated: 2026-05-07 — `a87a75af` (pop-out doing timers) deferred to a future milestone per user. Phase 6 closes with only 06-01. Milestone v1.0 complete.*
+*Last updated: 2026-05-08 — Added "Feedback panel removal" to Deferred (Someday) as a v1.1 candidate. Triggered by 2026-05-08 migration of 46 open feedback items to GitHub Issues #28–#73 and adoption of GitHub Issues as the system of record. Closing the loop requires removing the in-app feedback page itself.*

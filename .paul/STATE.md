@@ -10,31 +10,30 @@ See: .paul/PROJECT.md (updated 2026-05-07)
 ## Current Position
 
 Milestone: v1.1 MCP Integration
-Phase: 1 of 3 — Complete; Phase 2 next (MCP Server — Full Tool Surface)
-Plan: All Phase 1 plans closed; ready to plan 02-01
-Status: Phase 1 COMPLETE. Awaiting decision on commit + branch strategy, then `/paul:plan` for Phase 2.
-Last activity: 2026-05-08 — UNIFY complete on 01-02. Phase 1 closed; ROADMAP + PROJECT.md + paul.json synced.
+Phase: 2 of 3 — MCP Server / Full Tool Surface (in progress; 02-01 closed, 02-02 + 02-03 ahead)
+Plan: 02-01 closed (Project entity + flagship atomic decomposition shipped); 02-02 ready to plan
+Status: Loop closed for 02-01. Awaiting commit decision, then `/paul:plan` for 02-02 (task-side tools).
+Last activity: 2026-05-08 — UNIFY complete on 02-01. Atomicity proven (`_rev` Δ = +1 for project + 3 tasks).
 
 Progress:
-- Milestone: [███░░░░░░░] 33% (1 of 3 phases shipped)
-- Phase 1: [██████████] 100% — both plans shipped
-- Phase 2: [░░░░░░░░░░] 0% — ready to plan
+- Milestone: [████░░░░░░] 40% (Phase 1 shipped; Phase 2 plan 1 of 3 closed)
+- Phase 1: [██████████] 100%
+- Phase 2: [████░░░░░░] 33% — 02-01 closed; 02-02 + 02-03 ahead
 - Phase 3: [░░░░░░░░░░] 0%
 
 ## Loop Position
 
 Current loop state:
 ```
-Phase 1 (CLOSED):
-  01-01 (research):  PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed — verdict GO]
-  01-02 (PoC):       PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed — sidecar live]
+Phase 1 (CLOSED — merged to main, pushed to origin):
+  01-01:             [✓ closed]
+  01-02:             [✓ closed]
 
-═════════════════════════════════════════════════════════════
-PHASE 1 COMPLETE — 2026-05-08
-═════════════════════════════════════════════════════════════
-
-Phase 2 (next):
-  02-01:             not yet planned
+Phase 2 (active):
+  02-01:             PLAN ──▶ APPLY ──▶ UNIFY
+                       ✓        ✓        ✓     [Closed — flagship atomic decomposition shipped]
+  02-02:             not yet planned (task-side tools)
+  02-03:             not yet planned (tests + cleanup + likely refactor)
 ```
 
 ## Accumulated Context
@@ -50,16 +49,25 @@ Phase 2 (next):
 
 ### Decisions (v1.1-specific — locked in 01-01)
 
-- **MCP SDK: official `mcp` Python SDK v1.27.0** (MIT, ~10 transitive deps incl. starlette/uvicorn/pydantic v2). Pinned in a new sidecar-scoped `requirements.txt`. The first hard Python dependency in the project.
-- **Sidecar shape: HTTP-only docker-network access; NO `./data` bind-mount.** New `mcp` service in `docker-compose.yml`, port 8003 host / 8001 container, talks to `web` via `http://web:8000` on the docker bridge network.
-- **Sync path: direct port of `flushRemoteQueue`'s 3-retry loop** (`data.js:744-787`). Full-state PUT body (no deltas), `If-Match: <_rev>` header, on 409 re-apply mutation to server-state body and retry, cap 3.
-- **Phase 1 PoC auth: localhost-only bind, no token.** Feasibility gate, not deploy.
-- **Phase 3 production auth: bearer token + LAN-bind**, `MCP_AUTH_TOKEN` in `.env`. Internet exposure stays out of scope; Phase 3 ships a "do not expose without TLS reverse proxy" warning in README + in-app docs.
+- **MCP SDK: official `mcp` Python SDK v1.27.0** (MIT). Sidecar-scoped `requirements-mcp.txt`. (Actual deps: 29 packages, not the ~10 estimated.)
+- **Sidecar shape: HTTP-only docker-network access; NO `./data` bind-mount.** Port 8003 host / 8001 container; talks to `web` via `http://web:8000`.
+- **Sync path: direct port of `flushRemoteQueue`'s 3-retry loop** (`data.js:744-787`). Full-state PUT, `If-Match: <_rev>`, 409 re-apply + retry, cap 3.
+- **Phase 1 PoC auth: localhost-only bind, no token.**
+- **Phase 3 production auth: bearer token + LAN-bind**, `MCP_AUTH_TOKEN` in `.env`. Internet exposure stays out of scope; Phase 3 ships a "do not expose without TLS reverse proxy" warning in docs.
+
+### Decisions (v1.1-specific — locked in 02-01)
+
+- **Field-name fidelity to JS source.** When MCP tools mutate nextflow entities, READ data.js's create/normalize functions FIRST, then mirror the field names exactly. No mapping layer between LLM-facing parameters and on-disk fields. (Caught 3 Spec drifts in 02-01: `title→name`, `theme→themeTag`, `status→statusTag`.)
+- **Project IDs use `project-<uuid>` format** matching `data.js:generateId("project")`. Tasks created in 01-02 used bare uuid hex; consistency cleanup deferred to 02-03.
+- **Atomicity guarantee testable via `_rev` Δ.** Every multi-entity write tool MUST include an AC that captures `_rev` before/after and asserts `_rev_after == _rev_before + 1`. Any other delta means the implementation is doing N writes internally — a bug.
+- **Read tools don't acquire `_state_lock`.** The lock is for write serialization only; concurrent reads are safe. `_fetch_state` is called directly.
+- **Atomic decomposition cap: 50 tasks** (hardcoded). Phase 3 will refine to configurable + rate-limit + dry-run.
+- **`mcp_server.py` stays monolithic for now.** 494 LoC after 02-01; refactor to `app/mcp/` package becomes a stronger candidate in 02-03 once 02-02 adds task-side tools (projected ~700+ LoC).
 
 ### Decisions (v1.1-specific — still to be made)
 
-- _Phase 2 will design: full tool surface (`create_task`, `create_project`, `create_project_with_tasks`, list/get/update tools), GTD-field-aware schema descriptions, LLM-author tagging field name (`_source: "mcp"` is the working assumption)._
-- _Phase 3 will finalize: rate-limit / batch-cap policies, audit-trail UI shape, and the canonical "do not expose to internet" doc copy._
+- _Phase 2 will still design: task-entity tool schemas, behavior of `add_task_note`, whether to emit synthetic `projectActivityLog` rows for MCP-created entities._
+- _Phase 3 will finalize: rate-limit / batch-cap policies, audit-trail UI shape, canonical "do not expose to internet" doc copy._
 
 ### Deferred Issues
 
@@ -81,15 +89,16 @@ None at milestone creation. Phase 1 may surface an MCP-Python feasibility blocke
 ## Session Continuity
 
 Last session: 2026-05-08
-Stopped at: Phase 1 closed (both plans shipped). MCP sidecar live in docker stack, registered with Claude Code, smoke-tested. Phase 1's work is uncommitted on `main`.
-Next action: Decide commit strategy (single phase commit on main vs. feature branch + merge), then `/paul:plan` for 02-01.
+Stopped at: 02-01 closed (PLAN ✓ APPLY ✓ UNIFY ✓). 4 new MCP tools live; flagship atomic decomposition proven correct. Phase 2 work uncommitted on main.
+Next action: Decide commit strategy for 02-01 (likely: feature branch + merge, mirror Phase 1 pattern), then `/paul:plan` for 02-02 (task-side tools).
 Resume context:
-- Branch: `main` (currently dirty with all Phase 1 work — DECISIONS, both PLANs, both SUMMARIES, Dockerfile.mcp, requirements-mcp.txt, app/mcp_server.py, docker-compose.yml)
-- Stack state: `nextflow-web-1` and `nextflow-mcp-1` both running. MCP sidecar reachable at http://127.0.0.1:8003/mcp; `claude mcp add nextflow ...` already done.
-- npm test baseline: 179/179 passing (no test-relevant code changes in Phase 1; main app unchanged)
-- Smoke-test artifact: task `b572e53a1edc42e3ade95a17a86a1cff` titled "PAUL 01-02 smoke test — sidecar walking skeleton" is in user's inbox with `_source: "mcp"`. Safe to delete via UI; was a marker only.
-- **Phase 2 scope (not yet planned):** full tool surface — add `create_project`, `create_project_with_tasks` (atomic decomposition), `list_tasks`, `list_projects`, `get_task`, `get_project`, `update_task_status`, `set_task_project`. Rich GTD-aware schema descriptions for status/contexts/areaOfFocus/peopleTags/effortLevel/timeRequired. 409-retry already done in 01-02; just register more `@mcp.tool()` functions.
-- **Deferred to Phase 2 from 01-02:** add automated tests for the MCP server (especially the 409 retry path); pin `starlette<2` in requirements-mcp.txt; consider drive-by removal of the obsolete `version: "3.8"` declaration in docker-compose.yml.
+- Branch: `main` (currently dirty with 02-01 work)
+- Stack state: `nextflow-mcp-1` running; 5 tools registered with Claude Code: `create_task` + `create_project` + `list_projects` + `get_project` + `create_project_with_tasks`.
+- Smoke-test artifact in user data: `project-c7fd2fac-...` "PAUL 02-01 atomicity test" + 3 tasks ("Atomicity check task A/B/C"). Safe to delete via UI.
+- `app/mcp_server.py`: 494 LoC. Refactor candidate but not blocking; will revisit in 02-03.
+- **02-02 scope (next plan):** Task-entity vertical slice — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. Mirror 02-01's pattern: read data.js task-handling functions FIRST, mirror field names verbatim.
+- **02-03 scope:** tests (especially 409 retry path), pin `starlette<2`, remove obsolete `version: "3.8"` from compose, possibly fix `create_task` ID format to `task-<uuid>` for consistency, refactor `mcp_server.py` if file size justifies.
+- Carried-forward deferreds: synthetic `projectActivityLog` row for MCP-created projects; `areaOfFocus`/`themeTag` validation against `state.settings.areaOptions`.
 
 ---
 *STATE.md — Updated after every significant action*

@@ -15,7 +15,7 @@ Phases: 1 of 3 complete
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
 | 1 | MCP Feasibility & PoC | 01-01, 01-02 | Complete | 2026-05-08 |
-| 2 | MCP Server — Full Tool Surface | TBD | Not started | - |
+| 2 | MCP Server — Full Tool Surface | 02-01 closed; 02-02, 02-03 ahead | In progress | - |
 | 3 | Safety, Audit & Security Hardening | TBD | Not started | - |
 
 ## Phase Details
@@ -55,8 +55,10 @@ Phases: 1 of 3 complete
 - Rich tool-schema descriptions for GTD-specific fields (status / contexts / areaOfFocus / peopleTags / effortLevel / timeRequired) — explain meaning and enums inline so LLM-generated tasks are semantically accurate, not just structurally valid.
 - 409-conflict retry loop matching the JS client's behavior (re-merge + retry, capped).
 
-**Plans:**
-- [ ] 02-01: TBD (defined during /paul:plan)
+**Plans (3 projected; created on demand):**
+- [x] 02-01: Project entity + atomic decomposition flagship shipped — `create_project`, `list_projects`, `get_project`, `create_project_with_tasks` live; atomicity proven (`_rev` Δ = +1 for 4 entities). See `.paul/phases/02-mcp-server/02-01-SUMMARY.md` — completed 2026-05-08.
+- [ ] 02-02: Task entity tools — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. To be planned after 02-01.
+- [ ] 02-03: Tests + minor fixes — automated MCP server tests (especially 409 retry); pin `starlette<2`; remove obsolete `version: "3.8"` from compose. To be planned after 02-02.
 
 ### Phase 3: Safety, Audit & Security Hardening
 

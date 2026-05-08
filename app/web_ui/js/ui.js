@@ -8472,9 +8472,12 @@ export class UIController {
     if (!proposedName || !proposedName.trim()) return;
     const projectName = proposedName.trim();
 
-    // Step 2: create the project, inheriting area of focus from the task
-    const project = this.taskManager.addProject(projectName, "", {
+    // Step 2: create the project, inheriting area of focus, deadline, and
+    // notes-as-vision from the task. themeTag has no task equivalent — leave null.
+    const visionFromNotes = typeof task.notes === "string" ? task.notes.trim() : "";
+    const project = this.taskManager.addProject(projectName, visionFromNotes, {
       areaOfFocus: task.areaOfFocus || null,
+      deadline: task.dueDate || null,
     });
     if (!project) return;
 

@@ -10,14 +10,14 @@ See: .paul/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 5 of 7 (Active Task Views) — Complete (all 3 plans shipped); Phase 6 (Settings & Misc) next
-Plan: 05-03 closed (PLAN/APPLY/UNIFY all ✓); Phase 5 transition complete
-Status: Phase 5 complete; ready to plan Phase 6
-Last activity: 2026-05-07 — UNIFY complete for 05-03. SUMMARY written. Feedback fb700fcc marked resolved. 179/179 tests passing. Phase 5 transition: PROJECT/ROADMAP updated, branch merged to main.
+Phase: 6 of 7 (Settings & Misc) — In progress (06-01 closed; 06-02 next)
+Plan: 06-01 closed (PLAN/APPLY/UNIFY all ✓) with auto-fix for latent settings-render bug
+Status: 06-01 loop closed
+Last activity: 2026-05-07 — UNIFY complete for 06-01. SUMMARY written. Feedback b4faaccd + 981dde72 marked resolved; 2dc7c45a properly fixed and re-resolved. 179/179 tests passing.
 
 Progress:
 - Milestone: [████████░░] 86% (6 of 7 phases complete — 1, 2, 2.5, 3, 4, 5)
-- Phase 5: [██████████] 100% — 05-01 + 05-02 + 05-03 all closed
+- Phase 6: [░░░░░░░░░░] 0% — 06-01 planned; 06-02 queued
 
 ## Loop Position
 
@@ -41,6 +41,10 @@ Phase 5 (closed):
   05-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   05-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   05-03:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+
+Phase 6 (active):
+  06-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
+  06-02:              ○ ──── ○ ──── ○             [Ready to plan — pop-out doing timers]
 ```
 
 ## Accumulated Context
@@ -63,6 +67,8 @@ Phase 5 (closed):
 - 2026-05-07 (05-03): Bulk-edit moved from immediate-apply to draft+Apply/Cancel. State held in `this.pendingBulkEdits` (single-value selects) and `this.pendingContextIntents` Map (Contexts chip cycle). Future multi-value bulk fields (people-tags etc.) should mirror the contexts chip pattern: observed-state class × intent-state class, cycle handler in setupMultiEditBar, intent-application helper returning a new array, equality helper to skip no-op writes.
 - 2026-05-07 (05-03): Selection-reconciliation reads live DOM (`.task-row[data-task-id]`) after Apply rather than re-running panel filter predicates. Depends on synchronous statechange→render — confirmed sync at `data.js:874-876`. If a future panel renders task rows outside this DOM convention, reconciliation will silently leave stale ids in selectedTaskIds.
 - 2026-05-07 (05-03): Two-step Escape on multi-edit bar — draft cancels first, selection clears second. Matches Linear/Notion convention; gives non-destructive abandon path for staged edits.
+- 2026-05-07 (06-01): When `panels/<name>.js` modules need a helper from `ui.js`, IMPORT it (or duplicate the pure body locally) — never reference ui.js's top-level functions as free identifiers. The `Object.assign(UIController.prototype, ...)` mixin pattern makes methods callable on the controller but does NOT bridge ES module scope, so free-identifier references throw `ReferenceError` at render time. This bit us on `stripTagPrefix` and `normalizeThemeHexInput`; both are now duplicated locally in `panels/settings.js`. Future audit candidate: a `app/web_ui/js/utils.js` shared module to consolidate these helpers, but only when more than 2 panel modules need them.
+- 2026-05-07 (06-01): Misdiagnosed 05-02 "Settings empty" as a closed-accordion issue when the real cause was a render-abort. Lesson saved to memory: when a user reports "X is missing/empty," ASK FOR BROWSER CONSOLE OUTPUT before picking a fix layer. The default-open accordion still ships (separate UX improvement), but the empty-sections symptom was unrelated to it.
 
 ### Deferred Issues
 
@@ -78,20 +84,21 @@ None.
 
 ### Git State
 
-- Phase 5 merged to main 2026-05-07 (after 05-03 UNIFY). Branch `feature/active-task-views` deleted post-merge.
+- Phase 5 merged to main 2026-05-07 (commit `0556ca9`, fast-forward). Branch `feature/active-task-views` deleted post-merge. NOT YET pushed to origin.
+- Active branch: `feature/settings-misc` (created from main 2026-05-07; will hold 06-01 + 06-02 before merging).
 - Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`); Phase 4 (`6164484`).
-- Next phase work should start a fresh branch (e.g., `feature/settings-misc` for Phase 6).
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: Phase 5 complete and merged to main; ready to plan Phase 6.
-Next action: `/paul:plan` for Phase 6 — Settings & onboarding polish (06-01) or pop-out doing timers (06-02).
+Stopped at: 06-01 closed on feature/settings-misc with auto-fix bundled; ready to plan 06-02.
+Next action: `/paul:plan` for 06-02 — pop-out doing timers (`a87a75af`). Last plan in Phase 6.
 Resume context:
-- Branch: `main` (Phase 5 merged via fast-forward); start fresh `feature/...` branch for Phase 6
+- Branch: `feature/settings-misc` (will hold 06-02 before merging Phase 6 to main)
 - npm test baseline: 179/179 passing
-- Phase 6 scope (from ROADMAP): `64227659` (guided tour), `b4faaccd` (rename "Inactive" label), `981dde72` ("Convert to Project" UX), `a87a75af` (pop-out doing timer)
-- Phase 6 plan split (per ROADMAP): 06-01 settings & onboarding polish; 06-02 pop-out doing timers
+- 06-02 scope: `a87a75af` pop-out window for "doing" timers — feature-ish, will need design discussion (one-window or per-task pop-outs? localStorage state? close behavior?)
+- 64227659 (guided tour) descoped 2026-05-07 from v1.0 — moved to ROADMAP "Deferred (Someday)" for a future milestone
+- 2dc7c45a was re-opened mid-06-01 after user UAT exposed the wrong-layer 05-02 fix; properly resolved during 06-01 with the helper-duplicates fix
 
 ---
 *STATE.md — Updated after every significant action*

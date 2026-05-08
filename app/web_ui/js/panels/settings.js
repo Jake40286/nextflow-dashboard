@@ -1,5 +1,27 @@
 // Settings panel render methods — mixed into UIController.prototype by ui.js
 import { THEME_OPTIONS, STATUS_LABELS, formatFriendlyDate } from "../data.js";
+
+// Local copies of two small pure helpers also defined in ui.js. ES modules
+// don't share top-level scope, so functions defined at the top of ui.js are
+// not visible inside this module — referencing them throws ReferenceError at
+// render time, which previously aborted renderSettings before populating the
+// Features and Tags & Contexts sections.
+function stripTagPrefix(value) {
+  if (typeof value !== "string") return value ?? "";
+  return value.startsWith("@") || value.startsWith("+") ? value.slice(1) : value;
+}
+function normalizeThemeHexInput(value) {
+  if (typeof value !== "string") return null;
+  let normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (!normalized.startsWith("#")) normalized = `#${normalized}`;
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(normalized)) return null;
+  if (normalized.length === 4) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+  return normalized;
+}
+
 export default {
   renderSettings() {
     try {
@@ -676,7 +698,7 @@ export default {
       const usage = usageMap.get(value) || { active: 0, inactive: 0 };
       meta.textContent =
         `${usage.active} active task${usage.active === 1 ? "" : "s"} • ` +
-        `${usage.inactive} inactive task${usage.inactive === 1 ? "" : "s"}`;
+        `${usage.inactive} completed task${usage.inactive === 1 ? "" : "s"}`;
       labelWrap.append(label, meta);
       const actions = document.createElement("div");
       actions.className = "settings-item-actions";
@@ -755,7 +777,7 @@ export default {
       .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
     meta.textContent =
       `${activeTasks.length} active task${activeTasks.length === 1 ? "" : "s"} • ` +
-      `${inactiveTasks.length} inactive task${inactiveTasks.length === 1 ? "" : "s"}`;
+      `${inactiveTasks.length} completed task${inactiveTasks.length === 1 ? "" : "s"}`;
     header.append(title, meta);
     wrapper.append(header);
 
@@ -824,7 +846,7 @@ export default {
     if (inactiveTasks.length) {
       const inactiveTitle = document.createElement("p");
       inactiveTitle.className = "settings-context-group-label muted small-text";
-      inactiveTitle.textContent = "Inactive tasks";
+      inactiveTitle.textContent = "Completed tasks";
       wrapper.append(inactiveTitle);
 
       const inactiveList = document.createElement("ul");

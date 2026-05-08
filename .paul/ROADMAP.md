@@ -128,14 +128,16 @@ Phases: 6 of 7 complete
 **Research:** Unlikely
 
 **Scope:**
-- `64227659` — Guided tour / "show me around"
 - `b4faaccd` — Rename "Inactive" label on completed tasks
-- `981dde72` — "Convert to Project" UX clarification
+- `981dde72` — "Convert to Project" UX clarification (largely already implemented — verify + extend carry-over)
 - `a87a75af` — Pop-out window for "doing" timers
 
 **Plans:**
-- [ ] 06-01: Settings & onboarding polish
-- [ ] 06-02: Pop-out doing timers
+- [ ] 06-01: Rename "Inactive" + Convert-to-Project carry-over (`b4faaccd`, `981dde72`)
+- [ ] 06-02: Pop-out doing timers (`a87a75af`)
+
+**Notes:**
+- 2026-05-07: `64227659` (guided tour / "show me around") descoped from v1.0 milestone during 06-01 planning. It's a greenfield feature, not polish, and doesn't fit the milestone tagline. Feedback record stays open and is recorded under "Deferred (Someday)" below for a future milestone.
 
 ## Deferred (Someday)
 
@@ -148,6 +150,7 @@ Out of scope for this milestone — large-scope features requiring separate plan
 - `00b83571` — Shopping list feature
 - `5953b8c8` — Email digest summaries
 - `21377c43` — Chaining/prerequisite tasks
+- `64227659` — Guided tour / "show me around" (deferred from v1.0 Phase 6 — feature-shaped, not polish)
 
 ---
 *Roadmap created: 2026-05-06*
@@ -160,3 +163,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Phase 4 complete (both plans shipped). 5 of 7 phases done. Phase 5 (Active Task Views) is next.*
 *Last updated: 2026-05-07 — 05-02 planning descoped `1f7139ee` (Backlog "resolve all" button) per user; remains an open feedback item for a future plan.*
 *Last updated: 2026-05-07 — Phase 5 complete (all 3 plans shipped, `fb700fcc` fully closed). 6 of 7 phases done. Phase 6 (Settings & Misc) is next.*
+*Last updated: 2026-05-07 — Phase 6 re-scoped during 06-01 planning: `64227659` (guided tour) deferred to a future milestone per user (greenfield feature, doesn't fit polish theme). Phase 6 now has 3 in-scope items across 2 plans.*

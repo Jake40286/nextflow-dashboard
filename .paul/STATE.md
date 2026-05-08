@@ -5,19 +5,19 @@
 See: .paul/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.0 Feedback Clearance & Polish — Phase 5: Active Task Views (filtering, bulk edit, UX consistency across panels)
+**Current focus:** v1.0 Feedback Clearance & Polish — Phase 5 complete (6 of 7 phases shipped). Phase 6: Settings & Misc next.
 
 ## Current Position
 
 Milestone: v1.0 Feedback Clearance & Polish
-Phase: 5 of 7 (Active Task Views) — In progress (05-01 + 05-02 closed; 05-03 next)
-Plan: 05-02 closed (PLAN/APPLY/UNIFY all ✓); 05-03 ready to plan
-Status: 05-02 loop closed
-Last activity: 2026-05-07 — UNIFY complete for 05-02. SUMMARY written. Feedback 8dac310e + 2dc7c45a marked resolved. 179/179 tests passing.
+Phase: 5 of 7 (Active Task Views) — Complete (all 3 plans shipped); Phase 6 (Settings & Misc) next
+Plan: 05-03 closed (PLAN/APPLY/UNIFY all ✓); Phase 5 transition complete
+Status: Phase 5 complete; ready to plan Phase 6
+Last activity: 2026-05-07 — UNIFY complete for 05-03. SUMMARY written. Feedback fb700fcc marked resolved. 179/179 tests passing. Phase 5 transition: PROJECT/ROADMAP updated, branch merged to main.
 
 Progress:
-- Milestone: [███████░░░] 71% (5 of 7 phases complete — 1, 2, 2.5, 3, 4)
-- Phase 5: [██████░░░░] 67% — 05-01 + 05-02 closed; 05-03 queued
+- Milestone: [████████░░] 86% (6 of 7 phases complete — 1, 2, 2.5, 3, 4, 5)
+- Phase 5: [██████████] 100% — 05-01 + 05-02 + 05-03 all closed
 
 ## Loop Position
 
@@ -37,10 +37,10 @@ Phase 4 (closed):
   04-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   04-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 
-Phase 5 (active):
+Phase 5 (closed):
   05-01:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
   05-02:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
-  05-03:              ○ ──── ○ ──── ○             [Ready to plan — bulk-edit redesign]
+  05-03:              PLAN ──▶ APPLY ──▶ UNIFY    [✓ closed]
 ```
 
 ## Accumulated Context
@@ -60,6 +60,9 @@ Phase 5 (active):
 - 2026-05-07 (03-01): In-panel "Active" status group label at `ui.js:7793` deliberately preserved — it's a status filter, not the panel title. Boundaries section caught this; future plans should look for shared-vocabulary traps when renaming.
 - 2026-05-07 (05-02): Weekly Review per-section guidance pattern — single `#reviewSectionGuidance` element in shared header, toggled by `section.id` in both `_renderCurrentItem` and `_renderHistoricalItem`. Future Review sections that need scoped guidance can extend this pattern instead of inlining per-card.
 - 2026-05-07 (05-02): Default `#settingsAccordionLists` open in `index.html` (matches Appearance accordion). Smallest fix for "I see no tags or contexts at all" — closed `<details>` was the cause, not a code regression. Rename/Delete buttons in `panels/settings.js:684-700` were always wired correctly.
+- 2026-05-07 (05-03): Bulk-edit moved from immediate-apply to draft+Apply/Cancel. State held in `this.pendingBulkEdits` (single-value selects) and `this.pendingContextIntents` Map (Contexts chip cycle). Future multi-value bulk fields (people-tags etc.) should mirror the contexts chip pattern: observed-state class × intent-state class, cycle handler in setupMultiEditBar, intent-application helper returning a new array, equality helper to skip no-op writes.
+- 2026-05-07 (05-03): Selection-reconciliation reads live DOM (`.task-row[data-task-id]`) after Apply rather than re-running panel filter predicates. Depends on synchronous statechange→render — confirmed sync at `data.js:874-876`. If a future panel renders task rows outside this DOM convention, reconciliation will silently leave stale ids in selectedTaskIds.
+- 2026-05-07 (05-03): Two-step Escape on multi-edit bar — draft cancels first, selection clears second. Matches Linear/Notion convention; gives non-destructive abandon path for staged edits.
 
 ### Deferred Issues
 
@@ -75,20 +78,20 @@ None.
 
 ### Git State
 
-- Phase 4 already merged to main as `6164484` (fast-forward).
-- Active branch: `feature/active-task-views` for Phase 5; will hold all three Phase 5 plans before merging.
+- Phase 5 merged to main 2026-05-07 (after 05-03 UNIFY). Branch `feature/active-task-views` deleted post-merge.
 - Earlier merges: Phase 2.5 (`52abf0b`); Phase 3 (`3c80027`); Phase 4 (`6164484`).
+- Next phase work should start a fresh branch (e.g., `feature/settings-misc` for Phase 6).
 
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: 05-02 closed on feature/active-task-views; ready to plan 05-03.
-Next action: `/paul:plan` for 05-03 — bulk-edit redesign.
+Stopped at: Phase 5 complete and merged to main; ready to plan Phase 6.
+Next action: `/paul:plan` for Phase 6 — Settings & onboarding polish (06-01) or pop-out doing timers (06-02).
 Resume context:
-- Branch: `feature/active-task-views` (will hold 05-03 before merging Phase 5 to main)
+- Branch: `main` (Phase 5 merged via fast-forward); start fresh `feature/...` branch for Phase 6
 - npm test baseline: 179/179 passing
-- 05-03 scope: `fb700fcc` item 3 — bulk-edit draft+Apply/Cancel redesign on Pending Tasks panel, plus Contexts as a multi-value field
-- Manual UAT for 05-02 not blocking (feedback already marked resolved); if AC-2 surface still appears empty in browser, revisit diagnostic Step A in 05-02-PLAN.md (CSS / data getter / null element fallbacks)
+- Phase 6 scope (from ROADMAP): `64227659` (guided tour), `b4faaccd` (rename "Inactive" label), `981dde72` ("Convert to Project" UX), `a87a75af` (pop-out doing timer)
+- Phase 6 plan split (per ROADMAP): 06-01 settings & onboarding polish; 06-02 pop-out doing timers
 
 ---
 *STATE.md — Updated after every significant action*

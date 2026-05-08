@@ -8,7 +8,7 @@ nextflow is a mature self-hosted productivity app. This milestone focuses on qua
 
 **v1.0 Feedback Clearance & Polish** (v1.0.0)
 Status: In progress
-Phases: 5 of 7 complete
+Phases: 6 of 7 complete
 
 ## Phases
 
@@ -19,7 +19,7 @@ Phases: 5 of 7 complete
 | 2.5 | Top-Bar Status Sections | 1 | Complete | 2026-05-07 |
 | 3 | Projects Panel — UX | 2 | Complete | 2026-05-07 |
 | 4 | Projects Panel — Features | 2 | Complete | 2026-05-07 |
-| 5 | Active Task Views | 3 | Not started | - |
+| 5 | Active Task Views | 3 | Complete | 2026-05-07 |
 | 6 | Settings & Misc | 2 | Not started | - |
 
 ## Phase Details
@@ -114,9 +114,9 @@ Phases: 5 of 7 complete
 - `2dc7c45a` — Delete/edit context buttons missing
 
 **Plans (per `/paul:discover` recommendation 2026-05-07):**
-- [ ] 05-01: Pending Tasks panel polish (`059f0a1e`, `f3d948ce`, `fb700fcc` items 1+2)
-- [ ] 05-02: Backlog panel improvements (`8dac310e`, `2dc7c45a`) — `1f7139ee` descoped 2026-05-07 during 05-02 planning (resolve-all UX deferred per user request; feedback record stays open)
-- [ ] 05-03: Bulk-edit redesign — draft + Apply/Cancel (`fb700fcc` item 3)
+- [x] 05-01: Pending Tasks panel polish (`059f0a1e`, `f3d948ce`, `fb700fcc` items 1+2) — completed 2026-05-07
+- [x] 05-02: Backlog panel improvements (`8dac310e`, `2dc7c45a`) — completed 2026-05-07; `1f7139ee` descoped during planning (resolve-all UX deferred; feedback record stays open)
+- [x] 05-03: Bulk-edit redesign — draft + Apply/Cancel + tri-state Contexts chips (`fb700fcc` item 3) — completed 2026-05-07
 
 **Notes:**
 - 2026-05-07: `bb343993` ("Apply Backlog UX elements to other pages") descoped from this milestone per user request — feedback record stays open for a future milestone but not actively planned here. Deferred-issues list updated.
@@ -159,3 +159,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Phase 4 split into 04-01 (data + emission + tests) and 04-02 (UI tab) per `/paul:discover` recommendation.*
 *Last updated: 2026-05-07 — Phase 4 complete (both plans shipped). 5 of 7 phases done. Phase 5 (Active Task Views) is next.*
 *Last updated: 2026-05-07 — 05-02 planning descoped `1f7139ee` (Backlog "resolve all" button) per user; remains an open feedback item for a future plan.*
+*Last updated: 2026-05-07 — Phase 5 complete (all 3 plans shipped, `fb700fcc` fully closed). 6 of 7 phases done. Phase 6 (Settings & Misc) is next.*

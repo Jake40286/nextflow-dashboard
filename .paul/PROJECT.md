@@ -15,7 +15,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 | Type | Application |
 | Version | 0.1.0 |
 | Status | Beta / Active refinement |
-| Last Updated | 2026-05-07 (after Phase 4) |
+| Last Updated | 2026-05-07 (after Phase 5) |
 
 **Production URLs:**
 - http://localhost:8002 — Local dev / Docker
@@ -44,6 +44,7 @@ Users can track tasks, projects, and calendar events across any browser on their
 - [x] Top-bar status sections — My Day + Neglected (Phase 2.5)
 - [x] Projects panel UX — accurate panel label + clear add-project affordance + correct "no next action" warning logic (Phase 3)
 - [x] Project activity / change log — silently records task and project lifecycle events; visible in a bottom-of-flyout section per project (Phase 4)
+- [x] Active Task Views polish — Area-of-Focus filter on association flyout; click-anywhere expand/collapse on Notes / List / Follow-up / Prerequisites flyout sections; multi-edit bar redesigned with draft+Apply/Cancel, "(Mixed)" placeholder for heterogeneous selections, tri-state Contexts chip group (observed all/some/none × intent add/remove); Weekly Review Pending Tasks step gained guidance copy; Settings → Tags & Contexts now visible by default (Phase 5)
 
 ### Active (In Progress)
 
@@ -80,6 +81,8 @@ Users can track tasks, projects, and calendar events across any browser on their
 | "Has next action" predicate matches NEXT, DOING, or WAITING (not just NEXT) | GTD semantics: delegated tasks are implicitly the next event; in-progress tasks ARE the action. Avoids noise on the at-risk warning. Future STATUS additions must reconsider this predicate | 2026-05-07 | Active (Phase 3) |
 | Project activity log mirrors the `completionLog` split-persistence pattern (lives in `completed.json`, server-merged accumulator, `_completionsDirty`-conditional sync) | Reuses three battle-tested mechanics; no new persistence machinery; cross-device merge is provably accumulative | 2026-05-07 | Active (Phase 4) |
 | Activity log scope: status-change + project-assign + lifecycle events; NOT note edits, dueDate, contexts, etc. | User feedback explicitly said "status of tasks etc. should be logged" / "I wouldn't want some information to become permanent, like notes" | 2026-05-07 | Active (Phase 4) |
+| Bulk-edit: draft + Apply/Cancel pattern, Mixed-placeholder for heterogeneous single-value selects, tri-state chips for multi-value fields (Contexts), selection survives Apply with DOM-based view reconciliation | Replaces immediate-apply pattern (which lost selection after every edit and silently overwrote heterogeneous values); follows established Gmail/Linear/Notion conventions | 2026-05-07 | Active (Phase 5) |
+| Multi-value bulk-edit fields use tri-state chip cycle (no-change → add → remove → no-change) with observed-state class × intent-state class | Future bulk-edit fields (people-tags, etc.) should mirror this pattern instead of inventing parallel UX | 2026-05-07 | Active (Phase 5) |
 
 ## Success Metrics
 
@@ -109,4 +112,4 @@ Users can track tasks, projects, and calendar events across any browser on their
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-05-07 after Phase 4*
+*Last updated: 2026-05-07 after Phase 5*

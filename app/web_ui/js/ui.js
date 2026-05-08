@@ -228,6 +228,8 @@ export class UIController {
     this.entityMentionRepositionHandler = null;
     this._dirtyPanels = new Set();
     this.selectedTaskIds = new Set();
+    this.pendingBulkEdits = {};
+    this.pendingContextIntents = new Map();
   }
 
   init() {
@@ -3906,8 +3908,36 @@ export class UIController {
     this.updateMultiEditBar();
   }
 
+  // Single-value bulk-edit fields: maps select id → task field name.
+  // Order matters for staged-change count and Apply iteration.
+  _bulkEditSelectFields() {
+    return [
+      { id: "multiEditStatus", field: "status" },
+      { id: "multiEditProject", field: "projectId" },
+      { id: "multiEditArea", field: "areaOfFocus" },
+      { id: "multiEditEffort", field: "effortLevel" },
+      { id: "multiEditTime", field: "timeRequired" },
+    ];
+  }
+
+  // Compute the set of distinct values across selected tasks for `field`.
+  // Returns { values: Set, common: any|null, mixed: boolean }.
+  _bulkObservedValues(field) {
+    const values = new Set();
+    for (const id of this.selectedTaskIds) {
+      const task = this.taskManager.getTaskById(id);
+      if (!task) continue;
+      values.add(task[field] ?? null);
+    }
+    if (values.size === 1) return { values, common: [...values][0], mixed: false };
+    return { values, common: null, mixed: values.size > 1 };
+  }
+
   updateMultiEditBar() {
-    const { multiEditBar, multiEditCount, multiEditStatus, multiEditProject, multiEditArea, multiEditEffort, multiEditTime } = this.elements;
+    const {
+      multiEditBar, multiEditCount, multiEditStatus, multiEditProject, multiEditArea,
+      multiEditEffort, multiEditTime, multiEditApply, multiEditCancel, multiEditDraftCount,
+    } = this.elements;
     if (!multiEditBar) return;
     const count = this.selectedTaskIds.size;
     if (count === 0) {
@@ -3916,6 +3946,9 @@ export class UIController {
       setTimeout(() => {
         if (this.selectedTaskIds.size === 0) multiEditBar.hidden = true;
       }, 260);
+      // Drop any draft when selection empties — there's nothing to apply to.
+      this.pendingBulkEdits = {};
+      this.pendingContextIntents.clear();
       return;
     }
     multiEditBar.hidden = false;
@@ -3940,7 +3973,6 @@ export class UIController {
 
     // Populate project options from current state
     if (multiEditProject) {
-      const currentProjectVal = multiEditProject.value;
       while (multiEditProject.options.length > 1) multiEditProject.remove(1);
       const noneOpt = document.createElement("option");
       noneOpt.value = "__none__";
@@ -3952,12 +3984,10 @@ export class UIController {
         opt.textContent = p.name;
         multiEditProject.append(opt);
       });
-      if (currentProjectVal) multiEditProject.value = currentProjectVal;
     }
 
     // Populate area options from current state
     if (multiEditArea) {
-      const currentAreaVal = multiEditArea.value;
       while (multiEditArea.options.length > 1) multiEditArea.remove(1);
       const noneOpt = document.createElement("option");
       noneOpt.value = "__none__";
@@ -3969,7 +3999,6 @@ export class UIController {
         opt.textContent = area;
         multiEditArea.append(opt);
       });
-      if (currentAreaVal) multiEditArea.value = currentAreaVal;
     }
 
     // Populate effort options (once — fixed list)
@@ -3991,17 +4020,186 @@ export class UIController {
         multiEditTime.append(opt);
       });
     }
+
+    // For each select: prefer staged value if present; otherwise show
+    // observed common value, or "(Mixed)" if heterogeneous.
+    this._bulkEditSelectFields().forEach(({ id, field }) => {
+      const select = this.elements[id];
+      if (!select) return;
+      this._applyBulkSelectState(select, field);
+    });
+
+    // Render the contexts chip group
+    this._renderMultiEditContexts();
+
+    // Update draft-count text and Apply/Cancel button enabled state
+    const draftCount = this._bulkDraftCount();
+    if (multiEditDraftCount) {
+      multiEditDraftCount.textContent = draftCount === 0
+        ? ""
+        : `${draftCount} change${draftCount === 1 ? "" : "s"} pending`;
+    }
+    if (multiEditApply) multiEditApply.disabled = draftCount === 0;
+    if (multiEditCancel) multiEditCancel.disabled = draftCount === 0;
   }
 
-  applyBulkField(field, value) {
-    if (!value || !this.selectedTaskIds.size) return;
+  // Set a single bulk-edit select's value + placeholder option to reflect
+  // staged value (if any), observed common value, or "(Mixed)" placeholder.
+  _applyBulkSelectState(select, field) {
+    // Find or create the "(Mixed)" placeholder option (value === "__mixed__").
+    let mixedOpt = select.querySelector('option[value="__mixed__"]');
+    const observed = this._bulkObservedValues(field);
+    const stagedHasField = Object.prototype.hasOwnProperty.call(this.pendingBulkEdits, field);
+
+    if (observed.mixed && !mixedOpt) {
+      mixedOpt = document.createElement("option");
+      mixedOpt.value = "__mixed__";
+      mixedOpt.textContent = "(Mixed)";
+      // Insert as the second option (after the empty placeholder) using
+      // options collection, which skips whitespace text nodes.
+      const opts = select.options;
+      if (opts.length > 1) select.insertBefore(mixedOpt, opts[1]);
+      else select.appendChild(mixedOpt);
+    } else if (!observed.mixed && mixedOpt) {
+      mixedOpt.remove();
+      mixedOpt = null;
+    }
+
+    if (stagedHasField) {
+      const v = this.pendingBulkEdits[field];
+      select.value = v === null ? "__none__" : v;
+    } else if (observed.mixed) {
+      select.value = "__mixed__";
+    } else if (observed.common === null || observed.common === undefined) {
+      // Homogeneous "no value" — render the empty placeholder option.
+      select.value = "";
+    } else {
+      select.value = observed.common;
+    }
+  }
+
+  // Total count of staged changes (single-value fields + context intents).
+  _bulkDraftCount() {
+    return Object.keys(this.pendingBulkEdits).length + this.pendingContextIntents.size;
+  }
+
+  applyBulkEdits() {
+    if (this._bulkDraftCount() === 0 || this.selectedTaskIds.size === 0) return;
     const ids = Array.from(this.selectedTaskIds);
-    const resolvedValue = value === "__none__" ? null : value;
+    const fieldEntries = Object.entries(this.pendingBulkEdits);
+    const contextIntents = new Map(this.pendingContextIntents);
+
+    let touched = 0;
     ids.forEach((taskId) => {
-      this.taskManager.updateTask(taskId, { [field]: resolvedValue });
+      const task = this.taskManager.getTaskById(taskId);
+      if (!task) return;
+      const partial = {};
+      for (const [field, value] of fieldEntries) {
+        partial[field] = value; // value may be null (for "__none__")
+      }
+      if (contextIntents.size > 0) {
+        const next = this._applyContextIntents(task.contexts || [], contextIntents);
+        if (!this._sameContextArray(task.contexts || [], next)) {
+          partial.contexts = next;
+        }
+      }
+      if (Object.keys(partial).length === 0) return;
+      this.taskManager.updateTask(taskId, partial);
+      touched += 1;
     });
-    this.taskManager.notify("info", `Updated ${ids.length} task${ids.length === 1 ? "" : "s"}.`);
-    this.clearSelection();
+
+    this.taskManager.notify("info", `Updated ${touched} task${touched === 1 ? "" : "s"}.`);
+
+    // Reset draft state.
+    this.pendingBulkEdits = {};
+    this.pendingContextIntents.clear();
+
+    // Reconcile selection: drop ids whose row is no longer in the current view.
+    this._reconcileSelectionAgainstView();
+
+    this.updateMultiEditBar();
+  }
+
+  cancelBulkEdits() {
+    if (this._bulkDraftCount() === 0) return;
+    this.pendingBulkEdits = {};
+    this.pendingContextIntents.clear();
+    this.updateMultiEditBar();
+  }
+
+  // Drop selected ids that no longer have a corresponding rendered row.
+  _reconcileSelectionAgainstView() {
+    if (this.selectedTaskIds.size === 0) return;
+    const visible = new Set();
+    document.querySelectorAll(".task-row[data-task-id]").forEach((row) => {
+      visible.add(row.dataset.taskId);
+    });
+    const dropped = [];
+    for (const id of this.selectedTaskIds) {
+      if (!visible.has(id)) dropped.push(id);
+    }
+    dropped.forEach((id) => this.selectedTaskIds.delete(id));
+  }
+
+  // Render the tri-state contexts chip group in the multi-edit bar.
+  // Each chip's class encodes (observed-state × staged-intent):
+  //   observed: is-on-all | is-on-some | is-on-none
+  //   staged:   is-staged-add | is-staged-remove | (none)
+  _renderMultiEditContexts() {
+    const container = this.elements.multiEditContexts;
+    if (!container) return;
+    const contexts = this.taskManager.getContexts();
+    if (!contexts.length || this.selectedTaskIds.size === 0) {
+      container.innerHTML = "";
+      return;
+    }
+    const total = this.selectedTaskIds.size;
+    container.innerHTML = "";
+    contexts.forEach((value) => {
+      let withIt = 0;
+      for (const id of this.selectedTaskIds) {
+        const task = this.taskManager.getTaskById(id);
+        if (task && Array.isArray(task.contexts) && task.contexts.includes(value)) withIt += 1;
+      }
+      const observed = withIt === total ? "is-on-all" : withIt === 0 ? "is-on-none" : "is-on-some";
+      const intent = this.pendingContextIntents.get(value);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = `multi-edit-context-chip ${observed}`;
+      if (intent === "add") chip.classList.add("is-staged-add");
+      else if (intent === "remove") chip.classList.add("is-staged-remove");
+      chip.dataset.contextValue = value;
+      // Display: stripped tag prefix ("@Home" → "Home") for readability.
+      chip.textContent = stripTagPrefix(value);
+      const intentLabel = intent === "add" ? " (will add)"
+        : intent === "remove" ? " (will remove)"
+        : observed === "is-on-all" ? " (on all)"
+        : observed === "is-on-some" ? " (on some)"
+        : " (on none)";
+      chip.setAttribute("aria-label", `${value}${intentLabel}`);
+      chip.title = `${value}${intentLabel}`;
+      container.append(chip);
+    });
+  }
+
+  // Apply add/remove intents to a task's existing context array.
+  // Returns a new array; never mutates the input.
+  _applyContextIntents(existing, intents) {
+    const next = Array.isArray(existing) ? [...existing] : [];
+    for (const [value, intent] of intents) {
+      const idx = next.indexOf(value);
+      if (intent === "add" && idx === -1) next.push(value);
+      else if (intent === "remove" && idx !== -1) next.splice(idx, 1);
+    }
+    return next;
+  }
+
+  _sameContextArray(a, b) {
+    if (a.length !== b.length) return false;
+    const sa = [...a].sort();
+    const sb = [...b].sort();
+    for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
+    return true;
   }
 
   setupSidebarToggle() {
@@ -4018,44 +4216,53 @@ export class UIController {
   }
 
   setupMultiEditBar() {
-    const { multiEditStatus, multiEditProject, multiEditArea, multiEditEffort, multiEditTime, multiEditClear, multiEditBar } = this.elements;
+    const {
+      multiEditClear, multiEditBar, multiEditApply, multiEditCancel, multiEditContexts,
+    } = this.elements;
     if (!multiEditBar) return;
 
-    multiEditStatus?.addEventListener("change", () => {
-      if (multiEditStatus.value) {
-        this.applyBulkField("status", multiEditStatus.value);
-        multiEditStatus.value = "";
-      }
+    // Single-value field handlers — stage instead of applying.
+    this._bulkEditSelectFields().forEach(({ id, field }) => {
+      const select = this.elements[id];
+      if (!select) return;
+      select.addEventListener("change", () => {
+        const v = select.value;
+        if (v === "" || v === "__mixed__") {
+          // User chose the placeholder / Mixed → unstage this field.
+          delete this.pendingBulkEdits[field];
+        } else {
+          this.pendingBulkEdits[field] = v === "__none__" ? null : v;
+        }
+        this.updateMultiEditBar();
+      });
     });
-    multiEditProject?.addEventListener("change", () => {
-      if (multiEditProject.value) {
-        this.applyBulkField("projectId", multiEditProject.value);
-        multiEditProject.value = "";
-      }
+
+    // Contexts chip cycling — delegated click handler.
+    multiEditContexts?.addEventListener("click", (event) => {
+      const chip = event.target.closest("button.multi-edit-context-chip");
+      if (!chip) return;
+      const value = chip.dataset.contextValue;
+      if (!value) return;
+      const current = this.pendingContextIntents.get(value);
+      // Cycle: undefined → "add" → "remove" → undefined
+      if (current === undefined) this.pendingContextIntents.set(value, "add");
+      else if (current === "add") this.pendingContextIntents.set(value, "remove");
+      else this.pendingContextIntents.delete(value);
+      this.updateMultiEditBar();
     });
-    multiEditArea?.addEventListener("change", () => {
-      if (multiEditArea.value) {
-        this.applyBulkField("areaOfFocus", multiEditArea.value);
-        multiEditArea.value = "";
-      }
-    });
-    multiEditEffort?.addEventListener("change", () => {
-      if (multiEditEffort.value) {
-        this.applyBulkField("effortLevel", multiEditEffort.value);
-        multiEditEffort.value = "";
-      }
-    });
-    multiEditTime?.addEventListener("change", () => {
-      if (multiEditTime.value) {
-        this.applyBulkField("timeRequired", multiEditTime.value);
-        multiEditTime.value = "";
-      }
-    });
+
+    multiEditApply?.addEventListener("click", () => this.applyBulkEdits());
+    multiEditCancel?.addEventListener("click", () => this.cancelBulkEdits());
     multiEditClear?.addEventListener("click", () => this.clearSelection());
 
-    // Escape key clears selection when bar is visible
+    // Two-step Escape: cancel staged draft first; then clear selection.
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && this.selectedTaskIds.size > 0) {
+      if (event.key !== "Escape") return;
+      if (this._bulkDraftCount() > 0) {
+        this.cancelBulkEdits();
+        return;
+      }
+      if (this.selectedTaskIds.size > 0) {
         this.clearSelection();
       }
     });
@@ -9988,6 +10195,10 @@ function mapElements() {
     multiEditEffort: byId("multiEditEffort"),
     multiEditTime: byId("multiEditTime"),
     multiEditClear: byId("multiEditClear"),
+    multiEditContexts: byId("multiEditContexts"),
+    multiEditDraftCount: byId("multiEditDraftCount"),
+    multiEditApply: byId("multiEditApply"),
+    multiEditCancel: byId("multiEditCancel"),
     taskContextMenu: byId("taskContextMenu"),
     taskNoteContextMenu: byId("taskNoteContextMenu"),
     taskListItemContextMenu: byId("taskListItemContextMenu"),

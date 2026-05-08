@@ -115,7 +115,7 @@ Phases: 5 of 7 complete
 
 **Plans (per `/paul:discover` recommendation 2026-05-07):**
 - [ ] 05-01: Pending Tasks panel polish (`059f0a1e`, `f3d948ce`, `fb700fcc` items 1+2)
-- [ ] 05-02: Backlog panel improvements (`8dac310e`, `1f7139ee`, `2dc7c45a`)
+- [ ] 05-02: Backlog panel improvements (`8dac310e`, `2dc7c45a`) — `1f7139ee` descoped 2026-05-07 during 05-02 planning (resolve-all UX deferred per user request; feedback record stays open)
 - [ ] 05-03: Bulk-edit redesign — draft + Apply/Cancel (`fb700fcc` item 3)
 
 **Notes:**
@@ -158,3 +158,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-07 — Phase 3 complete (plans 03-01, 03-02 shipped). 4 of 7 phases done. Phase 4 (Projects Panel — Features: project activity log) is next.*
 *Last updated: 2026-05-07 — Phase 4 split into 04-01 (data + emission + tests) and 04-02 (UI tab) per `/paul:discover` recommendation.*
 *Last updated: 2026-05-07 — Phase 4 complete (both plans shipped). 5 of 7 phases done. Phase 5 (Active Task Views) is next.*
+*Last updated: 2026-05-07 — 05-02 planning descoped `1f7139ee` (Backlog "resolve all" button) per user; remains an open feedback item for a future plan.*

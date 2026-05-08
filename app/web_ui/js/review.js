@@ -436,6 +436,20 @@ export class ReviewController {
     const sectionDesc = document.getElementById("reviewSectionDesc");
     if (sectionDesc) sectionDesc.textContent = section.description;
 
+    const sectionGuidance = document.getElementById("reviewSectionGuidance");
+    if (sectionGuidance) {
+      if (section.id === "next") {
+        sectionGuidance.textContent =
+          "“Pending Tasks” are items you're committed to and actively working on. " +
+          "If you're not ready to commit to it right now, send it to Backburner — " +
+          "that's where things with no current plan or commitment belong until you are.";
+        sectionGuidance.hidden = false;
+      } else {
+        sectionGuidance.textContent = "";
+        sectionGuidance.hidden = true;
+      }
+    }
+
     const skippedCount = section.isGated || section.isProjects
       ? 0
       : this._getSectionItemsUnfiltered(si).length - total;
@@ -508,6 +522,12 @@ export class ReviewController {
 
     const sectionDesc = document.getElementById("reviewSectionDesc");
     if (sectionDesc) sectionDesc.textContent = "Viewing history — no changes.";
+
+    const sectionGuidance = document.getElementById("reviewSectionGuidance");
+    if (sectionGuidance) {
+      sectionGuidance.textContent = "";
+      sectionGuidance.hidden = true;
+    }
 
     const progress = document.getElementById("reviewProgress");
     if (progress) {

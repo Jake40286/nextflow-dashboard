@@ -1,0 +1,7 @@
+# Sidecar dev/test deps. NOT installed in Dockerfile.mcp; install locally
+# (alongside requirements-mcp.txt) before running pytest:
+#   pip install -r requirements-mcp.txt -r requirements-mcp-dev.txt
+#   pytest tests/mcp_server/
+pytest>=8,<9
+pytest-asyncio>=0.23,<1
+pytest-httpx>=0.30,<1

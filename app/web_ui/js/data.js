@@ -2352,11 +2352,14 @@ export class TaskManager extends EventTarget {
     }
 
     const [project] = this.state.projects.splice(projectIndex, 1);
+    const deletedAt = nowIso();
+    // Tombstone the project itself so a stale replica can't reinject it
+    // through the projects-collection union merge in mergeStates.
+    this.state._tombstones = this.state._tombstones || {};
+    this.state._tombstones[projectId] = deletedAt;
 
     let deletedCount = 0;
     if (deleteTasks) {
-      const deletedAt = nowIso();
-      this.state._tombstones = this.state._tombstones || {};
       this.state.completionLog = this.state.completionLog || [];
       const remaining = [];
       const newEntries = [];
@@ -2433,10 +2436,14 @@ export class TaskManager extends EventTarget {
       return null;
     }
     const [project] = this.state.projects.splice(projectIndex, 1);
+    const completedAt = new Date().toISOString();
+    // Tombstone the project so a stale replica can't reinject it as active
+    // alongside its entry in completedProjects.
+    this.state._tombstones = this.state._tombstones || {};
+    this.state._tombstones[projectId] = completedAt;
 
     if (Object.keys(dispositions).length > 0) {
-      const now = nowIso();
-      this.state._tombstones = this.state._tombstones || {};
+      const now = completedAt;
       this.state.completionLog = this.state.completionLog || [];
       const remaining = [];
       const newEntries = [];
@@ -2478,10 +2485,10 @@ export class TaskManager extends EventTarget {
     const entry = normalizeCompletedProject({
       id: project.id,
       name: project.name,
-      completedAt: new Date().toISOString(),
+      completedAt,
       snapshot: project,
       closureNotes,
-      updatedAt: nowIso(),
+      updatedAt: completedAt,
     });
     this.state.completedProjects = this.state.completedProjects || [];
     this.state.completedProjects.unshift(entry);
@@ -4829,7 +4836,17 @@ function mergeStates(remoteState = {}, localState = {}) {
     });
     return Array.from(map.values());
   };
-  merged.projects = mergeCollections(localState.projects, remoteState.projects);
+  // Projects: union by id, but suppress any id with a tombstone newer than
+  // both sides' updatedAt. Mirrors the task tombstone logic so a stale
+  // replica can't reinject a deleted/completed project.
+  const filterTombstoned = (items = []) => items.filter((item) => {
+    if (!item?.id) return false;
+    const ts = toTimestamp(merged._tombstones?.[item.id]);
+    if (ts <= 0) return true;
+    const updated = toTimestamp(item.updatedAt || item.createdAt);
+    return updated > ts;
+  });
+  merged.projects = filterTombstoned(mergeCollections(localState.projects, remoteState.projects));
   merged.reference = mergeCollections(localState.reference, remoteState.reference);
   merged.completionLog = mergeCollections(localState.completionLog, remoteState.completionLog);
   merged.completedProjects = mergeCollections(localState.completedProjects, remoteState.completedProjects);

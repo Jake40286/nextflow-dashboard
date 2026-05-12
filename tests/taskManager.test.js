@@ -2127,10 +2127,10 @@ test("deleteProject (default) removes project and orphans tasks (clears projectI
     0,
     "no completionLog entries written when not cascading",
   );
-  assert.equal(
-    Object.keys(manager.state._tombstones || {}).length,
-    0,
-    "no tombstones written when not cascading",
+  assert.deepEqual(
+    Object.keys(manager.state._tombstones || {}),
+    [project.id],
+    "only the project itself is tombstoned (no task tombstones when not cascading)",
   );
   assert.ok(
     manager.state.tasks.find((t) => t.id === unrelated.id),
@@ -2196,10 +2196,10 @@ test("deleteProject({ deleteTasks: true }) on empty project leaves _completionsD
     false,
     "no work for the completion-sync path when no tasks were deleted",
   );
-  assert.equal(
-    Object.keys(manager.state._tombstones || {}).length,
-    0,
-    "no tombstones written when project is empty",
+  assert.deepEqual(
+    Object.keys(manager.state._tombstones || {}),
+    [project.id],
+    "only the project itself is tombstoned when there are no tasks to cascade",
   );
 });
 
@@ -2777,6 +2777,54 @@ test("server-merge accumulates projectActivityLog without dropping entries", () 
   const act2 = log.find((e) => e.id === "act-2");
   assert.equal(act2.actor, "device-B", "newer ts (remote) wins for overlapping id");
   assert.equal(act2.ts, "2026-01-02T05:00:00.000Z");
+});
+
+// ─── Project tombstones (hotfix: deleted/completed projects resurrected on sync)
+
+test("deleteProject writes a project tombstone", () => {
+  const manager = createManager({
+    projects: [{ id: "p-del", name: "To delete", tasks: [], status: "Active" }],
+  });
+  manager.deleteProject("p-del");
+  assert.equal(manager.state.projects.length, 0, "project removed from active list");
+  assert.ok(manager.state._tombstones?.["p-del"], "project id is tombstoned");
+});
+
+test("completeProject writes a project tombstone", () => {
+  const manager = createManager({
+    projects: [{ id: "p-done", name: "Finish me", tasks: [], status: "Active" }],
+  });
+  manager.completeProject("p-done");
+  assert.equal(manager.state.projects.length, 0, "project removed from active list");
+  assert.ok(manager.state._tombstones?.["p-done"], "project id is tombstoned on completion");
+  const entry = manager.state.completedProjects.find((p) => p.id === "p-done");
+  assert.ok(entry, "project appears in completedProjects");
+  assert.ok(entry.completedAt, "completedAt is stamped");
+});
+
+test("mergeStates suppresses a deleted project that a stale replica still has", () => {
+  const remoteState = {
+    projects: [{ id: "p-1", name: "Pulled Pork", updatedAt: "2024-01-01T00:00:00.000Z" }],
+  };
+  const localState = {
+    projects: [],
+    _tombstones: { "p-1": "2024-02-01T00:00:00.000Z" },
+  };
+  const merged = __testing.mergeStates(remoteState, localState);
+  assert.equal(merged.projects.length, 0, "tombstone suppresses the stale remote project");
+});
+
+test("mergeStates keeps a project edited after its tombstone (restore semantics)", () => {
+  const remoteState = {
+    projects: [{ id: "p-2", name: "Stale", updatedAt: "2024-02-01T00:00:00.000Z" }],
+  };
+  const localState = {
+    projects: [{ id: "p-2", name: "Restored", updatedAt: "2024-03-01T00:00:00.000Z" }],
+    _tombstones: { "p-2": "2024-02-15T00:00:00.000Z" },
+  };
+  const merged = __testing.mergeStates(remoteState, localState);
+  assert.equal(merged.projects.length, 1, "project with newer edit survives tombstone");
+  assert.equal(merged.projects[0].name, "Restored");
 });
 
 test.after(() => {

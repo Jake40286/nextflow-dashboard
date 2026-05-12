@@ -5,20 +5,20 @@
 See: .paul/PROJECT.md (updated 2026-05-07)
 
 **Core value:** Users can track tasks, projects, and calendar events across any browser on their network — self-hosted, zero cloud dependency, real-time sync.
-**Current focus:** v1.1 MCP Integration — Phase 1 COMPLETE. Walking-skeleton MCP sidecar shipped and smoke-tested end-to-end. Ready for Phase 2 (Full Tool Surface).
+**Current focus:** v1.1 MCP Integration — Phase 2 plan 04 PLAN created (Python test suite, pytest + pytest-httpx; hybrid mock-`web` for unit tests + opt-in live integration test). Awaiting APPLY approval.
 
 ## Current Position
 
 Milestone: v1.1 MCP Integration
-Phase: 2 of 3 — MCP Server / Full Tool Surface (2 of 3 plans closed; 02-03 ahead)
-Plan: 02-02 closed — SUMMARY published at `.paul/phases/02-mcp-server/02-02-SUMMARY.md`.
-Status: Loop closed; ready for 02-03 PLAN.
-Last activity: 2026-05-08 — UNIFY complete for 02-02. `app/mcp_server.py` 494 → 789 LoC; 5 new task-entity tools shipped (total 10). Per-group LWW timestamp pattern established for MCP-side mutations.
+Phase: 2 of 3 — MCP Server / Full Tool Surface (Planning 02-04)
+Plan: 02-04 created at `.paul/phases/02-mcp-server/02-04-PLAN.md`, awaiting approval.
+Status: PLAN created, ready for APPLY.
+Last activity: 2026-05-09 — Created 02-04 PLAN. Standard track, 3 tasks: (1) scaffold pytest harness + sync.py wire-contract tests, (2) state_helpers + tools unit tests locking in codified invariants, (3) opt-in live integration test against docker compose. New dev-only `requirements-mcp-dev.txt` (pytest, pytest-asyncio, pytest-httpx); production image and `requirements-mcp.txt` untouched.
 
 Progress:
-- Milestone: [█████░░░░░] 55% (Phase 1 shipped; Phase 2: 02-01 + 02-02 closed; 02-03 ahead)
+- Milestone: [██████░░░░] 60% (Phase 1 shipped; Phase 2: 3 of 4 plans closed; 02-04 ahead)
 - Phase 1: [██████████] 100%
-- Phase 2: [██████░░░░] 67% — 02-01 closed, 02-02 closed, 02-03 ahead (tests + cleanup + likely refactor)
+- Phase 2: [████████░░] 75% — 02-01 closed, 02-02 closed, 02-03 closed, 02-04 ahead (Python test suite)
 - Phase 3: [░░░░░░░░░░] 0%
 
 ## Loop Position
@@ -31,8 +31,12 @@ Phase 1 (CLOSED — published):
 Phase 2 (active):
   02-01:             [✓ closed — projects + atomic decomposition published]
   02-02:             [✓ closed — task entity tools published]
-  02-03:             not yet planned (tests + cleanup + likely refactor)
+  02-03:             [✓ closed — refactor + cleanups published]
+  02-04:             not yet planned — Python test suite (split from 02-03 by user direction)
 ```
+
+PLAN ──▶ APPLY ──▶ UNIFY
+  ✓        ○        ○     [02-04 plan created, awaiting approval]
 
 ## Accumulated Context
 
@@ -69,13 +73,23 @@ Phase 2 (active):
 - **`mcp_server.py` refactor to `app/mcp/` package is now the recommended call for 02-03.** File grew 494 → 789 LoC after 02-02 (60% larger; past the comfortable monolith threshold). 02-03 plan will weigh tests-first vs refactor-first up front.
 - **Note `_source: 'mcp'` is a transient audit field.** Survives initial MCP PUT; dropped by JS `normalizeTaskNotes` (data.js:4514-4543) on the next browser-side normalize pass. Kept per AC-5; flagged as a Phase 3 candidate to either preserve in JS or remove from MCP writes.
 
+### Decisions (v1.1-specific — locked in 02-03)
+
+- **Package name is `app/mcp_server/`, NOT `app/mcp/`.** Naming the package `mcp` would shadow the installed `mcp` SDK because `/app` (the bind-mount root) is on `sys.path`. Naming rule for future packages: when bind-mount root is on `sys.path`, never name a local package the same as an installed top-level dependency.
+- **02-03 scope split: refactor + cleanups only; tests deferred to 02-04.** User direction. Refactor-first meant the test harness in 02-04 targets the final API surface.
+- **Package layout established as strict DAG:** `config (constants) ← sync (I/O) ← state_helpers (pure transforms) ← tools/* (decorators) ← server (entry)`. Tool registration via import-as-side-effect inside `server.main()` keeps test/REPL imports side-effect-free. `__main__.py` enables `python -m mcp_server`.
+- **`task-<uuid>` ID format applied to ALL `_build_task_record` callers**, not only `create_task` — including `create_project_with_tasks`. Forward-only; legacy bare-hex IDs continue to work. Matches `data.js generateId('task')`.
+
 ### Decisions (v1.1-specific — still to be made)
 
-- _02-03 will decide: test surface (especially 409 retry path + per-group LWW correctness), whether to refactor `mcp_server.py` into `app/mcp/` package up front, `create_task` ID format consistency (`task-<uuid>` vs bare hex), pin `starlette<2`, drop obsolete `version: "3.8"` from `docker-compose.yml`._
+- _02-04 will decide: Python test framework (pytest vs unittest), test layout under `tests/mcp/`, whether to mock the `web` service or run integration tests against a live compose stack._
 - _Phase 3 will finalize: bearer-token auth + LAN-bind, rate-limit / batch-cap policies, audit-trail UI shape, complete-task tool over `completionLog`, edit-note / delete-note tools, arbitrary task-field updates (title/description/dueDate/contexts/peopleTags), note `_source` durability decision, canonical "do not expose to internet" doc copy._
 
 ### Deferred Issues
 
+- 2026-05-09: **02-03 smoke entities live in state** — `task-bd4b5e1b-3606-4754-a597-aba2a4375bb9` and `project-988dab8d-89a4-45a8-961a-fffa4e97cecb` ("02-03 refactor smoke (delete me)"). Self-cleanup via UI; not blocking.
+- 2026-05-09: **`starlette<2` lower bound unspecified** — pinned `<2` only; 1.0.0 resolved cleanly today, but if mcp 1.27.0's transitive resolver later prefers <0.40, request flow may break. 02-04 should add a "sidecar handshakes" regression assertion.
+- 2026-05-09: **`tools/tasks.py` at 301 LoC** — right at the comfortable threshold. If Phase 3 introduces `complete_task` or arbitrary field updates, plan to split by entity-action rather than entity-type at that point.
 - 2026-05-08: **Note `_source: 'mcp'` durability** — `normalizeTaskNotes` (data.js:4514-4543) drops `_source` on browser-side normalize. Phase 3 candidate: extend the JS normalizer to preserve it OR remove `_source` from MCP-written notes. Discovered in 02-02 Task 3.
 - 2026-05-08: Feedback panel removal (in-app `/feedback` superseded by GitHub Issues #28–#73) — eligible to bolt on as a final phase if v1.1 finishes early; otherwise its own future milestone.
 - v1.0 Process-session auto-flyout case (`0bf1bf88`): when batch-clarifying, the project flyout is not opened after convert routing to avoid conflict with the next queued task. Leave as-is unless it surfaces during v1.1.
@@ -94,14 +108,14 @@ None at milestone creation. Phase 1 may surface an MCP-Python feasibility blocke
 
 ## Session Continuity
 
-Last session: 2026-05-08
-Stopped at: 02-02 closed (UNIFY done; SUMMARY published). Phase 2 progress: 2 of 3 plans closed.
-Next action: `/paul:plan` for 02-03 (tests + cleanup + likely refactor of `mcp_server.py`).
+Last session: 2026-05-09
+Stopped at: 02-04 PLAN created, awaiting approval. Phase 2 progress: 3 of 4 plans closed; 02-04 plan staged.
+Next action: Review `.paul/phases/02-mcp-server/02-04-PLAN.md`, then run `/paul:apply .paul/phases/02-mcp-server/02-04-PLAN.md`.
 Resume context:
-- Branch: `main` — working tree dirty: `app/mcp_server.py` (+295 LoC), `.paul/STATE.md`, `.paul/paul.json`, `.paul/ROADMAP.md`, plus new `.paul/phases/02-mcp-server/02-02-PLAN.md` and `02-02-SUMMARY.md`. **Recommended commit:** `feat(mcp): task entity tools — list/get/update_status/set_project/add_note (Phase 2 plan 02)`.
-- Stack state: **10 MCP tools** registered. Project tools (5): `create_project`, `list_projects`, `get_project`, `create_project_with_tasks`, plus `create_task` from 01-02. Task tools (5, NEW in 02-02): `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note`. Sidecar healthy at http://127.0.0.1:8003/mcp; bind is loopback-only per Phase 1 PoC decision (Claude Desktop on the LAN must SSH-tunnel until Phase 3 ships the bearer token + LAN-bind).
-- 02-03 scope (next plan): **(1)** test suite — at minimum 409 retry path, per-group LWW status-bump correctness, append-only note semantics. **(2)** Refactor `mcp_server.py` (789 LoC) into `app/mcp/` package — recommended in 02-02 SUMMARY; needs explicit 02-03 plan call. **(3)** `create_task` ID format consistency (currently bare uuid hex; should be `task-<uuid>` to match `data.js generateId('task')`). **(4)** Pin `starlette<2` in `requirements-mcp.txt`. **(5)** Drop obsolete `version: "3.8"` from `docker-compose.yml` (warning fires on every compose run).
-- Carried-forward deferreds: synthetic `projectActivityLog` row for MCP-created entities; areaOfFocus/themeTag validation against `state.settings.areaOptions`; complete-task flow over `completionLog` (Phase 3); arbitrary field updates beyond status/project/notes (Phase 3); note `_source` durability (Phase 3).
+- Branch: `main` — working tree dirty: 1 deleted (`app/mcp_server.py`), 9 new (`app/mcp_server/**/*.py`), 3 modified (`Dockerfile.mcp`, `docker-compose.yml`, `requirements-mcp.txt`), plus PAUL bookkeeping (`STATE.md`, `ROADMAP.md`, `paul.json`, `.paul/phases/02-mcp-server/02-03-PLAN.md`, `02-03-SUMMARY.md`). **Recommended commit:** `refactor(mcp): split mcp_server.py into app/mcp_server/ package + cleanups (Phase 2 plan 03)`. Note 02-02's recommended commit (`feat(mcp): task entity tools …`) is still pending — bundle if uncommitted, or commit 02-02 first then 02-03.
+- Stack state: **10 MCP tools** registered, sidecar healthy at http://127.0.0.1:8003/mcp via the new `app/mcp_server/` package. Module DAG: config ← sync ← state_helpers ← tools/* ← server. Bind is loopback-only per Phase 1 PoC decision.
+- 02-04 scope (next plan): Python test suite. Anticipated layout `tests/mcp_server/{test_sync,test_state_helpers,test_tools_projects,test_tools_tasks}.py`. Coverage targets: 409 retry path, per-group LWW status-bump correctness, append-only note semantics, `task-<uuid>` ID format regression, `_rev` Δ = +1 atomicity for `create_project_with_tasks`. Open decisions: pytest vs unittest, mock-`web` vs integration-against-live-compose. Add a "sidecar handshakes" assertion as a guard against future starlette resolution drift.
+- Carried-forward deferreds: smoke entities `task-bd4b5e1b...` + `project-988dab8d...` (02-03 SUMMARY); `tools/tasks.py` LoC budget at 301; synthetic `projectActivityLog` row; areaOfFocus/themeTag validation; complete-task flow (Phase 3); arbitrary field updates (Phase 3); note `_source` durability (Phase 3).
 
 ---
 *STATE.md — Updated after every significant action*

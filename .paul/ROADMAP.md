@@ -15,7 +15,7 @@ Phases: 1 of 3 complete
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
 | 1 | MCP Feasibility & PoC | 01-01, 01-02 | Complete | 2026-05-08 |
-| 2 | MCP Server — Full Tool Surface | 02-01, 02-02 closed; 02-03 ahead | In progress | - |
+| 2 | MCP Server — Full Tool Surface | 02-01, 02-02, 02-03 closed; 02-04 ahead | In progress | - |
 | 3 | Safety, Audit & Security Hardening | TBD | Not started | - |
 
 ## Phase Details
@@ -58,7 +58,8 @@ Phases: 1 of 3 complete
 **Plans (3 projected; created on demand):**
 - [x] 02-01: Project entity + atomic decomposition flagship shipped — `create_project`, `list_projects`, `get_project`, `create_project_with_tasks` live; atomicity proven (`_rev` Δ = +1 for 4 entities). See `.paul/phases/02-mcp-server/02-01-SUMMARY.md` — completed 2026-05-08.
 - [x] 02-02: Task entity tools shipped — `list_tasks`, `get_task`, `update_task_status`, `set_task_project`, `add_task_note` live (10 tools total). Per-group LWW timestamp pattern established. `app/mcp_server.py` 494 → 789 LoC. See `.paul/phases/02-mcp-server/02-02-SUMMARY.md` — completed 2026-05-08.
-- [ ] 02-03: Tests + cleanup + likely refactor — automated MCP server tests (409 retry, per-group LWW correctness, append-only notes); refactor `mcp_server.py` (789 LoC) into `app/mcp/` package (recommended call from 02-02 SUMMARY); fix `create_task` ID format consistency (`task-<uuid>`); pin `starlette<2`; drop obsolete `version: "3.8"` from compose.
+- [x] 02-03: Refactor + cleanups shipped — `app/mcp_server.py` (789 LoC) replaced by `app/mcp_server/` package (9 files, largest 301 LoC). 3 deferred cleanups closed: `task-<uuid>` IDs, `starlette<2` pin, `version: "3.8"` removed. Live MCP round-trip verified `_rev` Δ = +1 per write across all 10 tools. See `.paul/phases/02-mcp-server/02-03-SUMMARY.md` — completed 2026-05-09.
+- [ ] 02-04: Python test suite — automated MCP server tests (409 retry path, per-group LWW correctness, append-only note semantics). Split out from 02-03 by user direction so tests target the post-refactor API surface.
 
 ### Phase 3: Safety, Audit & Security Hardening
 
@@ -111,3 +112,4 @@ Out of scope for this milestone — large-scope features requiring separate plan
 *Last updated: 2026-05-08 — v1.1 MCP Integration milestone created. Phase 1 is a feasibility gate (research + walking-skeleton PoC); Phase 2 is the full server; Phase 3 is safety + security hardening. v1.0 collapsed into Previous Milestones section.*
 *Last updated: 2026-05-08 — Phase 1 complete (both plans shipped). 1 of 3 phases done. Walking-skeleton sidecar live and smoke-tested. Phase 2 (Full Tool Surface) is next.*
 *Last updated: 2026-05-08 — Phase 2 plan 02 (Task entity tools) closed. 2 of 3 Phase 2 plans done. 10 MCP tools live (5 project + 5 task). Per-group LWW timestamp pattern established for MCP-side mutations. 02-03 (tests + likely refactor) is next.*
+*Last updated: 2026-05-09 — Phase 2 plan 03 (Refactor + cleanups) closed. 3 of 4 Phase 2 plans done (scope re-split: tests moved to new 02-04). `app/mcp_server.py` retired; `app/mcp_server/` package live with strict-DAG layout. `task-<uuid>` IDs, `starlette<2` pin, and `version: "3.8"` removal landed in the same APPLY rebuild. 02-04 (Python test suite) is next.*
